@@ -11,8 +11,10 @@ const app = express();
 
 // Middleware
 app.use(helmet());
-app.use(express.json());
-app.use(cookieParser());
+
+// Aumentar el límite de tamaño del body de las peticiones
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));app.use(cookieParser());
 
 // Configuración de CORS para múltiples subdominios
 const corsOptions = {
@@ -60,6 +62,8 @@ app.use('/api/nomina', require('./routes/nominaRoutes'));
 app.use('/api/flota', require('./routes/flotaRoutes'));
 app.use('/api/empresas', require('./routes/empresaRoutes'));
 app.use('/api/conductores', require('./routes/conductoresRoutes.js'));
+app.use('/api/export', require('./routes/exportRoutes'));
+app.use('/api/emails', require('./routes/emailRoutes'));
 
 // Ruta de verificación de salud
 app.get('/health', (req, res) => {

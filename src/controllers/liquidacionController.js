@@ -36,6 +36,8 @@ exports.obtenerLiquidaciones = async (req, res) => {
       ],
     });
 
+    console.log(liquidaciones)
+
     res.status(200).json({
       success: true,
       count: liquidaciones.length,
@@ -137,8 +139,6 @@ exports.obtenerLiquidacionPorId = async (req, res) => {
       nest: true,
       raw: false,
     });
-
-    console.log(liquidacion);
 
     if (!liquidacion) {
       return res.status(404).json({
@@ -323,6 +323,7 @@ exports.crearLiquidacion = async (req, res) => {
       );
     }
 
+
     // Insertar recargos
     if (recargos && recargos.length > 0) {
       await Promise.all(
@@ -341,6 +342,8 @@ exports.crearLiquidacion = async (req, res) => {
         )
       );
     }
+
+    console.log(anticipos)
 
     // Insertar anticipos
     if (anticipos && anticipos.length > 0) {
@@ -640,8 +643,6 @@ exports.editarLiquidacion = async (req, res) => {
 exports.obtenerConfiguracion = async (req, res) => {
   try {
     const configuraciones = await ConfiguracionLiquidacion.findAll();
-
-    console.log(configuraciones);
 
     res.status(200).json({
       success: true,
