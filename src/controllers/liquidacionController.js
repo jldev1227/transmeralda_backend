@@ -36,8 +36,6 @@ exports.obtenerLiquidaciones = async (req, res) => {
       ],
     });
 
-    console.log(liquidaciones)
-
     res.status(200).json({
       success: true,
       count: liquidaciones.length,
@@ -104,6 +102,12 @@ exports.obtenerLiquidacionPorId = async (req, res) => {
               attributes: ["id", "placa", "modelo", "marca"],
               required: false,
             },
+            {
+              model: Empresa,
+              as: "empresa",
+              attributes: ["id", "Nombre", "NIT"],
+              required: false,
+            },
           ],
         },
         {
@@ -128,6 +132,11 @@ exports.obtenerLiquidacionPorId = async (req, res) => {
         {
           model: User,
           as: "creadoPor",
+          attributes: ["id", "nombre", "correo"],
+        },
+        {
+          model: User,
+          as: "actualizadoPor",
           attributes: ["id", "nombre", "correo"],
         },
         {
@@ -167,20 +176,22 @@ exports.crearLiquidacion = async (req, res) => {
   try {
     const {
       conductor_id,
-      periodoStart,
-      periodoEnd,
-      auxilioTransporte,
-      sueldoTotal,
-      salarioDevengado,
-      totalPernotes,
-      totalBonificaciones,
-      totalRecargos,
-      totalAnticipos,
-      totalVacaciones,
-      diasLaborados,
-      diasLaboradosVillanueva,
-      diasLaboradosAnual,
-      ajusteSalarial,
+      periodo_start,
+      periodo_end,
+      periodo_start_vacaciones,
+      periodo_end_vacaciones,
+      auxilio_transporte,
+      sueldo_total,
+      salario_devengado,
+      total_pernotes,
+      total_bonificaciones,
+      total_recargos,
+      total_anticipos,
+      total_vacaciones,
+      dias_laborados,
+      dias_laborados_villanueva,
+      dias_laborados_anual,
+      ajuste_salarial,
       vehiculos,
       bonificaciones,
       mantenimientos,
@@ -190,12 +201,12 @@ exports.crearLiquidacion = async (req, res) => {
       salud,
       pension,
       cesantias,
-      interesCesantias,
+      interes_cesantias,
       estado,
     } = req.body;
 
     // Obtener el ID del usuario desde el contexto
-    const usuario_id = req.usuario.id; 
+    const usuario_id = req.usuario.id;
 
     // Verificar si el conductor existe
     const conductor = await Conductor.findByPk(conductor_id, {
@@ -229,41 +240,45 @@ exports.crearLiquidacion = async (req, res) => {
     let calculatedTotalAnticipos = 0;
     if (anticipos && anticipos.length > 0) {
       calculatedTotalAnticipos = anticipos.reduce(
-        (total, anticipo) => total + (anticipo.valor || 0), 
+        (total, anticipo) => total + (anticipo.valor || 0),
         0
       );
     }
 
     // Usar el total calculado o el enviado directamente
-    const finalTotalAnticipos = calculatedTotalAnticipos || totalAnticipos || 0;
+    const finalTotalAnticipos =
+      calculatedTotalAnticipos || total_anticipos || 0;
 
     // Crear la nueva liquidación
     const nuevaLiquidacion = await Liquidacion.create(
       {
         conductor_id,
-        periodoStart,
-        periodoEnd,
-        auxilioTransporte,
-        sueldoTotal,
-        salarioDevengado,
-        totalPernotes,
-        totalBonificaciones,
-        totalRecargos,
-        totalAnticipos: finalTotalAnticipos, // Usar el total calculado
-        totalVacaciones,
-        diasLaborados,
-        diasLaboradosVillanueva,
-        diasLaboradosAnual,
-        ajusteSalarial,
+        periodo_start,
+        periodo_end,
+        periodo_start_vacaciones,
+        periodo_end_vacaciones,
+        auxilio_transporte,
+        sueldo_total,
+        salario_devengado,
+        total_pernotes,
+        total_bonificaciones,
+        total_recargos,
+        total_anticipos: finalTotalAnticipos, // Usar el total calculado
+        total_vacaciones,
+        dias_laborados,
+        dias_laborados_villanueva,
+        dias_laborados_anual,
+        ajuste_salarial,
         salud,
         pension,
         cesantias,
-        interesCesantias,
+        interes_cesantias,
         estado,
-        creado_por_id: usuario_id,
-        liquidado_por_id: estado === "Liquidado" ? usuario_id : null,
       },
-      { transaction }
+      {
+        transaction,
+        user: { id: usuario_id }, // Añadir el usuario a las opciones
+      }
     );
 
     // Asociar los vehículos a la liquidación
@@ -323,7 +338,6 @@ exports.crearLiquidacion = async (req, res) => {
       );
     }
 
-
     // Insertar recargos
     if (recargos && recargos.length > 0) {
       await Promise.all(
@@ -342,8 +356,6 @@ exports.crearLiquidacion = async (req, res) => {
         )
       );
     }
-
-    console.log(anticipos)
 
     // Insertar anticipos
     if (anticipos && anticipos.length > 0) {
@@ -404,20 +416,22 @@ exports.editarLiquidacion = async (req, res) => {
     const { id } = req.params;
     const {
       conductor_id,
-      periodoStart,
-      periodoEnd,
-      auxilioTransporte,
-      sueldoTotal,
-      salarioDevengado,
-      totalPernotes,
-      totalBonificaciones,
-      totalRecargos,
-      totalAnticipos,
-      totalVacaciones,
-      diasLaborados,
-      diasLaboradosVillanueva,
-      diasLaboradosAnual,
-      ajusteSalarial,
+      periodo_start,
+      periodo_end,
+      periodo_start_vacaciones,
+      periodo_end_vacaciones,
+      auxilio_transporte,
+      sueldo_total,
+      salario_devengado,
+      total_pernotes,
+      total_bonificaciones,
+      total_recargos,
+      total_anticipos,
+      total_vacaciones,
+      dias_laborados,
+      dias_laborados_villanueva,
+      dias_laborados_anual,
+      ajuste_salarial,
       vehiculos,
       bonificaciones,
       mantenimientos,
@@ -427,9 +441,11 @@ exports.editarLiquidacion = async (req, res) => {
       salud,
       pension,
       cesantias,
-      interesCesantias,
+      interes_cesantias,
       estado,
     } = req.body;
+
+    const usuario_id = req.usuario.id;
 
     // Buscar la liquidación existente
     const liquidacion = await Liquidacion.findByPk(id, { transaction });
@@ -446,39 +462,45 @@ exports.editarLiquidacion = async (req, res) => {
     let calculatedTotalAnticipos = 0;
     if (anticipos && anticipos.length > 0) {
       calculatedTotalAnticipos = anticipos.reduce(
-        (total, anticipo) => total + (anticipo.valor || 0), 
+        (total, anticipo) => total + (anticipo.valor || 0),
         0
       );
     }
 
     // Usar el total calculado o el enviado directamente
-    const finalTotalAnticipos = calculatedTotalAnticipos || totalAnticipos || 0;
+    const finalTotalAnticipos =
+      calculatedTotalAnticipos || total_anticipos || 0;
 
     // Actualizar campos de la liquidación
     await liquidacion.update(
       {
         conductor_id: conductor_id || liquidacion.conductor_id,
-        periodoStart,
-        periodoEnd,
-        auxilioTransporte,
-        sueldoTotal,
-        salarioDevengado,
-        totalPernotes,
-        totalBonificaciones,
-        totalRecargos,
-        totalAnticipos: finalTotalAnticipos, // Usar el total calculado
-        totalVacaciones,
-        diasLaborados,
-        diasLaboradosVillanueva,
-        diasLaboradosAnual,
-        ajusteSalarial,
+        periodo_start,
+        periodo_end,
+        auxilio_transporte,
+        sueldo_total,
+        salario_devengado,
+        total_pernotes,
+        total_bonificaciones,
+        total_recargos,
+        total_anticipos: finalTotalAnticipos, // Usar el total calculado
+        total_vacaciones,
+        periodo_start_vacaciones,
+        periodo_end_vacaciones,
+        dias_laborados,
+        dias_laborados_villanueva,
+        dias_laborados_anual,
+        ajuste_salarial,
         salud,
         pension,
         cesantias,
-        interesCesantias,
+        interes_cesantias,
         estado,
       },
-      { transaction }
+      {
+        transaction,
+        user: { id: usuario_id }, // Añadir el usuario a las opciones
+      }
     );
 
     // Actualizar vehículos

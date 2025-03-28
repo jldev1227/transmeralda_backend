@@ -258,6 +258,18 @@ module.exports = (sequelize) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      creado_por_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      actualizado_por_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      liquidado_por_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      }
     },
     {
       sequelize,
@@ -266,14 +278,16 @@ module.exports = (sequelize) => {
       underscored: true,
       hooks: {
         beforeCreate: (liquidacion, options) => {
+          console.log(options.user, "options")
           // Determinar estado basado en días laborados
           if (
-            liquidacion.diasLaborados > 0 ||
-            liquidacion.diasLaboradosVillanueva > 0 ||
-            liquidacion.diasLaboradosAnual > 0
+            liquidacion.dias_laborados > 0 ||
+            liquidacion.dias_laborados_villanueva > 0 ||
+            liquidacion.dias_laborados_anual > 0
           ) {
             liquidacion.estado = "Liquidado";
-            liquidacion.fechaLiquidacion = new Date();
+            liquidacion.fecha_liquidacion = new Date();
+            liquidacion.liquidado_por_id = options.user.id;
           }
 
           // Registrar creador
@@ -284,17 +298,17 @@ module.exports = (sequelize) => {
         beforeUpdate: (liquidacion, options) => {
           // Determinar estado basado en días laborados
           if (
-            liquidacion.diasLaborados > 0 ||
-            liquidacion.diasLaboradosVillanueva > 0 ||
-            liquidacion.diasLaboradosAnual > 0
+            liquidacion.dias_laborados > 0 ||
+            liquidacion.dias_laborados_villanueva > 0 ||
+            liquidacion.dias_laborados_anual > 0
           ) {
             liquidacion.estado = "Liquidado";
-            if (!liquidacion.fechaLiquidacion) {
-              liquidacion.fechaLiquidacion = new Date();
+            if (!liquidacion.fecha_liquidacion) {
+              liquidacion.fecha_liquidacion = new Date();
             }
           } else {
             liquidacion.estado = "Pendiente";
-            liquidacion.fechaLiquidacion = null;
+            liquidacion.fecha_liquidacion = null;
           }
 
           // Registrar actualizador

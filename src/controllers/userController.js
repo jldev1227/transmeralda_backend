@@ -19,60 +19,31 @@ const cookieOptions = () => {
   };
 };
 
-// Registrar usuario
-exports.registro = async (req, res) => {
-  try {
-    const { nombre, correo, password, telefono, role, permisos } = req.body;
+// Modificación de las funciones login y registro
 
-    // Crear usuario usando Sequelize
-    const usuario = await User.create({
-      nombre,
-      correo,
-      password, // Se hará hash automáticamente por el hook beforeSave
-      telefono,
-      role,
-      permisos,
-    });
+// Función auxiliar para establecer cookies de usuario
+const setUserCookies = (res, usuario, token) => {
+  // Información básica del usuario para la cookie (evita incluir datos sensibles)
+  const userInfo = {
+    id: usuario.id,
+    nombre: usuario.nombre,
+    correo: usuario.correo,
+    role: usuario.role,
+    permisos: usuario.permisos
+  };
 
-    // Generar token
-    const token = generarToken(usuario.id);
-
-    // Enviar respuesta con cookie
-    res.cookie("token", token, cookieOptions());
-
-    res.status(201).json({
-      success: true,
-      message: "Usuario registrado correctamente",
-      usuario: usuario.toJSON(),
-      token,
-    });
-  } catch (error) {
-    console.error("Error en registro:", error);
-
-    // Manejo de errores de validación de Sequelize
-    if (
-      error.name === "SequelizeValidationError" ||
-      error.name === "SequelizeUniqueConstraintError"
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Error de validación",
-        errors: error.errors.map((e) => ({
-          field: e.path,
-          message: e.message,
-        })),
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: "Error al registrar usuario",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
-    });
-  }
+  // Establecer cookie del token
+  res.cookie("token", token, cookieOptions());
+  
+  // Establecer cookie con información del usuario
+  res.cookie("userInfo", JSON.stringify(userInfo), {
+    ...cookieOptions(),
+    // La cookie de userInfo no necesita ser httpOnly ya que debe ser accesible desde JavaScript
+    httpOnly: false
+  });
 };
 
-// Login de usuario
+// Login de usuario (modificado)
 exports.login = async (req, res) => {
   try {
     const { correo, password } = req.body;
@@ -109,8 +80,8 @@ exports.login = async (req, res) => {
     // Generar token
     const token = generarToken(usuario.id);
 
-    // Enviar respuesta con cookie
-    res.cookie("token", token, cookieOptions());
+    // Establecer cookies
+    setUserCookies(res, usuario, token);
 
     res.status(200).json({
       success: true,
@@ -128,11 +99,75 @@ exports.login = async (req, res) => {
   }
 };
 
-// Cerrar sesión
+// Registrar usuario (modificado)
+exports.registro = async (req, res) => {
+  try {
+    const { nombre, correo, password, telefono, role, permisos } = req.body;
+
+    // Crear usuario usando Sequelize
+    const usuario = await User.create({
+      nombre,
+      correo,
+      password, // Se hará hash automáticamente por el hook beforeSave
+      telefono,
+      role,
+      permisos,
+    });
+
+    // Generar token
+    const token = generarToken(usuario.id);
+
+    // Establecer cookies
+    setUserCookies(res, usuario, token);
+
+    res.status(201).json({
+      success: true,
+      message: "Usuario registrado correctamente",
+      usuario: usuario.toJSON(),
+      token,
+    });
+  } catch (error) {
+    console.error("Error en registro:", error);
+
+    // Manejo de errores de validación de Sequelize
+    if (
+      error.name === "SequelizeValidationError" ||
+      error.name === "SequelizeUniqueConstraintError"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Error de validación",
+        errors: error.errors.map((e) => ({
+          field: e.path,
+          message: e.message,
+        })),
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Error al registrar usuario",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+// Cerrar sesión (modificado para eliminar también la cookie userInfo)
 exports.logout = (req, res) => {
+  // Eliminar cookie de token
   res.cookie("token", "none", {
     expires: new Date(Date.now() + 10 * 1000), // 10 segundos
     httpOnly: true,
+    domain:
+      process.env.NODE_ENV === "production"
+        ? `.${process.env.DOMAIN}`
+        : undefined,
+  });
+
+  // Eliminar cookie de información de usuario
+  res.cookie("userInfo", "none", {
+    expires: new Date(Date.now() + 10 * 1000), // 10 segundos
+    httpOnly: false,
     domain:
       process.env.NODE_ENV === "production"
         ? `.${process.env.DOMAIN}`

@@ -117,6 +117,11 @@ module.exports = (sequelize) =>{
       foreignKey: 'empresa_id',
       as: 'recargos'
     });
+
+    Empresa.hasMany(models.Pernote, {
+      foreignKey: 'empresa_id',
+      as: 'pernotes'
+    });
     
     // Aquí irían otras asociaciones de Empresa
   };
