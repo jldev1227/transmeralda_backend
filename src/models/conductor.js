@@ -123,6 +123,10 @@ module.exports = (sequelize) => {
       validate: {
         notNull: { msg: 'El salario base es obligatorio' },
         isDecimal: { msg: 'El salario base debe ser un valor numérico' }
+      },
+      get() {
+        const value = this.getDataValue('salario_base');
+        return value === null ? null : parseFloat(value);
       }
     },
     estado: {
@@ -161,6 +165,16 @@ module.exports = (sequelize) => {
     ultimo_acceso: {
       type: DataTypes.DATE,
       allowNull: true
+    },
+    sede_trabajo: {
+      type: DataTypes.ENUM('Yopal', 'Villanueva', 'Tauramena'),
+      allowNull: true,
+      validate: {
+        isIn: {
+          args: [['Yopal', 'Villanueva', 'Tauramena']],
+          msg: 'La sede de trabajo debe ser Yopal, Villanueva o Tauramena'
+        }
+      }
     },
     permisos: {
       type: DataTypes.JSONB,

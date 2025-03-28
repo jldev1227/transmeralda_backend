@@ -16,6 +16,9 @@ module.exports = (sequelize) => {
       validate: {
         notNull: { msg: 'El valor es obligatorio' },
         isDecimal: { msg: 'El valor debe ser numérico' }
+      },
+      get() {
+        return parseFloat(this.getDataValue('valor'));
       }
     },
     fecha: {

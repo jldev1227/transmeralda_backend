@@ -23,7 +23,7 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-      periodoStart: {
+      periodo_start: {
         type: DataTypes.STRING,
         allowNull: false,
         validate: {
@@ -33,7 +33,7 @@ module.exports = (sequelize) => {
           },
         },
       },
-      periodoEnd: {
+      periodo_end: {
         type: DataTypes.STRING,
         allowNull: false,
         validate: {
@@ -41,7 +41,7 @@ module.exports = (sequelize) => {
           notEmpty: { msg: "La fecha de fin del periodo no puede estar vacía" },
         },
       },
-      auxilioTransporte: {
+      auxilio_transporte: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0,
@@ -51,11 +51,11 @@ module.exports = (sequelize) => {
           },
         },
         get() {
-          const value = this.getDataValue("auxilioTransporte");
+          const value = this.getDataValue("auxilio_transporte");
           return value === null ? null : parseFloat(value);
         },
       },
-      sueldoTotal: {
+      sueldo_total: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0,
@@ -63,11 +63,11 @@ module.exports = (sequelize) => {
           isDecimal: { msg: "El sueldo total debe ser un valor numérico" },
         },
         get() {
-          const value = this.getDataValue("sueldoTotal");
+          const value = this.getDataValue("sueldo_total");
           return value === null ? null : parseFloat(value);
         },
       },
-      salarioDevengado: {
+      salario_devengado: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0,
@@ -75,11 +75,11 @@ module.exports = (sequelize) => {
           isDecimal: { msg: "El salario devengado debe ser un valor numérico" },
         },
         get() {
-          const value = this.getDataValue("salarioDevengado");
+          const value = this.getDataValue("salario_devengado");
           return value === null ? null : parseFloat(value);
         },
       },
-      totalPernotes: {
+      total_pernotes: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0,
@@ -87,11 +87,11 @@ module.exports = (sequelize) => {
           isDecimal: { msg: "El total de pernotes debe ser un valor numérico" },
         },
         get() {
-          const value = this.getDataValue("totalPernotes");
+          const value = this.getDataValue("total_pernotes");
           return value === null ? null : parseFloat(value);
         },
       },
-      totalBonificaciones: {
+      total_bonificaciones: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0,
@@ -101,11 +101,11 @@ module.exports = (sequelize) => {
           },
         },
         get() {
-          const value = this.getDataValue("totalBonificaciones");
+          const value = this.getDataValue("total_bonificaciones");
           return value === null ? null : parseFloat(value);
         },
       },
-      totalRecargos: {
+      total_recargos: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0,
@@ -113,11 +113,11 @@ module.exports = (sequelize) => {
           isDecimal: { msg: "El total de recargos debe ser un valor numérico" },
         },
         get() {
-          const value = this.getDataValue("totalRecargos");
+          const value = this.getDataValue("total_recargos");
           return value === null ? null : parseFloat(value);
         },
       },
-      totalAnticipos: {
+      total_anticipos: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0,
@@ -127,11 +127,11 @@ module.exports = (sequelize) => {
           },
         },
         get() {
-          const value = this.getDataValue("totalAnticipos");
+          const value = this.getDataValue("total_anticipos");
           return value === null ? null : parseFloat(value);
         },
       },
-      totalVacaciones: {
+      total_vacaciones: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0,
@@ -141,19 +141,19 @@ module.exports = (sequelize) => {
           },
         },
         get() {
-          const value = this.getDataValue("totalVacaciones");
+          const value = this.getDataValue("total_vacaciones");
           return value === null ? null : parseFloat(value);
         },
       },
-      periodoStartVacaciones: {
+      periodo_start_vacaciones: {
         type: DataTypes.STRING,
         allowNull: true,
       },
-      periodoEndVacaciones: {
+      periodo_end_vacaciones: {
         type: DataTypes.STRING,
         allowNull: true,
       },
-      diasLaborados: {
+      dias_laborados: {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 0,
@@ -161,7 +161,7 @@ module.exports = (sequelize) => {
           isInt: { msg: "Los días laborados deben ser un número entero" },
         },
       },
-      diasLaboradosVillanueva: {
+      dias_laborados_villanueva: {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 0,
@@ -171,7 +171,7 @@ module.exports = (sequelize) => {
           },
         },
       },
-      diasLaboradosAnual: {
+      dias_laborados_anual: {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 0,
@@ -181,7 +181,7 @@ module.exports = (sequelize) => {
           },
         },
       },
-      ajusteSalarial: {
+      ajuste_salarial: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0,
@@ -189,7 +189,7 @@ module.exports = (sequelize) => {
           isDecimal: { msg: "El ajuste salarial debe ser un valor numérico" },
         },
         get() {
-          const value = this.getDataValue("ajusteSalarial");
+          const value = this.getDataValue("ajuste_salarial");
           return value === null ? null : parseFloat(value);
         },
       },
@@ -231,7 +231,7 @@ module.exports = (sequelize) => {
           return value === null ? null : parseFloat(value);
         }
       },
-      interesCesantias: {
+      interes_cesantias: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0,
@@ -241,7 +241,7 @@ module.exports = (sequelize) => {
           },
         },
         get() {
-          const value = this.getDataValue('interesCesantias');
+          const value = this.getDataValue('interes_cesantias');
           return value === null ? null : parseFloat(value);
         }
       },
@@ -250,7 +250,7 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: "Pendiente",
       },
-      fechaLiquidacion: {
+      fecha_liquidacion: {
         type: DataTypes.DATE,
         allowNull: true,
       },
@@ -258,6 +258,18 @@ module.exports = (sequelize) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      creado_por_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      actualizado_por_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      liquidado_por_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      }
     },
     {
       sequelize,
@@ -266,14 +278,16 @@ module.exports = (sequelize) => {
       underscored: true,
       hooks: {
         beforeCreate: (liquidacion, options) => {
+          console.log(options.user, "options")
           // Determinar estado basado en días laborados
           if (
-            liquidacion.diasLaborados > 0 ||
-            liquidacion.diasLaboradosVillanueva > 0 ||
-            liquidacion.diasLaboradosAnual > 0
+            liquidacion.dias_laborados > 0 ||
+            liquidacion.dias_laborados_villanueva > 0 ||
+            liquidacion.dias_laborados_anual > 0
           ) {
             liquidacion.estado = "Liquidado";
-            liquidacion.fechaLiquidacion = new Date();
+            liquidacion.fecha_liquidacion = new Date();
+            liquidacion.liquidado_por_id = options.user.id;
           }
 
           // Registrar creador
@@ -284,17 +298,17 @@ module.exports = (sequelize) => {
         beforeUpdate: (liquidacion, options) => {
           // Determinar estado basado en días laborados
           if (
-            liquidacion.diasLaborados > 0 ||
-            liquidacion.diasLaboradosVillanueva > 0 ||
-            liquidacion.diasLaboradosAnual > 0
+            liquidacion.dias_laborados > 0 ||
+            liquidacion.dias_laborados_villanueva > 0 ||
+            liquidacion.dias_laborados_anual > 0
           ) {
             liquidacion.estado = "Liquidado";
-            if (!liquidacion.fechaLiquidacion) {
-              liquidacion.fechaLiquidacion = new Date();
+            if (!liquidacion.fecha_liquidacion) {
+              liquidacion.fecha_liquidacion = new Date();
             }
           } else {
             liquidacion.estado = "Pendiente";
-            liquidacion.fechaLiquidacion = null;
+            liquidacion.fecha_liquidacion = null;
           }
 
           // Registrar actualizador

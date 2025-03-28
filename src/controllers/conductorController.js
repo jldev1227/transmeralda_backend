@@ -156,8 +156,6 @@ exports.obtenerConductoresBasicos = async (req, res) => {
       attributes: ['id', 'nombre', 'apellido', "numero_identificacion", "salario_base"]
     });
 
-    console.log(conductores)
-
     res.status(200).json({
       success: true,
       count: conductores.length,

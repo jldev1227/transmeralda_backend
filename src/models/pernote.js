@@ -131,6 +131,11 @@ module.exports = (sequelize) => {
       foreignKey: 'vehiculo_id',
       as: 'vehiculo'
     });
+
+    Pernote.belongsTo(models.Empresa, {
+      foreignKey: 'empresa_id',
+      as: 'empresa'
+    });
     
     Pernote.belongsTo(models.User, {
       foreignKey: 'creado_por_id',

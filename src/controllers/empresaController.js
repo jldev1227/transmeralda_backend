@@ -8,8 +8,6 @@ exports.getEmpresas = async (req, res) => {
     const empresas = await Empresa.findAll({
       order: [['Nombre', 'ASC']]
     });
-
-    console.log(empresas)
     
     return res.status(200).json({
       success: true,
