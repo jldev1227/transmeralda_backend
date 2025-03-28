@@ -23,6 +23,12 @@ module.exports = {
     // configuración similar...
   },
   production: {
-    // configuración similar...
+    username: process.env.DB_USER,
+    password: String(process.env.DB_PASSWORD), // Forzar que sea string
+    database: process.env.DB_NAME,
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    dialect: 'postgres',
+    logging: false
   }
 };
