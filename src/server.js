@@ -28,48 +28,80 @@ app.use(cookieParser());
 const PORT = process.env.PORT || 5000;
 
 // Configuración de CORS para múltiples subdominios
+const cors = require('cors');
+
 const corsOptions = {
   origin: function (origin, callback) {
-    const allowedDomains = [
-      // Con puertos específicos
-      `http://${process.env.DOMAIN}:${PORT}`,
-      `https://${process.env.DOMAIN}:${PORT}`,
-      `http://auth.${process.env.DOMAIN}:${PORT}`,
-      `https://auth.${process.env.DOMAIN}:${PORT}`,
-      `http://flota.${process.env.DOMAIN}:${PORT}`,
-      `https://flota.${process.env.DOMAIN}:${PORT}`,
-      `http://nomina.${process.env.DOMAIN}:${PORT}`,
-      `https://nomina.${process.env.DOMAIN}:${PORT}`,
-      
-      // Sin puertos (para puertos estándar 80/443)
+    // Variables de entorno para mayor flexibilidad
+    const ALLOWED_DOMAINS = process.env.ALLOWED_DOMAINS 
+      ? process.env.ALLOWED_DOMAINS.split(',') 
+      : [];
+
+    // Dominios base
+    const baseDomains = [
       `http://${process.env.DOMAIN}`,
       `https://${process.env.DOMAIN}`,
-      `http://auth.${process.env.DOMAIN}`,
-      `https://auth.${process.env.DOMAIN}`,
-      `http://flota.${process.env.DOMAIN}`,
-      `https://flota.${process.env.DOMAIN}`,
-      `http://nomina.${process.env.DOMAIN}`,
-      `https://nomina.${process.env.DOMAIN}`
+      ...ALLOWED_DOMAINS
     ];
 
-    // En desarrollo permite todas las conexiones
+    // Subdominios
+    const subdomains = [
+      'auth', 'flota', 'nomina'
+    ].map(sub => [
+      `http://${sub}.${process.env.DOMAIN}`,
+      `https://${sub}.${process.env.DOMAIN}`
+    ]).flat();
+
+    const allowedOrigins = [
+      ...baseDomains, 
+      ...subdomains,
+      // Añadir puertos para desarrollo
+      ...baseDomains.map(domain => `${domain}:3000`),
+      ...baseDomains.map(domain => `${domain}:5000`),
+      ...subdomains.map(domain => `${domain}:3000`),
+      ...subdomains.map(domain => `${domain}:5000`),
+      
+      // Redes locales
+      /^http:\/\/localhost(:\d+)?$/, // Localhost con cualquier puerto
+      /^http:\/\/127\.0\.0\.1(:\d+)?$/, // IP local
+      /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/, // Segmentos de red privada
+      /^http:\/\/10\.\d+\.\d+\.\d+(:\d+)?$/, // Redes privadas clase A
+      /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+(:\d+)?$/ // Redes privadas clase B
+    ];
+
+    // En desarrollo, permitir todo
     if (!origin || process.env.NODE_ENV === 'development') {
       return callback(null, true);
     }
     
-    // Verificar si el origen está permitido
-    if (allowedDomains.indexOf(origin) !== -1 || 
-        origin.endsWith(`.${process.env.DOMAIN}`)) {
+    // Verificación de origen
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (allowedOrigin instanceof RegExp) {
+        return allowedOrigin.test(origin);
+      }
+      return origin === allowedOrigin || origin.startsWith(`${allowedOrigin}:`);
+    });
+
+    if (isAllowed) {
       callback(null, true);
     } else {
-      callback(new Error('Bloqueado por política CORS'));
+      callback(new Error('No permitido por política CORS'));
     }
   },
-  credentials: true, // Para permitir cookies en solicitudes cross-origin
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With', 
+    'Accept', 
+    'Origin'
+  ],
+  exposedHeaders: ['Set-Cookie'], // Para manejar cookies
+  maxAge: 3600 // Caché de preflight por 1 hora
 };
 
+// Aplicación en Express
 app.use(cors(corsOptions));
 
 // Configuración de Socket.IO
