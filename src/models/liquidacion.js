@@ -278,7 +278,6 @@ module.exports = (sequelize) => {
       underscored: true,
       hooks: {
         beforeCreate: (liquidacion, options) => {
-          console.log(options.user, "options")
           // Determinar estado basado en días laborados
           if (
             liquidacion.dias_laborados > 0 ||

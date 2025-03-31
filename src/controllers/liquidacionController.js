@@ -393,12 +393,27 @@ exports.crearLiquidacion = async (req, res) => {
       }
     );
 
+    // Emisión de evento Socket.IO para notificar a los clientes
+    const emitLiquidacionEvent = req.app.get("emitLiquidacionEvent");
+
+    if (emitLiquidacionEvent) {
+      // Emitir evento global
+      emitLiquidacionEvent("liquidacion_creada", {
+        liquidacion: liquidacionConDetalles, // Usar la variable correcta
+        usuarioCreador: req.usuario?.nombre || "Sistema",
+      });
+    }
+
     res.status(201).json({
       success: true,
       data: liquidacionConDetalles,
     });
   } catch (error) {
-    await transaction.rollback();
+    // Solo intentar hacer rollback si la transacción aún no ha sido completada
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+
     console.error("Error al crear la liquidación:", error);
     res.status(500).json({
       success: false,
@@ -437,7 +452,7 @@ exports.editarLiquidacion = async (req, res) => {
       mantenimientos,
       pernotes,
       recargos,
-      anticipos, // Nuevo campo para los anticipos desde frontend
+      anticipos, // Puede venir vacío o undefined cuando se eliminan todos los anticipos
       salud,
       pension,
       cesantias,
@@ -607,14 +622,15 @@ exports.editarLiquidacion = async (req, res) => {
       );
     }
 
-    // Actualizar anticipos
-    if (anticipos && anticipos.length > 0) {
-      // Eliminar anticipos existentes
-      await Anticipo.destroy({
-        where: { liquidacion_id: id },
-        transaction,
-      });
+    // Manejar anticipos - MODIFICADO
+    // Siempre eliminar los anticipos existentes
+    await Anticipo.destroy({
+      where: { liquidacion_id: id },
+      transaction,
+    });
 
+    // Solo crear nuevos anticipos si el array no está vacío
+    if (anticipos && anticipos.length > 0) {
       // Crear nuevos anticipos
       await Promise.all(
         anticipos.map((anticipo) =>
@@ -647,12 +663,25 @@ exports.editarLiquidacion = async (req, res) => {
       ],
     });
 
+    const emitLiquidacionEvent = req.app.get("emitLiquidacionEvent");
+
+    if (emitLiquidacionEvent) {
+      // Emitir evento global
+      emitLiquidacionEvent("liquidacion_actualizada", {
+        liquidacion: liquidacionActualizada, // Usar la variable correcta
+        usuarioActualizador: req.usuario?.nombre || "Sistema",
+      });
+    }
+
     res.status(200).json({
       success: true,
       data: liquidacionActualizada,
     });
   } catch (error) {
-    await transaction.rollback();
+    // Solo intentar hacer rollback si la transacción aún no ha sido completada
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
     console.error("Error al actualizar la liquidación:", error);
     res.status(500).json({
       success: false,
@@ -691,12 +720,17 @@ exports.eliminarLiquidacion = async (req, res) => {
       throw new Error(`No se encontró la liquidación con ID: ${id}`);
     }
 
-    console.log(`Eliminando liquidación ID: ${id}`);
-
     // Eliminar la liquidación - las relaciones se eliminarán automáticamente por CASCADE
     await liquidacion.destroy();
 
-    console.log(`Liquidación ID: ${id} eliminada correctamente`);
+    const emitLiquidacionEvent = req.app.get("emitLiquidacionEvent");
+
+    if (emitLiquidacionEvent) {
+      // Emitir evento global
+      emitLiquidacionEvent("liquidacion_eliminada", {
+        liquidacionId: id,
+      });
+    }
 
     res.status(200).json({
       success: true,

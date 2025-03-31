@@ -202,6 +202,8 @@ exports.checkJobStatus = async (req, res) => {
       });
     }
 
+    console.log(job)
+
     return res.status(200).json({
       success: true,
       data: {
@@ -384,8 +386,6 @@ pdfQueue.process(async (job, done) => {
 emailQueue.process(async (job, done) => {
   const { jobId, userId, pdfBuffers, emailConfig } = job.data;
 
-  console.log(pdfBuffers, "pdfBuffers");
-
   try {
     // Obtener el estado del trabajo
     const jobState = activeJobs.get(jobId);
@@ -398,21 +398,6 @@ emailQueue.process(async (job, done) => {
 
     // Verificar estructura del pdfBuffers
     console.log(`Procesando ${pdfBuffers.length} buffers de PDF`);
-
-    // Log para depuración
-    console.log(
-      `Adjuntos preparados para envío: ${JSON.stringify(
-        pdfBuffers.map((a) => ({
-          filename: a.filename,
-          contentLength: a.data
-            ? Buffer.isBuffer(a.data)
-              ? a.data.length
-              : "N/A"
-            : "N/A",
-          isBuffer: a.data ? Buffer.isBuffer(a.data) : false,
-        }))
-      )}`
-    );
 
     // Agrupar PDFs por dirección de correo electrónico
     const emailAttachments = {};
@@ -663,7 +648,6 @@ async function sendEmail(options) {
  */
 async function generatePDF(liquidacion) {
   return new Promise((resolve, reject) => {
-    console.log(liquidacion);
     try {
       // Create a new PDFDocument
       const doc = new PDFDocument({
@@ -683,7 +667,11 @@ async function generatePDF(liquidacion) {
 
       // Helper functions for common operations
       const safeValue = (value, defaultValue = "") => {
-        return value !== undefined && value !== null ? typeof(value) === "string" ? value : parseInt(value) : defaultValue;
+        return value !== undefined && value !== null
+          ? typeof value === "string"
+            ? value
+            : parseInt(value)
+          : defaultValue;
       };
 
       const formatToCOP = (amount) => {
@@ -1425,7 +1413,7 @@ function drawTableRow(doc, label, value, options = {}) {
     middleText = "",
     middleAlign = "left",
     valueAlign = "left",
-    rowHeight = 26  ,
+    rowHeight = 26,
     drawBorder = true,
     isLastRow = false,
     drawVerticalBorders = false, // Nuevo parámetro para controlar bordes verticales
@@ -1602,7 +1590,6 @@ function drawTableRow(doc, label, value, options = {}) {
   if (valueAlign === "right") {
     // Aplicar margen derecho al texto si está especificado
     const marginRight = valueStyle.marginRight || 0;
-    console.log(marginRight);
 
     doc.text(value, 40, currentY + 8, {
       width: tableWidth - 8 - marginRight, // Restar el margen aquí
