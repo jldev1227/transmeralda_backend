@@ -31,6 +31,7 @@ const PORT = process.env.PORT || 5000;
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedDomains = [
+      // Con puertos específicos
       `http://${process.env.DOMAIN}:${PORT}`,
       `https://${process.env.DOMAIN}:${PORT}`,
       `http://auth.${process.env.DOMAIN}:${PORT}`,
@@ -38,7 +39,17 @@ const corsOptions = {
       `http://flota.${process.env.DOMAIN}:${PORT}`,
       `https://flota.${process.env.DOMAIN}:${PORT}`,
       `http://nomina.${process.env.DOMAIN}:${PORT}`,
-      `https://nomina.${process.env.DOMAIN}:${PORT}`
+      `https://nomina.${process.env.DOMAIN}:${PORT}`,
+      
+      // Sin puertos (para puertos estándar 80/443)
+      `http://${process.env.DOMAIN}`,
+      `https://${process.env.DOMAIN}`,
+      `http://auth.${process.env.DOMAIN}`,
+      `https://auth.${process.env.DOMAIN}`,
+      `http://flota.${process.env.DOMAIN}`,
+      `https://flota.${process.env.DOMAIN}`,
+      `http://nomina.${process.env.DOMAIN}`,
+      `https://nomina.${process.env.DOMAIN}`
     ];
 
     // En desarrollo permite todas las conexiones
@@ -142,8 +153,8 @@ app.set('notifyUser', notifyUser);
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // límite de 100 peticiones por ventana
+  windowMs: 15 * 60 * 1000,
+  max: Infinity, // sin limites
   standardHeaders: true,
   legacyHeaders: false
 });
@@ -157,7 +168,6 @@ app.use('/api/flota', require('./routes/flotaRoutes'));
 app.use('/api/empresas', require('./routes/empresaRoutes'));
 app.use('/api/conductores', require('./routes/conductoresRoutes.js'));
 app.use('/api/export', require('./routes/exportRoutes'));
-app.use('/api/emails', require('./routes/emailRoutes'));
 app.use('/api/pdf', require('./routes/pdfRoutes'));
 
 // Ruta de verificación de salud
@@ -182,6 +192,79 @@ app.use((req, res) => {
     message: 'Recurso no encontrado' 
   });
 });
+
+
+// Función para emitir eventos de liquidación a todos los clientes
+const emitLiquidacionEvent = (eventName, data) => {
+  console.log(`Emitiendo evento ${eventName}:`, data);
+  io.emit(eventName, data);
+};
+
+// Función para emitir eventos de liquidación a un usuario específico
+const emitLiquidacionToUser = (userId, eventName, data) => {
+  if (userSockets.has(userId)) {
+    const userSocketIds = userSockets.get(userId);
+    console.log(`Enviando ${eventName} a usuario ${userId} (${userSocketIds.size} conexiones)`);
+    
+    for (const socketId of userSocketIds) {
+      io.to(socketId).emit(eventName, data);
+    }
+    return true;
+  }
+  console.log(`Usuario ${userId} no está conectado para recibir ${eventName}`);
+  return false;
+};
+
+// Exponer funciones de socket.io para liquidaciones a otros módulos
+app.set('emitLiquidacionEvent', emitLiquidacionEvent);
+app.set('emitLiquidacionToUser', emitLiquidacionToUser);
+
+// Configurar namespace específico para liquidaciones (opcional)
+const liquidacionesNamespace = io.of('/liquidaciones');
+
+liquidacionesNamespace.on('connection', (socket) => {
+  console.log('Cliente conectado al namespace de liquidaciones:', socket.id);
+  
+  // Obtener userId de la consulta
+  const userId = socket.handshake.query.userId;
+  if (userId) {
+    // Almacenar la conexión de socket específica para liquidaciones
+    if (!userSockets.has(userId)) {
+      userSockets.set(userId, new Set());
+    }
+    userSockets.get(userId).add(socket.id);
+    
+    console.log(`Usuario ${userId} conectado a liquidaciones con socket ${socket.id}`);
+    
+    // Unirse a sala según rol (opcional)
+    const userRole = socket.handshake.query.role; 
+    if (userRole === 'admin') {
+      socket.join('admins-liquidaciones');
+    } else if (userRole === 'conductor') {
+      socket.join('conductores-liquidaciones');
+      // También unirse a sala personal
+      socket.join(`liquidaciones-usuario-${userId}`);
+    }
+  }
+  
+  // Manejar desconexión
+  socket.on('disconnect', () => {
+    console.log('Cliente desconectado de liquidaciones:', socket.id);
+    
+    // Eliminar socket del registro de usuarios
+    if (userId && userSockets.has(userId)) {
+      userSockets.get(userId).delete(socket.id);
+      
+      // Si no hay más sockets para este usuario, eliminar entrada
+      if (userSockets.get(userId).size === 0) {
+        userSockets.delete(userId);
+      }
+    }
+  });
+});
+
+// Exponer namespace de liquidaciones a otros módulos
+app.set('liquidacionesNamespace', liquidacionesNamespace);
 
 // Middleware para manejo de errores
 app.use((err, req, res, next) => {

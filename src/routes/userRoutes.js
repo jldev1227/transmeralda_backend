@@ -12,6 +12,7 @@ router.get('/logout', userController.logout);
 // Rutas protegidas
 router.get('/perfil', protect, userController.getPerfil);
 router.put('/actualizar-perfil', protect, userController.actualizarPerfil);
+router.post('/solicitar-cambio-password', userController.solicitarCambioPassword);
 router.put('/cambiar-password', protect, userController.cambiarPassword);
 
 // Rutas con permisos específicos

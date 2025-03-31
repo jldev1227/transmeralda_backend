@@ -1,14 +1,5 @@
 require('dotenv').config({ path: './.env' });
 
-// Verifica que las variables se estén cargando
-console.log('DB CONFIG:', {
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  // No imprimas la contraseña completa en logs por seguridad
-  password: process.env.DB_PASSWORD ? 'Definida' : 'No definida',
-  database: process.env.DB_NAME,
-});
-
 module.exports = {
   development: {
     username: process.env.DB_USER,

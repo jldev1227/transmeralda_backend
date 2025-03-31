@@ -39,8 +39,6 @@ function setupQueueEvents(queue, app, queueName) {
   
   // Evento: trabajo completado
   queue.on('completed', async (job, result) => {
-    console.log(`[${queueName}] Job ${job.id} completed`);
-    
     // Obtener información del trabajo
     const { jobId, userId } = job.data;
     
