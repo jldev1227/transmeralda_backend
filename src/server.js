@@ -27,9 +27,6 @@ app.use(cookieParser());
 // Iniciar puerto
 const PORT = process.env.PORT || 5000;
 
-// Configuración de CORS para múltiples subdominios
-const cors = require('cors');
-
 const corsOptions = {
   origin: function (origin, callback) {
     // Variables de entorno para mayor flexibilidad
@@ -106,6 +103,7 @@ app.use(cors(corsOptions));
 
 // Configuración de Socket.IO
 const io = socketIO(server, {
+  path: '/socket.io/',
   cors: {
     origin: function (origin, callback) {
       // En desarrollo permite todas las conexiones
@@ -182,6 +180,8 @@ const notifyUser = (userId, event, data) => {
 // Exponer funciones de socket.io a otros módulos
 app.set('io', io);
 app.set('notifyUser', notifyUser);
+app.set('trust proxy', true);
+
 
 // Rate limiting
 const limiter = rateLimit({
