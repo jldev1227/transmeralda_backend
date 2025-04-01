@@ -28,63 +28,12 @@ app.use(cookieParser());
 const PORT = process.env.PORT || 5000;
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Variables de entorno para mayor flexibilidad
-    const ALLOWED_DOMAINS = process.env.ALLOWED_DOMAINS 
-      ? process.env.ALLOWED_DOMAINS.split(',') 
-      : [];
-
-    // Dominios base
-    const baseDomains = [
-      `http://${process.env.DOMAIN}`,
-      `https://${process.env.DOMAIN}`,
-      ...ALLOWED_DOMAINS
-    ];
-
-    // Subdominios
-    const subdomains = [
-      'auth', 'flota', 'nomina'
-    ].map(sub => [
-      `http://${sub}.${process.env.DOMAIN}`,
-      `https://${sub}.${process.env.DOMAIN}`
-    ]).flat();
-
-    const allowedOrigins = [
-      ...baseDomains, 
-      ...subdomains,
-      // Añadir puertos para desarrollo
-      ...baseDomains.map(domain => `${domain}:3000`),
-      ...baseDomains.map(domain => `${domain}:5000`),
-      ...subdomains.map(domain => `${domain}:3000`),
-      ...subdomains.map(domain => `${domain}:5000`),
-      
-      // Redes locales
-      /^http:\/\/localhost(:\d+)?$/, // Localhost con cualquier puerto
-      /^http:\/\/127\.0\.0\.1(:\d+)?$/, // IP local
-      /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/, // Segmentos de red privada
-      /^http:\/\/10\.\d+\.\d+\.\d+(:\d+)?$/, // Redes privadas clase A
-      /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+(:\d+)?$/ // Redes privadas clase B
-    ];
-
-    // En desarrollo, permitir todo
-    if (!origin || process.env.NODE_ENV === 'development') {
-      return callback(null, true);
-    }
-    
-    // Verificación de origen
-    const isAllowed = allowedOrigins.some(allowedOrigin => {
-      if (allowedOrigin instanceof RegExp) {
-        return allowedOrigin.test(origin);
-      }
-      return origin === allowedOrigin || origin.startsWith(`${allowedOrigin}:`);
-    });
-
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      callback(new Error('No permitido por política CORS'));
-    }
-  },
+  origin: [
+    'https://nomina.transmeralda.com',
+    'https://auth.transmeralda.com',
+    'https://flota.transmeralda.com',
+    'http://localhost:3000'
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: [
@@ -93,9 +42,7 @@ const corsOptions = {
     'X-Requested-With', 
     'Accept', 
     'Origin'
-  ],
-  exposedHeaders: ['Set-Cookie'], // Para manejar cookies
-  maxAge: 3600 // Caché de preflight por 1 hora
+  ]
 };
 
 // Aplicación en Express
@@ -105,26 +52,15 @@ app.use(cors(corsOptions));
 const io = socketIO(server, {
   path: '/socket.io/',
   cors: {
-    origin: function (origin, callback) {
-      // En desarrollo permite todas las conexiones
-      if (!origin || process.env.NODE_ENV === 'development') {
-        return callback(null, true);
-      }
-      
-      // Verificar si el origen está permitido, usando las mismas reglas que CORS express
-      if (corsOptions.origin(origin, (err, allowed) => {
-        if (allowed) return true;
-        return false;
-      })) {
-        callback(null, true);
-      } else {
-        callback(new Error('No permitido por CORS'));
-      }
-    },
+    origin: [
+      'https://nomina.transmeralda.com',
+      'https://auth.transmeralda.com',
+      'https://flota.transmeralda.com'
+    ],
     methods: ["GET", "POST"],
     credentials: true
   },
-  transports: ['websocket', 'polling'] // Intenta websocket primero, luego polling
+  transports: ['polling', 'websocket'] // Poner polling primero
 });
 
 // Almacenar conexiones de sockets por ID de usuario
