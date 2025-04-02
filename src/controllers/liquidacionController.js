@@ -348,7 +348,7 @@ exports.crearLiquidacion = async (req, res) => {
               vehiculo_id: recargo.vehiculoId,
               empresa_id: recargo.empresa_id,
               valor: recargo.valor,
-              pagCliente: recargo.pagCliente,
+              pag_cliente: recargo.pag_cliente,
               mes: recargo.mes,
             },
             { transaction }
@@ -613,7 +613,7 @@ exports.editarLiquidacion = async (req, res) => {
               vehiculo_id: recargo.vehiculoId,
               empresa_id: recargo.empresa_id,
               valor: recargo.valor,
-              pagCliente: recargo.pagCliente,
+              pag_cliente: recargo.pag_cliente,
               mes: recargo.mes,
             },
             { transaction }
