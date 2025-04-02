@@ -52,11 +52,6 @@ app.use(cors(corsOptions));
 // Configuración de Socket.IO
 const io = socketIO(server, {
   path: '/socket.io/',
-  cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"],
-    credentials: true
-  },
   transports: ['polling', 'websocket'] // Poner polling primero
 });
 
