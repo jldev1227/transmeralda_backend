@@ -27,13 +27,14 @@ app.use(cookieParser());
 // Iniciar puerto
 const PORT = process.env.PORT || 5000;
 
+const allowedOrigins = [
+  'https://nomina.transmeralda.com',
+  'https://auth.transmeralda.com',
+  'https://flota.transmeralda.com',
+];
+
 const corsOptions = {
-  origin: [
-    'https://nomina.transmeralda.com',
-    'https://auth.transmeralda.com',
-    'https://flota.transmeralda.com',
-    'http://localhost:3000'
-  ],
+  origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: [
@@ -52,11 +53,7 @@ app.use(cors(corsOptions));
 const io = socketIO(server, {
   path: '/socket.io/',
   cors: {
-    origin: [
-      'https://nomina.transmeralda.com',
-      'https://auth.transmeralda.com',
-      'https://flota.transmeralda.com'
-    ],
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true
   },
