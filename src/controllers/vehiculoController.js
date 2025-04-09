@@ -2,14 +2,6 @@
 const { Vehiculo, Conductor } = require('../models');
 const { Op } = require('sequelize');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const Queue = require('bull');
-const Redis = require('ioredis');
-const axios = require('axios');
-const FormData = require('form-data');
-const { spawn } = require('child_process');
-const { v4: uuidv4 } = require('uuid');
 const { procesarDocumentos } = require('../queue');
 const { redisClient } = require('../config/redisClient');
 

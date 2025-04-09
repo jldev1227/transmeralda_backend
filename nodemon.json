@@ -1,5 +1,5 @@
 {
-    "ignore": ["utils/*"],
+    "ignore": ["temp/*"],
     "watch": ["*.*"],
     "ext": "js,json"
   }

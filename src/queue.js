@@ -5,6 +5,7 @@ const { spawn } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs').promises;
 const path = require('path');
+const { Vehiculo } = require('./models');
 
 // Configuración de Redis con cliente unificado
 const { redisClient, redisOptions } = require('./config/redisClient');
@@ -204,7 +205,7 @@ async function procesarConArchivoTemporal(categoria, scriptName, ocrData, placa 
 
     // Eliminar archivo temporal después de usarlo
     try {
-      // await fs.unlink(filePath);
+      await fs.unlink(filePath);
       logger.debug(`Archivo temporal eliminado: ${filePath}`);
     } catch (unlinkError) {
       logger.warn(`No se pudo eliminar el archivo temporal ${filePath}: ${unlinkError.message}`);
@@ -217,7 +218,7 @@ async function procesarConArchivoTemporal(categoria, scriptName, ocrData, placa 
     try {
       const fileExists = await fs.access(filePath).then(() => true).catch(() => false);
       if (fileExists) {
-        // await fs.unlink(filePath);
+        await fs.unlink(filePath);
         logger.debug(`Archivo temporal eliminado después de error: ${filePath}`);
       }
     } catch (unlinkError) {
@@ -503,7 +504,41 @@ documentQueue.process('procesar-documento', async (job) => {
     if (!esTarjetaPropiedad) {
       try {
         placaVehiculo = await obtenerPlacaVehiculo(sessionId);
+
+        // Verificar si la placa ya existe en la base de datos
+        if (placaVehiculo) {
+          const vehiculoExistente = await Vehiculo.findOne({ where: { placa: placaVehiculo } });
+          if (vehiculoExistente) {
+            logger.warn(`Placa duplicada detectada: ${placaVehiculo} (ID: ${vehiculoExistente.id})`);
+
+            // Marcar sesión como fallida directamente aquí
+            await redisClient.hmset(`vehiculo:${sessionId}`, {
+              'estado': 'fallido',
+              'error': `Vehículo con placa ${placaVehiculo} ya existe en el sistema`
+            });
+
+            // Notificar al cliente directamente aquí
+            const socketId = await redisClient.hget(`vehiculo:${sessionId}`, 'socketId');
+            notificarCliente(socketId, 'error-procesamiento', {
+              etapa: 'verificacion-placa',  // Un nombre más específico para esta etapa
+              mensaje: `Vehículo con placa ${placaVehiculo} ya existe en el sistema`,
+              placa: placaVehiculo,
+              vehiculoId: vehiculoExistente.id
+            });
+
+            // Lanzar un error simple que no necesite más procesamiento
+            const duplicadoError = new Error(`Vehículo con placa ${placaVehiculo} ya existe en el sistema`);
+            duplicadoError.handled = true;  // Marca que ya ha sido manejado
+            throw duplicadoError;
+          }
+        }
       } catch (error) {
+        // Si el error ya fue manejado (es un duplicado), simplemente propagarlo
+        if (error.handled) {
+          throw error;
+        }
+
+        // Para otros errores, seguir con el manejo normal
         logger.error(`Error al obtener placa del vehículo: ${error.message}`);
         throw new Error(`No se puede procesar ${categoria}: ${error.message}`);
       }
