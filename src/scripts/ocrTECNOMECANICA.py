@@ -3,6 +3,9 @@ import re
 import sys
 from datetime import datetime
 import unicodedata
+import os
+import argparse
+import traceback
 
 # Función para normalizar texto
 def normalize_text(text):
@@ -166,31 +169,78 @@ class RTMProcessor:
         return self.result
 
 # Función principal para procesar el OCR
-def process_rtm_data(data):
+def process_rtm_data(data, placa=None):
     try:
         processor = RTMProcessor(data)
         result = processor.process()
+        
+        # Si se proporcionó una placa, sobreescribir la detectada por OCR
+        if placa and placa.strip():
+            result["placa"] = placa.strip().upper()
+            
         return result
     except Exception as e:
         import traceback
         return {"error": str(e), "trace": traceback.format_exc()}
-
+    
 # Ejecución principal
 if __name__ == "__main__":
     try:
-        # Leer datos del argumento o archivo
-        if len(sys.argv) > 1:
-            data = json.loads(sys.argv[1])
+        parser = argparse.ArgumentParser(description='Procesar datos OCR')
+        parser.add_argument('--file', type=str, help='Ruta al archivo JSON con datos OCR')
+        parser.add_argument('--placa', type=str, help='Placa del vehículo (opcional)')
+        
+        args = parser.parse_args()
+        
+        # Determinar qué archivo procesar
+        file_path = None
+        
+        if args.file:
+            # Usar el archivo especificado por argumento
+            file_path = args.file
+            if not os.path.exists(file_path):
+                print(f"ERROR: El archivo {file_path} no existe", file=sys.stderr)
+                print(json.dumps({"error": f"Archivo no encontrado: {file_path}"}))
+                sys.exit(1)
+        elif len(sys.argv) > 1 and not sys.argv[1].startswith('--'):
+            # Si el primer argumento no es una opción, intentar interpretarlo como JSON
+            try:
+                data = json.loads(sys.argv[1])
+                # Si llegamos aquí, el JSON se parseó correctamente, no necesitamos archivo
+                file_path = None
+            except json.JSONDecodeError:
+                print("ERROR: El primer argumento no es JSON válido", file=sys.stderr)
+                print(json.dumps({"error": "Argumento no es JSON válido"}))
+                sys.exit(1)
         else:
-            with open('./src/utils/tempOcrDataTECNOMECANICA.json', 'r', encoding='utf-8') as file:
-                data = json.load(file)
+            # Usar archivo por defecto
+            file_path = './src/temp/tempOcrDataTECNOMECANICA.json'
+            if not os.path.exists(file_path):
+                print(f"ERROR: El archivo por defecto {file_path} no existe", file=sys.stderr)
+                print(json.dumps({"error": f"Archivo por defecto no encontrado: {file_path}"}))
+                sys.exit(1)
+        
+        # Leer datos si es necesario
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    data = json.load(file)
+            except json.JSONDecodeError as e:
+                print(f"ERROR: El archivo no contiene JSON válido: {str(e)}", file=sys.stderr)
+                print(json.dumps({"error": f"JSON inválido en archivo: {str(e)}"}))
+                sys.exit(1)
         
         # Procesar los datos
         result = process_rtm_data(data)
         
-        # Imprimir resultado como JSON
+        # Imprimir resultado como JSON (único output a stdout)
         print(json.dumps(result, indent=4, ensure_ascii=False))
         
     except Exception as e:
-        import traceback
-        print(json.dumps({"errr": str(e), "trace": traceback.format_exc()}))
+        # Errores a stderr para depuración
+        print(f"ERROR inesperado: {str(e)}", file=sys.stderr)
+        print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
+        
+        # Error en formato JSON a stdout para que el proceso JS pueda capturarlo
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)

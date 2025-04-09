@@ -35,7 +35,8 @@
     "redis": "^4.7.0",
     "sequelize": "^6.37.6",
     "socket.io": "^4.8.1",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "winston": "^3.17.0"
   },
   "devDependencies": {
     "@bull-board/api": "^6.7.10",

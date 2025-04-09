@@ -3,6 +3,9 @@ import re
 from datetime import datetime
 import unicodedata
 import sys
+import os
+import argparse
+import traceback
 
 # Función para normalizar texto
 def normalize_text(text):
@@ -15,8 +18,8 @@ class SOATProcessor:
         self.lines = self.content.split('\n')
         self.placa_param = placa_param
         self.result = {
+            "placa": None,
             "soatVencimiento": None,
-            "placa": None
         }
     
     def find_line_index(self, keyword, normalize=True):
@@ -167,31 +170,61 @@ def process_soat_data(data, placa_param=None):
 # Ejecución principal
 if __name__ == "__main__":
     try:
-        # Obtener la placa del segundo argumento si está disponible
-        placa_param = sys.argv[2] if len(sys.argv) > 2 else None
+        parser = argparse.ArgumentParser(description='Procesar datos OCR')
+        parser.add_argument('--file', type=str, help='Ruta al archivo JSON con datos OCR')
+        parser.add_argument('--placa', type=str, help='Placa del vehículo (opcional)')
         
-        # Leer datos del argumento o archivo
-        data = None
-        if len(sys.argv) > 1 and sys.argv[1]:
+        args = parser.parse_args()
+        
+        # Determinar qué archivo procesar
+        file_path = None
+        
+        if args.file:
+            # Usar el archivo especificado por argumento
+            file_path = args.file
+            if not os.path.exists(file_path):
+                print(f"ERROR: El archivo {file_path} no existe", file=sys.stderr)
+                print(json.dumps({"error": f"Archivo no encontrado: {file_path}"}))
+                sys.exit(1)
+        elif len(sys.argv) > 1 and not sys.argv[1].startswith('--'):
+            # Si el primer argumento no es una opción, intentar interpretarlo como JSON
             try:
                 data = json.loads(sys.argv[1])
+                # Si llegamos aquí, el JSON se parseó correctamente, no necesitamos archivo
+                file_path = None
             except json.JSONDecodeError:
-                print("DEBUG: Error al decodificar JSON del argumento, intentando leer archivo")
-                
-        if not data:
+                print("ERROR: El primer argumento no es JSON válido", file=sys.stderr)
+                print(json.dumps({"error": "Argumento no es JSON válido"}))
+                sys.exit(1)
+        else:
+            # Usar archivo por defecto
+            file_path = './src/temp/tempOcrDataSOAT.json'
+            if not os.path.exists(file_path):
+                print(f"ERROR: El archivo por defecto {file_path} no existe", file=sys.stderr)
+                print(json.dumps({"error": f"Archivo por defecto no encontrado: {file_path}"}))
+                sys.exit(1)
+        
+        # Leer datos si es necesario
+        if file_path:
             try:
-                with open('./src/utils/tempOcrDataSOAT.json', 'r', encoding='utf-8') as file:
+                with open(file_path, 'r', encoding='utf-8') as file:
                     data = json.load(file)
-            except Exception as file_error:
-                print(f"DEBUG: Error al leer archivo: {str(file_error)}")
-                raise
+            except json.JSONDecodeError as e:
+                print(f"ERROR: El archivo no contiene JSON válido: {str(e)}", file=sys.stderr)
+                print(json.dumps({"error": f"JSON inválido en archivo: {str(e)}"}))
+                sys.exit(1)
         
         # Procesar los datos
-        result = process_soat_data(data, placa_param)
+        result = process_soat_data(data)
         
-        # Imprimir resultado como JSON
+        # Imprimir resultado como JSON (único output a stdout)
         print(json.dumps(result, indent=4, ensure_ascii=False))
         
     except Exception as e:
-        import traceback
-        print(json.dumps({"error": str(e), "trace": traceback.format_exc()}))
+        # Errores a stderr para depuración
+        print(f"ERROR inesperado: {str(e)}", file=sys.stderr)
+        print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
+        
+        # Error en formato JSON a stdout para que el proceso JS pueda capturarlo
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)

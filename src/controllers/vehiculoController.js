@@ -11,6 +11,7 @@ const FormData = require('form-data');
 const { spawn } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const { procesarDocumentos } = require('../queue');
+const { redisClient } = require('../config/redisClient');
 
 
 const storage = multer.memoryStorage();
@@ -31,7 +32,6 @@ const fileFilter = (req, file, cb) => {
     cb(new Error('Formato de archivo no válido. Solo se permiten JPEG, PNG y PDF.'), false);
   }
 };
-
 
 // Obtener todos los vehículos
 const getVehiculos = async (req, res) => {
@@ -134,8 +134,8 @@ const createVehiculo = async (req, res) => {
     const categoriasPermitidas = [
       "TARJETA_DE_PROPIEDAD",
       "SOAT",
-      "TECNOMECÁNICA",
-      "TARJETA_DE_OPERACIÓN",
+      "TECNOMECANICA",
+      "TARJETA_DE_OPERACION",
       "POLIZA_CONTRACTUAL",
       "POLIZA_EXTRACONTRACTUAL",
       "POLIZA_TODO_RIESGO",
@@ -560,6 +560,41 @@ const getVehiculosBasicos = async (req, res) => {
   }
 };
 
+const getProgressProccess = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    // Obtener información del progreso desde Redis
+    const procesados = await redisClient.hget(`vehiculo:${sessionId}`, 'procesados');
+    const total = await redisClient.hget(`vehiculo:${sessionId}`, 'totalDocumentos');
+    
+    if (!procesados || !total) {
+      return res.status(404).json({ 
+        error: 'No se encontró información para esta sesión' 
+      });
+    }
+    
+    // Calcular el progreso
+    const progreso = Math.floor((parseInt(procesados) / parseInt(total)) * 100);
+    const completado = parseInt(procesados) === parseInt(total);
+    
+    // Devolver la información de progreso
+    return res.json({
+      sessionId,
+      procesados: parseInt(procesados),
+      total: parseInt(total),
+      progreso,
+      completado
+    });
+    
+  } catch (error) {
+    console.error('Error al consultar el progreso:', error);
+    return res.status(500).json({ 
+      error: 'Error al consultar el progreso del procesamiento' 
+    });
+  }
+}
+
 // Middleware para manejar carga de archivos
 const uploadGaleriaImages = upload.array('galeria', 10); // Máximo 10 imágenes
 
@@ -577,5 +612,6 @@ module.exports = {
   buscarVehiculosPorPlaca,
   getVehiculosBasicos,
   uploadGaleriaImages,
-  uploadDocumentos
+  uploadDocumentos,
+  getProgressProccess
 };

@@ -1,0 +1,4176 @@
+{
+  "status": "succeeded",
+  "createdDateTime": "2025-04-09T21:52:38Z",
+  "lastUpdatedDateTime": "2025-04-09T21:52:39Z",
+  "analyzeResult": {
+    "apiVersion": "2024-11-30",
+    "modelId": "prebuilt-read",
+    "stringIndexType": "textElements",
+    "content": "Página 1 de1\nREPÚBLICA DE COLOMBIA MINISTERIO DE TRANSPORTE MINISTERIO DE AMBIENTE Y DESARROLLO SOSTENIBLE\nLibertad y Orden\nRUNT REGISTRO ÚNICO NACIONAL DE TRÁNSITO\nTARJETA DE OPERACIÓN No.358277\nDATOS VEHÍCULO\nNo. DE PLACA:\nJYO215\nAÑO MODELO: 2022\nCLASE DE VEHÍCULO:\nCAMIONETA\nMARCA: RENAULT\nTIPO DE CARROCERIA:\nDOBLE CABINA CON COMBUSTIBLE: DIESEL\nCAPACIDAD DE PASAJEROS: SENTADOS: 5\nDE PIE:\nCARGA:\nMODALIDAD DE SERVICIO: ESPECIAL\nLÍNEA: ALASKAN\nNIVEL DE SERVICIO:\nRADIO DE ACCIÓN: NACIONAL\nDATOS EMPRESA\nRAZÓN SOCIAL EMPRESA: TRANSPORTES Y SERVICIOS ESMERALDA S.A.S ZOMAC 901528440\nNIT:\nDIRECCIÓN DE LA EMPRESA: FINCA SAN MARTIN VEREDA LA ESMERALDA\nCIUDAD/MUNICIPIO:\nTAURAMENA\nFECHA DE EXPEDICIÓN: 13-04-2023\nVIGENCIA:\nDESDE: 13-04-2023 HASTA: 13-04-2025\nAUTORIDAD QUE EXPIDE:\nDIRECCION TERRITORIAL BOYACA\nFIRMA DEL FUNCIONARIO\nConcesión RUNT S.A. / Nit 900.153.453-4 / Colombia / Atención al usuario Línea Nacional 018000930060 / www.runt.com.co",
+    "pages": [
+      {
+        "pageNumber": 1,
+        "angle": 0,
+        "width": 8.5,
+        "height": 11,
+        "unit": "inch",
+        "words": [
+          {
+            "content": "Página",
+            "polygon": [
+              6.9545,
+              0.1156,
+              7.4319,
+              0.1155,
+              7.4303,
+              0.2799,
+              6.9544,
+              0.2817
+            ],
+            "confidence": 0.977,
+            "span": {
+              "offset": 0,
+              "length": 6
+            }
+          },
+          {
+            "content": "1",
+            "polygon": [
+              7.4916,
+              0.1155,
+              7.5404,
+              0.1154,
+              7.5384,
+              0.2796,
+              7.4898,
+              0.2798
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 7,
+              "length": 1
+            }
+          },
+          {
+            "content": "de1",
+            "polygon": [
+              7.6109,
+              0.1154,
+              7.8649,
+              0.115,
+              7.8649,
+              0.2795,
+              7.6087,
+              0.2794
+            ],
+            "confidence": 0.982,
+            "span": {
+              "offset": 9,
+              "length": 3
+            }
+          },
+          {
+            "content": "REPÚBLICA",
+            "polygon": [
+              1.3923,
+              1.0239,
+              2.1476,
+              1.0212,
+              2.1457,
+              1.1877,
+              1.3923,
+              1.1845
+            ],
+            "confidence": 0.877,
+            "span": {
+              "offset": 13,
+              "length": 9
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              2.1909,
+              1.0212,
+              2.3614,
+              1.0211,
+              2.359,
+              1.1882,
+              2.1889,
+              1.1878
+            ],
+            "confidence": 0.998,
+            "span": {
+              "offset": 23,
+              "length": 2
+            }
+          },
+          {
+            "content": "COLOMBIA",
+            "polygon": [
+              2.4047,
+              1.0211,
+              3.1278,
+              1.0234,
+              3.1278,
+              1.1885,
+              2.4022,
+              1.1883
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 26,
+              "length": 8
+            }
+          },
+          {
+            "content": "MINISTERIO",
+            "polygon": [
+              1.3913,
+              1.2074,
+              2.1585,
+              1.1953,
+              2.1549,
+              1.334,
+              1.3912,
+              1.3259
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 35,
+              "length": 10
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              2.2052,
+              1.1948,
+              2.3787,
+              1.1936,
+              2.374,
+              1.3349,
+              2.2014,
+              1.3343
+            ],
+            "confidence": 0.999,
+            "span": {
+              "offset": 46,
+              "length": 2
+            }
+          },
+          {
+            "content": "TRANSPORTE",
+            "polygon": [
+              2.4143,
+              1.1933,
+              3.3188,
+              1.1945,
+              3.3127,
+              1.332,
+              2.4095,
+              1.335
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 49,
+              "length": 10
+            }
+          },
+          {
+            "content": "MINISTERIO",
+            "polygon": [
+              1.3913,
+              1.3652,
+              2.1587,
+              1.3541,
+              2.1557,
+              1.4874,
+              1.3882,
+              1.4791
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 60,
+              "length": 10
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              2.2056,
+              1.3537,
+              2.3761,
+              1.3527,
+              2.3731,
+              1.4884,
+              2.2026,
+              1.4877
+            ],
+            "confidence": 0.998,
+            "span": {
+              "offset": 71,
+              "length": 2
+            }
+          },
+          {
+            "content": "AMBIENTE",
+            "polygon": [
+              2.4188,
+              1.3524,
+              3.0925,
+              1.3533,
+              3.0894,
+              1.4873,
+              2.4157,
+              1.4886
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 74,
+              "length": 8
+            }
+          },
+          {
+            "content": "Y",
+            "polygon": [
+              3.1308,
+              1.3535,
+              3.2329,
+              1.3541,
+              3.2329,
+              1.4864,
+              3.1278,
+              1.4871
+            ],
+            "confidence": 0.996,
+            "span": {
+              "offset": 83,
+              "length": 1
+            }
+          },
+          {
+            "content": "DESARROLLO",
+            "polygon": [
+              1.3883,
+              1.5166,
+              2.2946,
+              1.5098,
+              2.2931,
+              1.6424,
+              1.3883,
+              1.637
+            ],
+            "confidence": 0.996,
+            "span": {
+              "offset": 85,
+              "length": 10
+            }
+          },
+          {
+            "content": "SOSTENIBLE",
+            "polygon": [
+              2.3395,
+              1.5097,
+              3.1899,
+              1.511,
+              3.1893,
+              1.6413,
+              2.3379,
+              1.6424
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 96,
+              "length": 10
+            }
+          },
+          {
+            "content": "Libertad",
+            "polygon": [
+              0.5865,
+              1.8254,
+              0.8858,
+              1.8228,
+              0.8858,
+              1.9813,
+              0.5865,
+              1.9785
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 107,
+              "length": 8
+            }
+          },
+          {
+            "content": "y",
+            "polygon": [
+              0.9168,
+              1.8227,
+              0.9684,
+              1.8226,
+              0.9684,
+              1.9813,
+              0.9168,
+              1.9813
+            ],
+            "confidence": 0.985,
+            "span": {
+              "offset": 116,
+              "length": 1
+            }
+          },
+          {
+            "content": "Orden",
+            "polygon": [
+              0.9994,
+              1.8225,
+              1.2607,
+              1.8233,
+              1.2607,
+              1.9813,
+              0.9994,
+              1.9813
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 118,
+              "length": 5
+            }
+          },
+          {
+            "content": "RUNT",
+            "polygon": [
+              3.671,
+              1.0222,
+              5.6348,
+              1.0577,
+              5.6348,
+              1.4946,
+              3.6713,
+              1.523
+            ],
+            "confidence": 0.99,
+            "span": {
+              "offset": 124,
+              "length": 4
+            }
+          },
+          {
+            "content": "REGISTRO",
+            "polygon": [
+              3.687,
+              1.6052,
+              4.13,
+              1.6017,
+              4.1277,
+              1.7377,
+              3.684,
+              1.7365
+            ],
+            "confidence": 0.892,
+            "span": {
+              "offset": 129,
+              "length": 8
+            }
+          },
+          {
+            "content": "ÚNICO",
+            "polygon": [
+              4.1662,
+              1.6015,
+              4.4646,
+              1.6002,
+              4.4628,
+              1.7388,
+              4.1639,
+              1.7378
+            ],
+            "confidence": 0.898,
+            "span": {
+              "offset": 138,
+              "length": 5
+            }
+          },
+          {
+            "content": "NACIONAL",
+            "polygon": [
+              4.4962,
+              1.6001,
+              4.9528,
+              1.6001,
+              4.9518,
+              1.7406,
+              4.4945,
+              1.7389
+            ],
+            "confidence": 0.989,
+            "span": {
+              "offset": 144,
+              "length": 8
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              4.9799,
+              1.6002,
+              5.1065,
+              1.6006,
+              5.1058,
+              1.7413,
+              4.979,
+              1.7408
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 153,
+              "length": 2
+            }
+          },
+          {
+            "content": "TRÁNSITO",
+            "polygon": [
+              5.1336,
+              1.6007,
+              5.5871,
+              1.6033,
+              5.5871,
+              1.7426,
+              5.1329,
+              1.7414
+            ],
+            "confidence": 0.785,
+            "span": {
+              "offset": 156,
+              "length": 8
+            }
+          },
+          {
+            "content": "TARJETA",
+            "polygon": [
+              3.2726,
+              2.4886,
+              3.9579,
+              2.4842,
+              3.9548,
+              2.6502,
+              3.2696,
+              2.6457
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 165,
+              "length": 7
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              4.0088,
+              2.4836,
+              4.2042,
+              2.4811,
+              4.2011,
+              2.6515,
+              4.0058,
+              2.6505
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 173,
+              "length": 2
+            }
+          },
+          {
+            "content": "OPERACIÓN",
+            "polygon": [
+              4.2552,
+              2.4804,
+              5.1955,
+              2.4607,
+              5.1948,
+              2.6543,
+              4.2521,
+              2.6517
+            ],
+            "confidence": 0.963,
+            "span": {
+              "offset": 176,
+              "length": 9
+            }
+          },
+          {
+            "content": "No.358277",
+            "polygon": [
+              3.8838,
+              2.6799,
+              4.5843,
+              2.6765,
+              4.5843,
+              2.8168,
+              3.8838,
+              2.8108
+            ],
+            "confidence": 0.997,
+            "span": {
+              "offset": 186,
+              "length": 9
+            }
+          },
+          {
+            "content": "DATOS",
+            "polygon": [
+              0.8381,
+              3.1771,
+              1.3802,
+              3.1658,
+              1.3797,
+              3.3399,
+              0.8411,
+              3.3425
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 196,
+              "length": 5
+            }
+          },
+          {
+            "content": "VEHÍCULO",
+            "polygon": [
+              1.4266,
+              3.165,
+              2.2396,
+              3.1602,
+              2.2352,
+              3.3468,
+              1.4258,
+              3.3399
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 202,
+              "length": 8
+            }
+          },
+          {
+            "content": "No.",
+            "polygon": [
+              0.5315,
+              3.5763,
+              0.7733,
+              3.5761,
+              0.7756,
+              3.7277,
+              0.5345,
+              3.7287
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 211,
+              "length": 3
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              0.8278,
+              3.5763,
+              1.0033,
+              3.5771,
+              1.0049,
+              3.7242,
+              0.83,
+              3.7269
+            ],
+            "confidence": 0.998,
+            "span": {
+              "offset": 215,
+              "length": 2
+            }
+          },
+          {
+            "content": "PLACA:",
+            "polygon": [
+              1.053,
+              3.5774,
+              1.5461,
+              3.5835,
+              1.5461,
+              3.7139,
+              1.0545,
+              3.7233
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 218,
+              "length": 6
+            }
+          },
+          {
+            "content": "JYO215",
+            "polygon": [
+              2.6256,
+              3.5821,
+              3.1565,
+              3.5865,
+              3.1565,
+              3.7181,
+              2.6225,
+              3.724
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 225,
+              "length": 6
+            }
+          },
+          {
+            "content": "AÑO",
+            "polygon": [
+              4.0166,
+              3.5591,
+              4.3221,
+              3.5589,
+              4.3191,
+              3.7271,
+              4.0136,
+              3.7274
+            ],
+            "confidence": 0.997,
+            "span": {
+              "offset": 232,
+              "length": 3
+            }
+          },
+          {
+            "content": "MODELO:",
+            "polygon": [
+              4.3689,
+              3.559,
+              5.0857,
+              3.5644,
+              5.0857,
+              3.7317,
+              4.3659,
+              3.7271
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 236,
+              "length": 7
+            }
+          },
+          {
+            "content": "2022",
+            "polygon": [
+              5.9261,
+              3.5855,
+              6.2613,
+              3.5855,
+              6.2604,
+              3.7144,
+              5.9261,
+              3.7119
+            ],
+            "confidence": 0.99,
+            "span": {
+              "offset": 244,
+              "length": 4
+            }
+          },
+          {
+            "content": "CLASE",
+            "polygon": [
+              0.5334,
+              3.8585,
+              0.9555,
+              3.8568,
+              0.9546,
+              4.0157,
+              0.5334,
+              4.02
+            ],
+            "confidence": 0.996,
+            "span": {
+              "offset": 249,
+              "length": 5
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              1.0053,
+              3.8566,
+              1.1809,
+              3.856,
+              1.1795,
+              4.0139,
+              1.0043,
+              4.0153
+            ],
+            "confidence": 0.997,
+            "span": {
+              "offset": 255,
+              "length": 2
+            }
+          },
+          {
+            "content": "VEHÍCULO:",
+            "polygon": [
+              1.2202,
+              3.8558,
+              1.9817,
+              3.8531,
+              1.9817,
+              4.0153,
+              1.2188,
+              4.0137
+            ],
+            "confidence": 0.984,
+            "span": {
+              "offset": 258,
+              "length": 9
+            }
+          },
+          {
+            "content": "CAMIONETA",
+            "polygon": [
+              2.6275,
+              3.8702,
+              3.4807,
+              3.8777,
+              3.4746,
+              4.0097,
+              2.6275,
+              4.0152
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 268,
+              "length": 9
+            }
+          },
+          {
+            "content": "MARCA:",
+            "polygon": [
+              4.0266,
+              3.8752,
+              4.6177,
+              3.8716,
+              4.6171,
+              4.0144,
+              4.0236,
+              4.0095
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 278,
+              "length": 6
+            }
+          },
+          {
+            "content": "RENAULT",
+            "polygon": [
+              5.9378,
+              3.8756,
+              6.6042,
+              3.8799,
+              6.6042,
+              4.0104,
+              5.9378,
+              4.0065
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 285,
+              "length": 7
+            }
+          },
+          {
+            "content": "TIPO",
+            "polygon": [
+              0.5215,
+              4.1536,
+              0.864,
+              4.1539,
+              0.8616,
+              4.3122,
+              0.5185,
+              4.3143
+            ],
+            "confidence": 0.984,
+            "span": {
+              "offset": 293,
+              "length": 4
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              0.9147,
+              4.154,
+              1.0898,
+              4.1543,
+              1.0878,
+              4.3108,
+              0.9124,
+              4.3119
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 298,
+              "length": 2
+            }
+          },
+          {
+            "content": "CARROCERIA:",
+            "polygon": [
+              1.1354,
+              4.1544,
+              2.0772,
+              4.1567,
+              2.0772,
+              4.3051,
+              1.1336,
+              4.3105
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 301,
+              "length": 11
+            }
+          },
+          {
+            "content": "DOBLE",
+            "polygon": [
+              2.6245,
+              4.1632,
+              3.1051,
+              4.16,
+              3.1021,
+              4.311,
+              2.6215,
+              4.3112
+            ],
+            "confidence": 0.998,
+            "span": {
+              "offset": 313,
+              "length": 5
+            }
+          },
+          {
+            "content": "CABINA",
+            "polygon": [
+              3.1502,
+              4.1597,
+              3.6683,
+              4.1571,
+              3.6653,
+              4.3099,
+              3.1471,
+              4.3109
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 319,
+              "length": 6
+            }
+          },
+          {
+            "content": "CON",
+            "polygon": [
+              3.7084,
+              4.157,
+              3.9737,
+              4.1561,
+              3.9706,
+              4.3095,
+              3.7053,
+              4.3098
+            ],
+            "confidence": 0.998,
+            "span": {
+              "offset": 326,
+              "length": 3
+            }
+          },
+          {
+            "content": "COMBUSTIBLE:",
+            "polygon": [
+              4.0262,
+              4.1559,
+              5.0809,
+              4.155,
+              5.0809,
+              4.3097,
+              4.0232,
+              4.3095
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 330,
+              "length": 12
+            }
+          },
+          {
+            "content": "DIESEL",
+            "polygon": [
+              5.9389,
+              4.1662,
+              6.4408,
+              4.1719,
+              6.4377,
+              4.2982,
+              5.9358,
+              4.3016
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 343,
+              "length": 6
+            }
+          },
+          {
+            "content": "CAPACIDAD",
+            "polygon": [
+              0.5345,
+              4.4748,
+              1.3576,
+              4.4734,
+              1.3537,
+              4.6306,
+              0.5314,
+              4.6282
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 350,
+              "length": 9
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              1.4109,
+              4.4733,
+              1.5837,
+              4.4733,
+              1.5796,
+              4.6309,
+              1.407,
+              4.6307
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 360,
+              "length": 2
+            }
+          },
+          {
+            "content": "PASAJEROS:",
+            "polygon": [
+              1.6319,
+              4.4733,
+              2.4576,
+              4.4742,
+              2.4526,
+              4.6309,
+              1.6278,
+              4.631
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 363,
+              "length": 10
+            }
+          },
+          {
+            "content": "SENTADOS:",
+            "polygon": [
+              2.643,
+              4.4746,
+              3.428,
+              4.4776,
+              3.4221,
+              4.6282,
+              2.6379,
+              4.6306
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 374,
+              "length": 9
+            }
+          },
+          {
+            "content": "5",
+            "polygon": [
+              3.5347,
+              4.4781,
+              3.6236,
+              4.4785,
+              3.6175,
+              4.6275,
+              3.5287,
+              4.6278
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 384,
+              "length": 1
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              4.0237,
+              4.4623,
+              4.2112,
+              4.4669,
+              4.2044,
+              4.6346,
+              4.0154,
+              4.6354
+            ],
+            "confidence": 0.998,
+            "span": {
+              "offset": 386,
+              "length": 2
+            }
+          },
+          {
+            "content": "PIE:",
+            "polygon": [
+              4.2609,
+              4.4681,
+              4.527,
+              4.4706,
+              4.527,
+              4.6351,
+              4.2545,
+              4.6343
+            ],
+            "confidence": 0.989,
+            "span": {
+              "offset": 389,
+              "length": 4
+            }
+          },
+          {
+            "content": "CARGA:",
+            "polygon": [
+              0.5345,
+              4.7858,
+              1.084,
+              4.7859,
+              1.084,
+              4.9299,
+              0.5314,
+              4.9303
+            ],
+            "confidence": 0.996,
+            "span": {
+              "offset": 394,
+              "length": 6
+            }
+          },
+          {
+            "content": "MODALIDAD",
+            "polygon": [
+              4.0141,
+              4.7757,
+              4.9118,
+              4.7735,
+              4.9091,
+              4.9414,
+              4.0099,
+              4.9414
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 401,
+              "length": 9
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              4.964,
+              4.7735,
+              5.1342,
+              4.7734,
+              5.1318,
+              4.9414,
+              4.9613,
+              4.9414
+            ],
+            "confidence": 0.998,
+            "span": {
+              "offset": 411,
+              "length": 2
+            }
+          },
+          {
+            "content": "SERVICIO:",
+            "polygon": [
+              5.1809,
+              4.7734,
+              5.859,
+              4.7746,
+              5.8577,
+              4.9414,
+              5.1785,
+              4.9414
+            ],
+            "confidence": 0.983,
+            "span": {
+              "offset": 414,
+              "length": 9
+            }
+          },
+          {
+            "content": "ESPECIAL",
+            "polygon": [
+              5.9496,
+              4.775,
+              6.6329,
+              4.7783,
+              6.6329,
+              4.9414,
+              5.9484,
+              4.9414
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 424,
+              "length": 8
+            }
+          },
+          {
+            "content": "LÍNEA:",
+            "polygon": [
+              0.5269,
+              5.0512,
+              1.0028,
+              5.0512,
+              1.0028,
+              5.2183,
+              0.5269,
+              5.2183
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 433,
+              "length": 6
+            }
+          },
+          {
+            "content": "ALASKAN",
+            "polygon": [
+              2.6185,
+              5.0656,
+              3.2986,
+              5.0724,
+              3.2986,
+              5.2326,
+              2.6185,
+              5.2326
+            ],
+            "confidence": 0.996,
+            "span": {
+              "offset": 440,
+              "length": 7
+            }
+          },
+          {
+            "content": "NIVEL",
+            "polygon": [
+              0.5345,
+              5.3667,
+              0.9451,
+              5.367,
+              0.9442,
+              5.5188,
+              0.5345,
+              5.5191
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 448,
+              "length": 5
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              0.9908,
+              5.3669,
+              1.1632,
+              5.3662,
+              1.1617,
+              5.5184,
+              0.9898,
+              5.5187
+            ],
+            "confidence": 0.998,
+            "span": {
+              "offset": 454,
+              "length": 2
+            }
+          },
+          {
+            "content": "SERVICIO:",
+            "polygon": [
+              1.2088,
+              5.366,
+              1.9006,
+              5.3586,
+              1.9003,
+              5.5191,
+              1.2073,
+              5.5184
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 457,
+              "length": 9
+            }
+          },
+          {
+            "content": "RADIO",
+            "polygon": [
+              0.5315,
+              5.6571,
+              0.993,
+              5.649,
+              0.992,
+              5.8106,
+              0.5315,
+              5.8151
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 467,
+              "length": 5
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              1.0443,
+              5.6483,
+              1.217,
+              5.6459,
+              1.2155,
+              5.8098,
+              1.0431,
+              5.8103
+            ],
+            "confidence": 0.985,
+            "span": {
+              "offset": 473,
+              "length": 2
+            }
+          },
+          {
+            "content": "ACCIÓN:",
+            "polygon": [
+              1.2602,
+              5.6454,
+              1.8576,
+              5.6404,
+              1.8564,
+              5.814,
+              1.2586,
+              5.8098
+            ],
+            "confidence": 0.988,
+            "span": {
+              "offset": 476,
+              "length": 7
+            }
+          },
+          {
+            "content": "NACIONAL",
+            "polygon": [
+              2.6286,
+              5.6681,
+              3.357,
+              5.6657,
+              3.357,
+              5.8008,
+              2.6286,
+              5.8004
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 484,
+              "length": 8
+            }
+          },
+          {
+            "content": "DATOS",
+            "polygon": [
+              0.7502,
+              6.5322,
+              1.2985,
+              6.5287,
+              1.2973,
+              6.692,
+              0.7502,
+              6.6924
+            ],
+            "confidence": 0.997,
+            "span": {
+              "offset": 493,
+              "length": 5
+            }
+          },
+          {
+            "content": "EMPRESA",
+            "polygon": [
+              1.3552,
+              6.5283,
+              2.1154,
+              6.5236,
+              2.1154,
+              6.6936,
+              1.3538,
+              6.6921
+            ],
+            "confidence": 0.999,
+            "span": {
+              "offset": 499,
+              "length": 7
+            }
+          },
+          {
+            "content": "RAZÓN",
+            "polygon": [
+              0.5315,
+              6.8827,
+              1.0285,
+              6.8762,
+              1.0276,
+              7.045,
+              0.5315,
+              7.0499
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 507,
+              "length": 5
+            }
+          },
+          {
+            "content": "SOCIAL",
+            "polygon": [
+              1.0787,
+              6.8761,
+              1.5731,
+              6.8791,
+              1.5713,
+              7.0425,
+              1.0778,
+              7.0446
+            ],
+            "confidence": 0.997,
+            "span": {
+              "offset": 513,
+              "length": 6
+            }
+          },
+          {
+            "content": "EMPRESA:",
+            "polygon": [
+              1.6153,
+              6.8799,
+              2.3303,
+              6.9006,
+              2.3303,
+              7.0443,
+              1.6135,
+              7.0425
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 520,
+              "length": 8
+            }
+          },
+          {
+            "content": "TRANSPORTES",
+            "polygon": [
+              2.6215,
+              6.9012,
+              3.6772,
+              6.8936,
+              3.675,
+              7.0447,
+              2.6185,
+              7.0384
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 529,
+              "length": 11
+            }
+          },
+          {
+            "content": "Y",
+            "polygon": [
+              3.7164,
+              6.8934,
+              3.8097,
+              6.8931,
+              3.8076,
+              7.0452,
+              3.7143,
+              7.0449
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 541,
+              "length": 1
+            }
+          },
+          {
+            "content": "SERVICIOS",
+            "polygon": [
+              3.8539,
+              6.893,
+              4.6002,
+              6.8913,
+              4.5988,
+              7.0469,
+              3.8519,
+              7.0453
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 543,
+              "length": 9
+            }
+          },
+          {
+            "content": "ESMERALDA",
+            "polygon": [
+              4.6518,
+              6.8913,
+              5.5012,
+              6.8927,
+              5.5004,
+              7.0469,
+              4.6504,
+              7.0469
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 553,
+              "length": 9
+            }
+          },
+          {
+            "content": "S.A.S",
+            "polygon": [
+              5.5429,
+              6.8929,
+              5.8891,
+              6.8943,
+              5.8886,
+              7.0461,
+              5.5422,
+              7.0468
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 563,
+              "length": 5
+            }
+          },
+          {
+            "content": "ZOMAC",
+            "polygon": [
+              5.9333,
+              6.8946,
+              6.4466,
+              6.898,
+              6.4466,
+              7.0439,
+              5.9329,
+              7.0459
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 569,
+              "length": 5
+            }
+          },
+          {
+            "content": "901528440",
+            "polygon": [
+              2.6245,
+              7.1948,
+              3.3379,
+              7.1987,
+              3.3379,
+              7.3294,
+              2.6215,
+              7.3333
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 575,
+              "length": 9
+            }
+          },
+          {
+            "content": "NIT:",
+            "polygon": [
+              0.5301,
+              7.1901,
+              0.8331,
+              7.1901,
+              0.8321,
+              7.3237,
+              0.5301,
+              7.3213
+            ],
+            "confidence": 0.991,
+            "span": {
+              "offset": 585,
+              "length": 4
+            }
+          },
+          {
+            "content": "DIRECCIÓN",
+            "polygon": [
+              0.5375,
+              7.4611,
+              1.3004,
+              7.468,
+              1.2973,
+              7.6242,
+              0.5344,
+              7.6236
+            ],
+            "confidence": 0.827,
+            "span": {
+              "offset": 590,
+              "length": 9
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              1.3538,
+              7.4684,
+              1.5267,
+              7.4696,
+              1.5237,
+              7.6244,
+              1.3507,
+              7.6242
+            ],
+            "confidence": 0.997,
+            "span": {
+              "offset": 600,
+              "length": 2
+            }
+          },
+          {
+            "content": "LA",
+            "polygon": [
+              1.5776,
+              7.4699,
+              1.7403,
+              7.471,
+              1.7373,
+              7.6246,
+              1.5745,
+              7.6245
+            ],
+            "confidence": 0.997,
+            "span": {
+              "offset": 603,
+              "length": 2
+            }
+          },
+          {
+            "content": "EMPRESA:",
+            "polygon": [
+              1.7861,
+              7.4713,
+              2.488,
+              7.4749,
+              2.4849,
+              7.6256,
+              1.7831,
+              7.6247
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 606,
+              "length": 8
+            }
+          },
+          {
+            "content": "FINCA",
+            "polygon": [
+              2.6457,
+              7.4756,
+              3.0576,
+              7.4765,
+              3.0546,
+              7.6265,
+              2.6426,
+              7.6258
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 615,
+              "length": 5
+            }
+          },
+          {
+            "content": "SAN",
+            "polygon": [
+              3.0983,
+              7.4766,
+              3.373,
+              7.4771,
+              3.3699,
+              7.627,
+              3.0953,
+              7.6266
+            ],
+            "confidence": 0.996,
+            "span": {
+              "offset": 621,
+              "length": 3
+            }
+          },
+          {
+            "content": "MARTIN",
+            "polygon": [
+              3.4238,
+              7.4772,
+              3.9426,
+              7.477,
+              3.9396,
+              7.6282,
+              3.4208,
+              7.6271
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 625,
+              "length": 6
+            }
+          },
+          {
+            "content": "VEREDA",
+            "polygon": [
+              3.9859,
+              7.477,
+              4.5631,
+              7.4757,
+              4.5601,
+              7.6296,
+              3.9828,
+              7.6283
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 632,
+              "length": 6
+            }
+          },
+          {
+            "content": "LA",
+            "polygon": [
+              4.6064,
+              7.4756,
+              4.7717,
+              7.4751,
+              4.7686,
+              7.6301,
+              4.6033,
+              7.6297
+            ],
+            "confidence": 0.996,
+            "span": {
+              "offset": 639,
+              "length": 2
+            }
+          },
+          {
+            "content": "ESMERALDA",
+            "polygon": [
+              4.8149,
+              7.4749,
+              5.6778,
+              7.4705,
+              5.6778,
+              7.6326,
+              4.8119,
+              7.6302
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 642,
+              "length": 9
+            }
+          },
+          {
+            "content": "CIUDAD/MUNICIPIO:",
+            "polygon": [
+              0.5398,
+              7.7626,
+              2.0139,
+              7.7565,
+              2.0097,
+              7.9253,
+              0.5355,
+              7.9253
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 652,
+              "length": 17
+            }
+          },
+          {
+            "content": "TAURAMENA",
+            "polygon": [
+              2.6275,
+              7.7751,
+              3.5242,
+              7.7783,
+              3.5242,
+              7.9091,
+              2.6275,
+              7.9101
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 670,
+              "length": 9
+            }
+          },
+          {
+            "content": "FECHA",
+            "polygon": [
+              0.5405,
+              8.0703,
+              0.9907,
+              8.057,
+              0.9898,
+              8.2067,
+              0.5405,
+              8.2053
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 680,
+              "length": 5
+            }
+          },
+          {
+            "content": "DE",
+            "polygon": [
+              1.0393,
+              8.0559,
+              1.2107,
+              8.0523,
+              1.2095,
+              8.2078,
+              1.0383,
+              8.207
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 686,
+              "length": 2
+            }
+          },
+          {
+            "content": "EXPEDICIÓN:",
+            "polygon": [
+              1.2619,
+              8.0513,
+              2.1537,
+              8.0442,
+              2.1537,
+              8.2118,
+              1.2605,
+              8.2082
+            ],
+            "confidence": 0.966,
+            "span": {
+              "offset": 689,
+              "length": 11
+            }
+          },
+          {
+            "content": "13-04-2023",
+            "polygon": [
+              2.6435,
+              8.0727,
+              3.3569,
+              8.0748,
+              3.3539,
+              8.1994,
+              2.6435,
+              8.2017
+            ],
+            "confidence": 0.996,
+            "span": {
+              "offset": 701,
+              "length": 10
+            }
+          },
+          {
+            "content": "VIGENCIA:",
+            "polygon": [
+              0.5255,
+              8.3698,
+              1.275,
+              8.3686,
+              1.2723,
+              8.5123,
+              0.5285,
+              8.5149
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 712,
+              "length": 9
+            }
+          },
+          {
+            "content": "DESDE:",
+            "polygon": [
+              2.6316,
+              8.3676,
+              3.1517,
+              8.3719,
+              3.1517,
+              8.5076,
+              2.6285,
+              8.5097
+            ],
+            "confidence": 0.997,
+            "span": {
+              "offset": 722,
+              "length": 6
+            }
+          },
+          {
+            "content": "13-04-2023",
+            "polygon": [
+              3.5163,
+              8.3765,
+              4.2548,
+              8.3701,
+              4.2548,
+              8.5111,
+              3.5163,
+              8.5072
+            ],
+            "confidence": 0.994,
+            "span": {
+              "offset": 729,
+              "length": 10
+            }
+          },
+          {
+            "content": "HASTA:",
+            "polygon": [
+              4.43,
+              8.3647,
+              4.9663,
+              8.3706,
+              4.9663,
+              8.5089,
+              4.4275,
+              8.5212
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 740,
+              "length": 6
+            }
+          },
+          {
+            "content": "13-04-2025",
+            "polygon": [
+              5.3004,
+              8.3553,
+              6.0455,
+              8.363,
+              6.0455,
+              8.5191,
+              5.2962,
+              8.5221
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 747,
+              "length": 10
+            }
+          },
+          {
+            "content": "AUTORIDAD",
+            "polygon": [
+              0.5228,
+              8.6509,
+              1.3902,
+              8.6495,
+              1.3901,
+              8.8158,
+              0.5185,
+              8.8181
+            ],
+            "confidence": 0.996,
+            "span": {
+              "offset": 758,
+              "length": 9
+            }
+          },
+          {
+            "content": "QUE",
+            "polygon": [
+              1.4369,
+              8.6494,
+              1.7307,
+              8.6489,
+              1.7321,
+              8.8161,
+              1.437,
+              8.8158
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 768,
+              "length": 3
+            }
+          },
+          {
+            "content": "EXPIDE:",
+            "polygon": [
+              1.7801,
+              8.6488,
+              2.3208,
+              8.6478,
+              2.3208,
+              8.8181,
+              1.7818,
+              8.8162
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 772,
+              "length": 7
+            }
+          },
+          {
+            "content": "DIRECCION",
+            "polygon": [
+              2.6305,
+              8.6628,
+              3.4097,
+              8.6634,
+              3.4087,
+              8.8134,
+              2.6305,
+              8.8134
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 780,
+              "length": 9
+            }
+          },
+          {
+            "content": "TERRITORIAL",
+            "polygon": [
+              3.4548,
+              8.6633,
+              4.3742,
+              8.6601,
+              4.372,
+              8.8134,
+              3.4537,
+              8.8134
+            ],
+            "confidence": 0.989,
+            "span": {
+              "offset": 790,
+              "length": 11
+            }
+          },
+          {
+            "content": "BOYACA",
+            "polygon": [
+              4.4193,
+              8.6598,
+              5.014,
+              8.6554,
+              5.0125,
+              8.8134,
+              4.417,
+              8.8134
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 802,
+              "length": 6
+            }
+          },
+          {
+            "content": "FIRMA",
+            "polygon": [
+              3.1907,
+              8.991,
+              3.6578,
+              8.9904,
+              3.6578,
+              9.138,
+              3.1907,
+              9.138
+            ],
+            "confidence": 0.996,
+            "span": {
+              "offset": 809,
+              "length": 5
+            }
+          },
+          {
+            "content": "DEL",
+            "polygon": [
+              3.7062,
+              8.9904,
+              3.953,
+              8.9903,
+              3.953,
+              9.1375,
+              3.7062,
+              9.138
+            ],
+            "confidence": 0.995,
+            "span": {
+              "offset": 815,
+              "length": 3
+            }
+          },
+          {
+            "content": "FUNCIONARIO",
+            "polygon": [
+              3.999,
+              8.9903,
+              4.9997,
+              8.9912,
+              4.9997,
+              9.138,
+              3.999,
+              9.1374
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 819,
+              "length": 11
+            }
+          },
+          {
+            "content": "Concesión",
+            "polygon": [
+              0.5345,
+              10.694,
+              1.1612,
+              10.6927,
+              1.1637,
+              10.8408,
+              0.5375,
+              10.8392
+            ],
+            "confidence": 0.991,
+            "span": {
+              "offset": 831,
+              "length": 9
+            }
+          },
+          {
+            "content": "RUNT",
+            "polygon": [
+              1.2124,
+              10.6925,
+              1.5708,
+              10.6918,
+              1.573,
+              10.8418,
+              1.2148,
+              10.8409
+            ],
+            "confidence": 0.989,
+            "span": {
+              "offset": 841,
+              "length": 4
+            }
+          },
+          {
+            "content": "S.A.",
+            "polygon": [
+              1.6098,
+              10.6917,
+              1.8464,
+              10.6915,
+              1.8483,
+              10.8424,
+              1.612,
+              10.842
+            ],
+            "confidence": 0.977,
+            "span": {
+              "offset": 846,
+              "length": 4
+            }
+          },
+          {
+            "content": "/",
+            "polygon": [
+              1.8878,
+              10.6915,
+              1.9195,
+              10.6914,
+              1.9214,
+              10.8425,
+              1.8897,
+              10.8425
+            ],
+            "confidence": 0.977,
+            "span": {
+              "offset": 851,
+              "length": 1
+            }
+          },
+          {
+            "content": "Nit",
+            "polygon": [
+              1.9488,
+              10.6914,
+              2.1292,
+              10.6912,
+              2.1309,
+              10.8429,
+              1.9506,
+              10.8426
+            ],
+            "confidence": 0.987,
+            "span": {
+              "offset": 853,
+              "length": 3
+            }
+          },
+          {
+            "content": "900.153.453-4",
+            "polygon": [
+              2.1658,
+              10.6912,
+              3.0119,
+              10.6907,
+              3.0129,
+              10.8443,
+              2.1675,
+              10.843
+            ],
+            "confidence": 0.989,
+            "span": {
+              "offset": 857,
+              "length": 13
+            }
+          },
+          {
+            "content": "/",
+            "polygon": [
+              3.0485,
+              10.6908,
+              3.09,
+              10.6908,
+              3.0909,
+              10.8443,
+              3.0494,
+              10.8443
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 871,
+              "length": 1
+            }
+          },
+          {
+            "content": "Colombia",
+            "polygon": [
+              3.129,
+              10.6908,
+              3.6776,
+              10.6908,
+              3.678,
+              10.845,
+              3.1298,
+              10.8444
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 873,
+              "length": 8
+            }
+          },
+          {
+            "content": "/",
+            "polygon": [
+              3.7166,
+              10.6909,
+              3.7581,
+              10.6909,
+              3.7584,
+              10.845,
+              3.717,
+              10.845
+            ],
+            "confidence": 0.99,
+            "span": {
+              "offset": 882,
+              "length": 1
+            }
+          },
+          {
+            "content": "Atención",
+            "polygon": [
+              3.7898,
+              10.6909,
+              4.297,
+              10.6916,
+              4.2969,
+              10.8452,
+              3.7901,
+              10.845
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 884,
+              "length": 8
+            }
+          },
+          {
+            "content": "al",
+            "polygon": [
+              4.3433,
+              10.6916,
+              4.436,
+              10.6917,
+              4.4358,
+              10.8452,
+              4.3432,
+              10.8452
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 893,
+              "length": 2
+            }
+          },
+          {
+            "content": "usuario",
+            "polygon": [
+              4.4847,
+              10.6918,
+              4.909,
+              10.6925,
+              4.9084,
+              10.8452,
+              4.4845,
+              10.8452
+            ],
+            "confidence": 0.993,
+            "span": {
+              "offset": 896,
+              "length": 7
+            }
+          },
+          {
+            "content": "Línea",
+            "polygon": [
+              4.9553,
+              10.6926,
+              5.2748,
+              10.6933,
+              5.2739,
+              10.845,
+              4.9547,
+              10.8452
+            ],
+            "confidence": 0.951,
+            "span": {
+              "offset": 904,
+              "length": 5
+            }
+          },
+          {
+            "content": "Nacional",
+            "polygon": [
+              5.3235,
+              10.6935,
+              5.8234,
+              10.6947,
+              5.8221,
+              10.8447,
+              5.3226,
+              10.845
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 910,
+              "length": 8
+            }
+          },
+          {
+            "content": "018000930060",
+            "polygon": [
+              5.8697,
+              10.6948,
+              6.7427,
+              10.6978,
+              6.7406,
+              10.8436,
+              5.8684,
+              10.8446
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 919,
+              "length": 12
+            }
+          },
+          {
+            "content": "/",
+            "polygon": [
+              6.7817,
+              10.6979,
+              6.8232,
+              10.6981,
+              6.821,
+              10.8435,
+              6.7796,
+              10.8436
+            ],
+            "confidence": 0.988,
+            "span": {
+              "offset": 932,
+              "length": 1
+            }
+          },
+          {
+            "content": "www.runt.com.co",
+            "polygon": [
+              6.8549,
+              10.6982,
+              7.884,
+              10.7029,
+              7.884,
+              10.8414,
+              6.8527,
+              10.8433
+            ],
+            "confidence": 0.992,
+            "span": {
+              "offset": 934,
+              "length": 15
+            }
+          }
+        ],
+        "lines": [
+          {
+            "content": "Página 1 de1",
+            "polygon": [
+              6.9528,
+              0.1146,
+              7.8601,
+              0.1146,
+              7.8649,
+              0.2769,
+              6.9528,
+              0.2769
+            ],
+            "spans": [
+              {
+                "offset": 0,
+                "length": 12
+              }
+            ]
+          },
+          {
+            "content": "REPÚBLICA DE COLOMBIA",
+            "polygon": [
+              1.3896,
+              1.0169,
+              3.123,
+              1.0169,
+              3.1183,
+              1.184,
+              1.3896,
+              1.184
+            ],
+            "spans": [
+              {
+                "offset": 13,
+                "length": 21
+              }
+            ]
+          },
+          {
+            "content": "MINISTERIO DE TRANSPORTE",
+            "polygon": [
+              1.3896,
+              1.1936,
+              3.314,
+              1.1888,
+              3.314,
+              1.3273,
+              1.3896,
+              1.332
+            ],
+            "spans": [
+              {
+                "offset": 35,
+                "length": 24
+              }
+            ]
+          },
+          {
+            "content": "MINISTERIO DE AMBIENTE Y",
+            "polygon": [
+              1.3848,
+              1.3511,
+              3.2281,
+              1.3511,
+              3.2281,
+              1.4848,
+              1.3848,
+              1.4848
+            ],
+            "spans": [
+              {
+                "offset": 60,
+                "length": 24
+              }
+            ]
+          },
+          {
+            "content": "DESARROLLO SOSTENIBLE",
+            "polygon": [
+              1.3848,
+              1.5087,
+              3.1851,
+              1.5087,
+              3.1851,
+              1.6376,
+              1.3848,
+              1.6424
+            ],
+            "spans": [
+              {
+                "offset": 85,
+                "length": 21
+              }
+            ]
+          },
+          {
+            "content": "Libertad y Orden",
+            "polygon": [
+              0.5826,
+              1.819,
+              1.2559,
+              1.819,
+              1.2559,
+              1.9766,
+              0.5826,
+              1.9766
+            ],
+            "spans": [
+              {
+                "offset": 107,
+                "length": 16
+              }
+            ]
+          },
+          {
+            "content": "RUNT",
+            "polygon": [
+              3.6674,
+              1.0217,
+              5.6348,
+              1.0265,
+              5.6301,
+              1.523,
+              3.6674,
+              1.5182
+            ],
+            "spans": [
+              {
+                "offset": 124,
+                "length": 4
+              }
+            ]
+          },
+          {
+            "content": "REGISTRO ÚNICO NACIONAL DE TRÁNSITO",
+            "polygon": [
+              3.6817,
+              1.5994,
+              5.5823,
+              1.5994,
+              5.5823,
+              1.7378,
+              3.6817,
+              1.7378
+            ],
+            "spans": [
+              {
+                "offset": 129,
+                "length": 35
+              }
+            ]
+          },
+          {
+            "content": "TARJETA DE OPERACIÓN",
+            "polygon": [
+              3.2663,
+              2.4683,
+              5.1907,
+              2.4588,
+              5.1907,
+              2.6497,
+              3.2663,
+              2.6545
+            ],
+            "spans": [
+              {
+                "offset": 165,
+                "length": 20
+              }
+            ]
+          },
+          {
+            "content": "No.358277",
+            "polygon": [
+              3.8823,
+              2.6736,
+              4.5795,
+              2.6736,
+              4.5795,
+              2.8121,
+              3.8823,
+              2.8121
+            ],
+            "spans": [
+              {
+                "offset": 186,
+                "length": 9
+              }
+            ]
+          },
+          {
+            "content": "DATOS VEHÍCULO",
+            "polygon": [
+              0.8357,
+              3.1606,
+              2.2348,
+              3.1558,
+              2.2348,
+              3.342,
+              0.8357,
+              3.3468
+            ],
+            "spans": [
+              {
+                "offset": 196,
+                "length": 14
+              }
+            ]
+          },
+          {
+            "content": "No. DE PLACA:",
+            "polygon": [
+              0.5301,
+              3.576,
+              1.5424,
+              3.576,
+              1.5424,
+              3.724,
+              0.5301,
+              3.724
+            ],
+            "spans": [
+              {
+                "offset": 211,
+                "length": 13
+              }
+            ]
+          },
+          {
+            "content": "JYO215",
+            "polygon": [
+              2.6216,
+              3.5807,
+              3.1517,
+              3.5807,
+              3.1517,
+              3.7192,
+              2.6216,
+              3.7192
+            ],
+            "spans": [
+              {
+                "offset": 225,
+                "length": 6
+              }
+            ]
+          },
+          {
+            "content": "AÑO MODELO:",
+            "polygon": [
+              4.0112,
+              3.5569,
+              5.0809,
+              3.5569,
+              5.0809,
+              3.7287,
+              4.0112,
+              3.724
+            ],
+            "spans": [
+              {
+                "offset": 232,
+                "length": 11
+              }
+            ]
+          },
+          {
+            "content": "2022",
+            "polygon": [
+              5.9261,
+              3.5855,
+              6.2604,
+              3.5855,
+              6.2556,
+              3.7144,
+              5.9261,
+              3.7096
+            ],
+            "spans": [
+              {
+                "offset": 244,
+                "length": 4
+              }
+            ]
+          },
+          {
+            "content": "CLASE DE VEHÍCULO:",
+            "polygon": [
+              0.5301,
+              3.8576,
+              1.977,
+              3.8529,
+              1.977,
+              4.0104,
+              0.5301,
+              4.0152
+            ],
+            "spans": [
+              {
+                "offset": 249,
+                "length": 18
+              }
+            ]
+          },
+          {
+            "content": "CAMIONETA",
+            "polygon": [
+              2.6264,
+              3.8672,
+              3.4764,
+              3.8672,
+              3.4764,
+              4.0104,
+              2.6264,
+              4.0104
+            ],
+            "spans": [
+              {
+                "offset": 268,
+                "length": 9
+              }
+            ]
+          },
+          {
+            "content": "MARCA:",
+            "polygon": [
+              4.0208,
+              3.872,
+              4.6129,
+              3.8672,
+              4.6129,
+              4.0104,
+              4.0208,
+              4.0104
+            ],
+            "spans": [
+              {
+                "offset": 278,
+                "length": 6
+              }
+            ]
+          },
+          {
+            "content": "RENAULT",
+            "polygon": [
+              5.9357,
+              3.872,
+              6.5994,
+              3.8767,
+              6.5947,
+              4.0056,
+              5.9357,
+              4.0009
+            ],
+            "spans": [
+              {
+                "offset": 285,
+                "length": 7
+              }
+            ]
+          },
+          {
+            "content": "TIPO DE CARROCERIA:",
+            "polygon": [
+              0.5157,
+              4.1489,
+              2.0725,
+              4.1489,
+              2.0725,
+              4.3064,
+              0.5157,
+              4.3112
+            ],
+            "spans": [
+              {
+                "offset": 293,
+                "length": 19
+              }
+            ]
+          },
+          {
+            "content": "DOBLE CABINA CON COMBUSTIBLE:",
+            "polygon": [
+              2.6169,
+              4.1584,
+              5.0761,
+              4.1536,
+              5.0761,
+              4.3064,
+              2.6169,
+              4.3112
+            ],
+            "spans": [
+              {
+                "offset": 313,
+                "length": 29
+              }
+            ]
+          },
+          {
+            "content": "DIESEL",
+            "polygon": [
+              5.9357,
+              4.1632,
+              6.4371,
+              4.1632,
+              6.4371,
+              4.2969,
+              5.9357,
+              4.2969
+            ],
+            "spans": [
+              {
+                "offset": 343,
+                "length": 6
+              }
+            ]
+          },
+          {
+            "content": "CAPACIDAD DE PASAJEROS: SENTADOS: 5",
+            "polygon": [
+              0.5301,
+              4.4688,
+              3.6197,
+              4.4735,
+              3.6197,
+              4.6263,
+              0.5301,
+              4.6263
+            ],
+            "spans": [
+              {
+                "offset": 350,
+                "length": 35
+              }
+            ]
+          },
+          {
+            "content": "DE PIE:",
+            "polygon": [
+              3.9921,
+              4.4592,
+              4.5222,
+              4.4592,
+              4.5222,
+              4.6311,
+              3.9921,
+              4.6311
+            ],
+            "spans": [
+              {
+                "offset": 386,
+                "length": 7
+              }
+            ]
+          },
+          {
+            "content": "CARGA:",
+            "polygon": [
+              0.5301,
+              4.7839,
+              1.0792,
+              4.7839,
+              1.084,
+              4.9271,
+              0.5301,
+              4.9271
+            ],
+            "spans": [
+              {
+                "offset": 394,
+                "length": 6
+              }
+            ]
+          },
+          {
+            "content": "MODALIDAD DE SERVICIO: ESPECIAL",
+            "polygon": [
+              4.0065,
+              4.7695,
+              6.6281,
+              4.7695,
+              6.6281,
+              4.9366,
+              4.0065,
+              4.9366
+            ],
+            "spans": [
+              {
+                "offset": 401,
+                "length": 31
+              }
+            ]
+          },
+          {
+            "content": "LÍNEA:",
+            "polygon": [
+              0.5157,
+              5.0512,
+              0.998,
+              5.0512,
+              0.9933,
+              5.2183,
+              0.5157,
+              5.2183
+            ],
+            "spans": [
+              {
+                "offset": 433,
+                "length": 6
+              }
+            ]
+          },
+          {
+            "content": "ALASKAN",
+            "polygon": [
+              2.6169,
+              5.0655,
+              3.2949,
+              5.0655,
+              3.2949,
+              5.2326,
+              2.6169,
+              5.2279
+            ],
+            "spans": [
+              {
+                "offset": 440,
+                "length": 7
+              }
+            ]
+          },
+          {
+            "content": "NIVEL DE SERVICIO:",
+            "polygon": [
+              0.5301,
+              5.3615,
+              1.8958,
+              5.3568,
+              1.8958,
+              5.5143,
+              0.5301,
+              5.5191
+            ],
+            "spans": [
+              {
+                "offset": 448,
+                "length": 18
+              }
+            ]
+          },
+          {
+            "content": "RADIO DE ACCIÓN:",
+            "polygon": [
+              0.5301,
+              5.648,
+              1.8528,
+              5.6385,
+              1.8576,
+              5.8103,
+              0.5301,
+              5.8151
+            ],
+            "spans": [
+              {
+                "offset": 467,
+                "length": 16
+              }
+            ]
+          },
+          {
+            "content": "NACIONAL",
+            "polygon": [
+              2.6264,
+              5.6623,
+              3.3522,
+              5.6623,
+              3.3522,
+              5.796,
+              2.6264,
+              5.796
+            ],
+            "spans": [
+              {
+                "offset": 484,
+                "length": 8
+              }
+            ]
+          },
+          {
+            "content": "DATOS EMPRESA",
+            "polygon": [
+              0.7497,
+              6.5265,
+              2.1107,
+              6.5217,
+              2.1107,
+              6.6888,
+              0.7497,
+              6.6936
+            ],
+            "spans": [
+              {
+                "offset": 493,
+                "length": 13
+              }
+            ]
+          },
+          {
+            "content": "RAZÓN SOCIAL EMPRESA:",
+            "polygon": [
+              0.5301,
+              6.875,
+              2.3256,
+              6.8798,
+              2.3256,
+              7.0517,
+              0.5301,
+              7.0469
+            ],
+            "spans": [
+              {
+                "offset": 507,
+                "length": 21
+              }
+            ]
+          },
+          {
+            "content": "TRANSPORTES Y SERVICIOS ESMERALDA S.A.S ZOMAC",
+            "polygon": [
+              2.6169,
+              6.8893,
+              6.4419,
+              6.8893,
+              6.4419,
+              7.0421,
+              2.6169,
+              7.0421
+            ],
+            "spans": [
+              {
+                "offset": 529,
+                "length": 45
+              }
+            ]
+          },
+          {
+            "content": "901528440",
+            "polygon": [
+              2.6169,
+              7.1901,
+              3.3331,
+              7.1901,
+              3.3331,
+              7.3286,
+              2.6169,
+              7.3286
+            ],
+            "spans": [
+              {
+                "offset": 575,
+                "length": 9
+              }
+            ]
+          },
+          {
+            "content": "NIT:",
+            "polygon": [
+              0.5301,
+              7.1901,
+              0.8309,
+              7.1949,
+              0.8213,
+              7.3238,
+              0.5301,
+              7.3238
+            ],
+            "spans": [
+              {
+                "offset": 585,
+                "length": 4
+              }
+            ]
+          },
+          {
+            "content": "DIRECCIÓN DE LA EMPRESA: FINCA SAN MARTIN VEREDA LA ESMERALDA",
+            "polygon": [
+              0.5301,
+              7.4575,
+              5.673,
+              7.467,
+              5.673,
+              7.6293,
+              0.5301,
+              7.6198
+            ],
+            "spans": [
+              {
+                "offset": 590,
+                "length": 61
+              }
+            ]
+          },
+          {
+            "content": "CIUDAD/MUNICIPIO:",
+            "polygon": [
+              0.5348,
+              7.7582,
+              2.0104,
+              7.7535,
+              2.0104,
+              7.9206,
+              0.5348,
+              7.9253
+            ],
+            "spans": [
+              {
+                "offset": 652,
+                "length": 17
+              }
+            ]
+          },
+          {
+            "content": "TAURAMENA",
+            "polygon": [
+              2.6264,
+              7.7726,
+              3.5194,
+              7.7726,
+              3.5194,
+              7.9063,
+              2.6264,
+              7.9063
+            ],
+            "spans": [
+              {
+                "offset": 670,
+                "length": 9
+              }
+            ]
+          },
+          {
+            "content": "FECHA DE EXPEDICIÓN:",
+            "polygon": [
+              0.5396,
+              8.0495,
+              2.1489,
+              8.0399,
+              2.1537,
+              8.207,
+              0.5396,
+              8.2118
+            ],
+            "spans": [
+              {
+                "offset": 680,
+                "length": 20
+              }
+            ]
+          },
+          {
+            "content": "13-04-2023",
+            "polygon": [
+              2.6407,
+              8.0686,
+              3.3522,
+              8.0686,
+              3.3522,
+              8.1975,
+              2.6407,
+              8.1975
+            ],
+            "spans": [
+              {
+                "offset": 701,
+                "length": 10
+              }
+            ]
+          },
+          {
+            "content": "VIGENCIA:",
+            "polygon": [
+              0.5253,
+              8.3694,
+              1.2702,
+              8.3646,
+              1.2702,
+              8.5078,
+              0.5253,
+              8.5126
+            ],
+            "spans": [
+              {
+                "offset": 712,
+                "length": 9
+              }
+            ]
+          },
+          {
+            "content": "DESDE:",
+            "polygon": [
+              2.6264,
+              8.3646,
+              3.1469,
+              8.3646,
+              3.1469,
+              8.5078,
+              2.6264,
+              8.5078
+            ],
+            "spans": [
+              {
+                "offset": 722,
+                "length": 6
+              }
+            ]
+          },
+          {
+            "content": "13-04-2023",
+            "polygon": [
+              3.5146,
+              8.3694,
+              4.25,
+              8.3694,
+              4.25,
+              8.5078,
+              3.5146,
+              8.5078
+            ],
+            "spans": [
+              {
+                "offset": 729,
+                "length": 10
+              }
+            ]
+          },
+          {
+            "content": "HASTA:",
+            "polygon": [
+              4.2978,
+              8.3598,
+              4.9615,
+              8.3598,
+              4.9615,
+              8.5126,
+              4.2978,
+              8.5174
+            ],
+            "spans": [
+              {
+                "offset": 740,
+                "length": 6
+              }
+            ]
+          },
+          {
+            "content": "13-04-2025",
+            "polygon": [
+              5.2958,
+              8.355,
+              6.0407,
+              8.355,
+              6.0407,
+              8.5221,
+              5.2958,
+              8.5174
+            ],
+            "spans": [
+              {
+                "offset": 747,
+                "length": 10
+              }
+            ]
+          },
+          {
+            "content": "AUTORIDAD QUE EXPIDE:",
+            "polygon": [
+              0.5157,
+              8.6463,
+              2.316,
+              8.6463,
+              2.316,
+              8.8134,
+              0.5157,
+              8.8134
+            ],
+            "spans": [
+              {
+                "offset": 758,
+                "length": 21
+              }
+            ]
+          },
+          {
+            "content": "DIRECCION TERRITORIAL BOYACA",
+            "polygon": [
+              2.6264,
+              8.6558,
+              5.0093,
+              8.651,
+              5.0093,
+              8.8086,
+              2.6264,
+              8.8134
+            ],
+            "spans": [
+              {
+                "offset": 780,
+                "length": 28
+              }
+            ]
+          },
+          {
+            "content": "FIRMA DEL FUNCIONARIO",
+            "polygon": [
+              3.1899,
+              8.99,
+              4.9949,
+              8.99,
+              4.9949,
+              9.1332,
+              3.1899,
+              9.1332
+            ],
+            "spans": [
+              {
+                "offset": 809,
+                "length": 21
+              }
+            ]
+          },
+          {
+            "content": "Concesión RUNT S.A. / Nit 900.153.453-4 / Colombia / Atención al usuario Línea Nacional 018000930060 / www.runt.com.co",
+            "polygon": [
+              0.5301,
+              10.6897,
+              7.8792,
+              10.6897,
+              7.8792,
+              10.8424,
+              0.5301,
+              10.8377
+            ],
+            "spans": [
+              {
+                "offset": 831,
+                "length": 118
+              }
+            ]
+          }
+        ],
+        "spans": [
+          {
+            "offset": 0,
+            "length": 949
+          }
+        ]
+      }
+    ],
+    "paragraphs": [
+      {
+        "spans": [
+          {
+            "offset": 0,
+            "length": 12
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              6.9528,
+              0.1146,
+              7.8649,
+              0.1146,
+              7.8649,
+              0.2769,
+              6.9528,
+              0.2769
+            ]
+          }
+        ],
+        "content": "Página 1 de1"
+      },
+      {
+        "spans": [
+          {
+            "offset": 13,
+            "length": 93
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              1.3848,
+              1.0169,
+              3.314,
+              1.0169,
+              3.314,
+              1.6424,
+              1.3848,
+              1.6424
+            ]
+          }
+        ],
+        "content": "REPÚBLICA DE COLOMBIA MINISTERIO DE TRANSPORTE MINISTERIO DE AMBIENTE Y DESARROLLO SOSTENIBLE"
+      },
+      {
+        "spans": [
+          {
+            "offset": 107,
+            "length": 16
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5826,
+              1.819,
+              1.2559,
+              1.819,
+              1.2559,
+              1.9766,
+              0.5826,
+              1.9766
+            ]
+          }
+        ],
+        "content": "Libertad y Orden"
+      },
+      {
+        "spans": [
+          {
+            "offset": 124,
+            "length": 40
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              3.6674,
+              1.0217,
+              5.6348,
+              1.0265,
+              5.6331,
+              1.7426,
+              3.6657,
+              1.7378
+            ]
+          }
+        ],
+        "content": "RUNT REGISTRO ÚNICO NACIONAL DE TRÁNSITO"
+      },
+      {
+        "spans": [
+          {
+            "offset": 165,
+            "length": 30
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              3.2654,
+              2.4683,
+              5.1907,
+              2.4588,
+              5.1925,
+              2.809,
+              3.2671,
+              2.8186
+            ]
+          }
+        ],
+        "content": "TARJETA DE OPERACIÓN No.358277"
+      },
+      {
+        "spans": [
+          {
+            "offset": 196,
+            "length": 14
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.835,
+              3.1606,
+              2.2348,
+              3.1558,
+              2.2355,
+              3.342,
+              0.8357,
+              3.3468
+            ]
+          }
+        ],
+        "content": "DATOS VEHÍCULO"
+      },
+      {
+        "spans": [
+          {
+            "offset": 211,
+            "length": 13
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5301,
+              3.576,
+              1.5424,
+              3.576,
+              1.5424,
+              3.724,
+              0.5301,
+              3.724
+            ]
+          }
+        ],
+        "content": "No. DE PLACA:"
+      },
+      {
+        "spans": [
+          {
+            "offset": 225,
+            "length": 6
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              2.6216,
+              3.5807,
+              3.1517,
+              3.5807,
+              3.1517,
+              3.7192,
+              2.6216,
+              3.7192
+            ]
+          }
+        ],
+        "content": "JYO215"
+      },
+      {
+        "spans": [
+          {
+            "offset": 232,
+            "length": 16
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              4.0112,
+              3.5569,
+              6.2604,
+              3.5569,
+              6.2604,
+              3.7287,
+              4.0112,
+              3.7287
+            ]
+          }
+        ],
+        "content": "AÑO MODELO: 2022"
+      },
+      {
+        "spans": [
+          {
+            "offset": 249,
+            "length": 18
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5295,
+              3.8576,
+              1.977,
+              3.8529,
+              1.9775,
+              4.0104,
+              0.5301,
+              4.0152
+            ]
+          }
+        ],
+        "content": "CLASE DE VEHÍCULO:"
+      },
+      {
+        "spans": [
+          {
+            "offset": 268,
+            "length": 9
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              2.6264,
+              3.8672,
+              3.4764,
+              3.8672,
+              3.4764,
+              4.0104,
+              2.6264,
+              4.0104
+            ]
+          }
+        ],
+        "content": "CAMIONETA"
+      },
+      {
+        "spans": [
+          {
+            "offset": 278,
+            "length": 14
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              4.0208,
+              3.8672,
+              6.5994,
+              3.8672,
+              6.5994,
+              4.0104,
+              4.0208,
+              4.0104
+            ]
+          }
+        ],
+        "content": "MARCA: RENAULT"
+      },
+      {
+        "spans": [
+          {
+            "offset": 293,
+            "length": 19
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5157,
+              4.1489,
+              2.0725,
+              4.1489,
+              2.0725,
+              4.3112,
+              0.5157,
+              4.3112
+            ]
+          }
+        ],
+        "content": "TIPO DE CARROCERIA:"
+      },
+      {
+        "spans": [
+          {
+            "offset": 313,
+            "length": 36
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              2.6166,
+              4.1584,
+              6.4371,
+              4.151,
+              6.4374,
+              4.3038,
+              2.6169,
+              4.3112
+            ]
+          }
+        ],
+        "content": "DOBLE CABINA CON COMBUSTIBLE: DIESEL"
+      },
+      {
+        "spans": [
+          {
+            "offset": 350,
+            "length": 35
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5301,
+              4.4688,
+              3.6197,
+              4.4735,
+              3.6197,
+              4.6263,
+              0.5301,
+              4.6263
+            ]
+          }
+        ],
+        "content": "CAPACIDAD DE PASAJEROS: SENTADOS: 5"
+      },
+      {
+        "spans": [
+          {
+            "offset": 386,
+            "length": 7
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              3.9921,
+              4.4592,
+              4.5222,
+              4.4592,
+              4.5222,
+              4.6311,
+              3.9921,
+              4.6311
+            ]
+          }
+        ],
+        "content": "DE PIE:"
+      },
+      {
+        "spans": [
+          {
+            "offset": 394,
+            "length": 6
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5301,
+              4.7839,
+              1.084,
+              4.7839,
+              1.084,
+              4.9271,
+              0.5301,
+              4.9271
+            ]
+          }
+        ],
+        "content": "CARGA:"
+      },
+      {
+        "spans": [
+          {
+            "offset": 401,
+            "length": 31
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              4.0065,
+              4.7695,
+              6.6281,
+              4.7695,
+              6.6281,
+              4.9366,
+              4.0065,
+              4.9366
+            ]
+          }
+        ],
+        "content": "MODALIDAD DE SERVICIO: ESPECIAL"
+      },
+      {
+        "spans": [
+          {
+            "offset": 433,
+            "length": 14
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5157,
+              5.0487,
+              3.2958,
+              5.0631,
+              3.2949,
+              5.2326,
+              0.5149,
+              5.2183
+            ]
+          }
+        ],
+        "content": "LÍNEA: ALASKAN"
+      },
+      {
+        "spans": [
+          {
+            "offset": 448,
+            "length": 18
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5295,
+              5.3615,
+              1.8958,
+              5.3568,
+              1.8963,
+              5.5143,
+              0.5301,
+              5.5191
+            ]
+          }
+        ],
+        "content": "NIVEL DE SERVICIO:"
+      },
+      {
+        "spans": [
+          {
+            "offset": 467,
+            "length": 25
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5294,
+              5.6432,
+              3.3521,
+              5.6331,
+              3.3528,
+              5.805,
+              0.5301,
+              5.8151
+            ]
+          }
+        ],
+        "content": "RADIO DE ACCIÓN: NACIONAL"
+      },
+      {
+        "spans": [
+          {
+            "offset": 493,
+            "length": 13
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.7491,
+              6.5265,
+              2.1107,
+              6.5217,
+              2.1113,
+              6.6888,
+              0.7497,
+              6.6936
+            ]
+          }
+        ],
+        "content": "DATOS EMPRESA"
+      },
+      {
+        "spans": [
+          {
+            "offset": 507,
+            "length": 77
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5301,
+              6.875,
+              6.4422,
+              6.8893,
+              6.4411,
+              7.3378,
+              0.529,
+              7.3235
+            ]
+          }
+        ],
+        "content": "RAZÓN SOCIAL EMPRESA: TRANSPORTES Y SERVICIOS ESMERALDA S.A.S ZOMAC 901528440"
+      },
+      {
+        "spans": [
+          {
+            "offset": 585,
+            "length": 4
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5301,
+              7.1901,
+              0.8309,
+              7.1949,
+              0.8288,
+              7.3285,
+              0.5279,
+              7.3238
+            ]
+          }
+        ],
+        "content": "NIT:"
+      },
+      {
+        "spans": [
+          {
+            "offset": 590,
+            "length": 61
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5301,
+              7.4575,
+              5.6733,
+              7.467,
+              5.673,
+              7.6293,
+              0.5298,
+              7.6198
+            ]
+          }
+        ],
+        "content": "DIRECCIÓN DE LA EMPRESA: FINCA SAN MARTIN VEREDA LA ESMERALDA"
+      },
+      {
+        "spans": [
+          {
+            "offset": 652,
+            "length": 17
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5348,
+              7.7582,
+              2.0104,
+              7.7535,
+              2.0104,
+              7.9206,
+              0.5348,
+              7.9253
+            ]
+          }
+        ],
+        "content": "CIUDAD/MUNICIPIO:"
+      },
+      {
+        "spans": [
+          {
+            "offset": 670,
+            "length": 9
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              2.6264,
+              7.7726,
+              3.5194,
+              7.7726,
+              3.5194,
+              7.9063,
+              2.6264,
+              7.9063
+            ]
+          }
+        ],
+        "content": "TAURAMENA"
+      },
+      {
+        "spans": [
+          {
+            "offset": 680,
+            "length": 31
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5391,
+              8.0447,
+              3.3522,
+              8.0364,
+              3.3526,
+              8.2035,
+              0.5396,
+              8.2118
+            ]
+          }
+        ],
+        "content": "FECHA DE EXPEDICIÓN: 13-04-2023"
+      },
+      {
+        "spans": [
+          {
+            "offset": 712,
+            "length": 9
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5244,
+              8.3694,
+              1.2702,
+              8.3646,
+              1.2711,
+              8.5078,
+              0.5253,
+              8.5126
+            ]
+          }
+        ],
+        "content": "VIGENCIA:"
+      },
+      {
+        "spans": [
+          {
+            "offset": 722,
+            "length": 35
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              2.6264,
+              8.355,
+              6.0407,
+              8.355,
+              6.0407,
+              8.5221,
+              2.6264,
+              8.5221
+            ]
+          }
+        ],
+        "content": "DESDE: 13-04-2023 HASTA: 13-04-2025"
+      },
+      {
+        "spans": [
+          {
+            "offset": 758,
+            "length": 21
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5157,
+              8.6463,
+              2.316,
+              8.6463,
+              2.316,
+              8.8134,
+              0.5157,
+              8.8134
+            ]
+          }
+        ],
+        "content": "AUTORIDAD QUE EXPIDE:"
+      },
+      {
+        "spans": [
+          {
+            "offset": 780,
+            "length": 28
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              2.6261,
+              8.6558,
+              5.0093,
+              8.651,
+              5.0096,
+              8.8086,
+              2.6264,
+              8.8134
+            ]
+          }
+        ],
+        "content": "DIRECCION TERRITORIAL BOYACA"
+      },
+      {
+        "spans": [
+          {
+            "offset": 809,
+            "length": 21
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              3.1899,
+              8.99,
+              4.9949,
+              8.99,
+              4.9949,
+              9.1332,
+              3.1899,
+              9.1332
+            ]
+          }
+        ],
+        "content": "FIRMA DEL FUNCIONARIO"
+      },
+      {
+        "spans": [
+          {
+            "offset": 831,
+            "length": 118
+          }
+        ],
+        "boundingRegions": [
+          {
+            "pageNumber": 1,
+            "polygon": [
+              0.5301,
+              10.6897,
+              7.8792,
+              10.6897,
+              7.8792,
+              10.8424,
+              0.5301,
+              10.8424
+            ]
+          }
+        ],
+        "content": "Concesión RUNT S.A. / Nit 900.153.453-4 / Colombia / Atención al usuario Línea Nacional 018000930060 / www.runt.com.co"
+      }
+    ],
+    "styles": [],
+    "contentFormat": "text"
+  }
+}

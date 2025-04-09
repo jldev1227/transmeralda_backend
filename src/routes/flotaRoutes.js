@@ -15,7 +15,8 @@ const {
   buscarVehiculosPorPlaca,
   getVehiculosBasicos,
   uploadGaleriaImages,
-  uploadDocumentos
+  uploadDocumentos,
+  getProgressProccess
 } = require('../controllers/vehiculoController');
 const { protect } = require('../middleware/auth');
 
@@ -36,5 +37,9 @@ router.patch('/:id/ubicacion', updateUbicacionVehiculo);
 router.patch('/:id/kilometraje', updateKilometrajeVehiculo);
 router.delete('/:id/galeria', protect, deleteGaleriaImage);
 router.patch('/:id/conductor', protect, asignarConductor);
+
+
+// Obtener progreso drouter.get('/progreso/:sessionId', async (req, res) => {
+router.get('/progreso/:sessionId', protect, getProgressProccess)
 
 module.exports = router;

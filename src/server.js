@@ -31,6 +31,8 @@ const allowedOrigins = [
   'https://nomina.transmeralda.com',
   'https://auth.transmeralda.com',
   'https://flota.transmeralda.com',
+  'http://flota.midominio.local:3000',
+  'http://auth.midominio.local:3001',
 ];
 
 const corsOptions = {
@@ -42,7 +44,8 @@ const corsOptions = {
     'Authorization', 
     'X-Requested-With', 
     'Accept', 
-    'Origin'
+    'Origin',
+    "socket-id"
   ]
 };
 
@@ -51,9 +54,20 @@ app.use(cors(corsOptions));
 
 // Configuración de Socket.IO
 const io = socketIO(server, {
-  path: '/socket.io/',
+  cors: {
+    // Permitir todos los orígenes necesarios
+    origin: [
+      "http://flota.midominio.local:3000",
+      "http://flota.midominio.local",
+      "http://localhost:3000"
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "socket-id"],
+    credentials: true
+  },
   transports: ['polling', 'websocket'] // Poner polling primero
 });
+global.io = io;
 
 // Almacenar conexiones de sockets por ID de usuario
 const userSockets = new Map();
@@ -108,7 +122,7 @@ const notifyUser = (userId, event, data) => {
 // Exponer funciones de socket.io a otros módulos
 app.set('io', io);
 app.set('notifyUser', notifyUser);
-app.set('trust proxy', true);
+app.set('trust proxy', false);
 
 
 // Rate limiting
