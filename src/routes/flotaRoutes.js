@@ -14,7 +14,8 @@ const {
   asignarConductor,
   buscarVehiculosPorPlaca,
   getVehiculosBasicos,
-  uploadGaleriaImages
+  uploadGaleriaImages,
+  uploadDocumentos
 } = require('../controllers/vehiculoController');
 const { protect } = require('../middleware/auth');
 
@@ -27,7 +28,7 @@ router.get('/basicos', getVehiculosBasicos);
 router.get('/:id', getVehiculoById);
 
 // Rutas solo para administradores
-router.post('/', protect, uploadGaleriaImages, createVehiculo);
+router.post('/', protect, uploadDocumentos, createVehiculo);
 router.put('/:id', protect, uploadGaleriaImages, updateVehiculo);
 router.delete('/:id', protect, deleteVehiculo);
 router.patch('/:id/estado', protect, updateEstadoVehiculo);

@@ -1,0 +1,5 @@
+{
+    "ignore": ["utils/*"],
+    "watch": ["*.*"],
+    "ext": "js,json"
+  }
