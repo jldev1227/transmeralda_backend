@@ -16,30 +16,32 @@ const {
   getVehiculosBasicos,
   uploadGaleriaImages,
   uploadDocumentos,
-  getProgressProccess
+  getProgressProccess,
+  getVehiculoBasico
 } = require('../controllers/vehiculoController');
-const { protect } = require('../middleware/auth');
+const { protect, hasRole } = require('../middleware/auth');
 
 // Rutas públicas
 router.get('/buscar', buscarVehiculosPorPlaca);
 
 // Rutas para todos los usuarios autenticados
-router.get('/', getVehiculos);
-router.get('/basicos', getVehiculosBasicos);
-router.get('/:id', getVehiculoById);
+router.get('/', protect, hasRole(['admin', 'gestor_flota']), getVehiculos);
+router.get('/basicos', protect, hasRole(['admin', 'gestor_flota']), getVehiculosBasicos);
+router.get('/:id', protect, hasRole(['admin', 'gestor_flota']), getVehiculoById);
+router.get('/basico/:id', protect, hasRole(['admin', 'gestor_flota']), getVehiculoBasico);
 
 // Rutas solo para administradores
-router.post('/', protect, uploadDocumentos, createVehiculo);
-router.put('/:id', protect, uploadGaleriaImages, updateVehiculo);
-router.delete('/:id', protect, deleteVehiculo);
-router.patch('/:id/estado', protect, updateEstadoVehiculo);
-router.patch('/:id/ubicacion', updateUbicacionVehiculo);
+router.post('/', protect, hasRole(['admin', 'gestor_flota']), uploadDocumentos, createVehiculo);
+router.put('/:id', protect, hasRole(['admin', 'gestor_flota']), uploadDocumentos, updateVehiculo);
+router.delete('/:id', protect, hasRole(['admin', 'gestor_flota']), deleteVehiculo);
+router.patch('/:id/estado', protect, hasRole(['admin', 'gestor_flota']), updateEstadoVehiculo);
+router.patch('/:id/ubicacion', protect, hasRole(['admin', 'gestor_flota']), updateUbicacionVehiculo);
 router.patch('/:id/kilometraje', updateKilometrajeVehiculo);
-router.delete('/:id/galeria', protect, deleteGaleriaImage);
-router.patch('/:id/conductor', protect, asignarConductor);
+router.delete('/:id/galeria', protect, hasRole(['admin', 'gestor_flota']), deleteGaleriaImage);
+router.patch('/:id/conductor', protect, hasRole(['admin', 'gestor_flota']), asignarConductor);
 
 
 // Obtener progreso drouter.get('/progreso/:sessionId', async (req, res) => {
-router.get('/progreso/:sessionId', protect, getProgressProccess)
+router.get('/progreso/:sessionId', protect, hasRole(['admin', 'gestor_flota']), getProgressProccess)
 
 module.exports = router;

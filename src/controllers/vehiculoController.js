@@ -2,7 +2,7 @@
 const { Vehiculo, Conductor } = require('../models');
 const { Op } = require('sequelize');
 const multer = require('multer');
-const { procesarDocumentos } = require('../queue');
+const { procesarDocumentos, actualizarDocumentosVehiculo } = require('../queues/vehiculo');
 const { redisClient } = require('../config/redisClient');
 
 
@@ -176,11 +176,11 @@ const createVehiculo = async (req, res) => {
 // Actualizar un vehículo existente
 const updateVehiculo = async (req, res) => {
   try {
+    // Obtener el ID del vehículo de los parámetros de ruta
     const { id } = req.params;
-    const vehiculoData = req.body;
     
+    // Verificar que el vehículo existe
     const vehiculo = await Vehiculo.findByPk(id);
-    
     if (!vehiculo) {
       return res.status(404).json({
         success: false,
@@ -188,45 +188,74 @@ const updateVehiculo = async (req, res) => {
       });
     }
     
-    // Si se envían archivos nuevos para la galería
-    if (req.files && req.files.length > 0) {
-      // Obtener la galería actual y añadir las nuevas imágenes
-      let galeriaActual = vehiculo.galeria || [];
-      const nuevasImagenes = req.files.map(file => file.path);
-      
-      vehiculoData.galeria = [...galeriaActual, ...nuevasImagenes];
-    }
-    
-    // Actualizar vehiculo con los nuevos datos
-    await vehiculo.update(vehiculoData);
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Vehículo actualizado exitosamente',
-      vehiculo
-    });
-  } catch (error) {
-    console.error('Error al actualizar vehículo:', error);
-    
-    if (error.name === 'SequelizeUniqueConstraintError') {
-      return res.status(409).json({
-        success: false,
-        message: 'La placa ya está registrada para otro vehículo'
-      });
-    }
-    
-    if (error.name === 'SequelizeValidationError') {
+    // El middleware uploadDocumentos debe aplicarse a nivel de ruta, no aquí
+    const { categorias } = req.body;
+    const files = req.files;
+
+    // Validar que se proporcionaron archivos y categorías
+    if (!files || !categorias || files.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Error de validación',
-        errors: error.errors.map(e => e.message)
+        message: "Se requiere al menos un documento para actualizar"
       });
     }
+
+    // Convertir categorías a array si llega como string (para manejar formato form-data)
+    let categoriasArray = categorias;
+    if (typeof categorias === 'string') {
+      try {
+        categoriasArray = JSON.parse(categorias);
+      } catch (e) {
+        categoriasArray = categorias.split(',').map(cat => cat.trim());
+      }
+    }
+
+    const categoriasPermitidas = [
+      "TARJETA_DE_PROPIEDAD",
+      "SOAT",
+      "TECNOMECANICA",
+      "TARJETA_DE_OPERACION",
+      "POLIZA_CONTRACTUAL",
+      "POLIZA_EXTRACONTRACTUAL",
+      "POLIZA_TODO_RIESGO",
+    ];
+
+    // Verificar que todas las categorías enviadas son válidas
+    const categoriasInvalidas = categoriasArray.filter(
+      (categoria) => !categoriasPermitidas.includes(categoria)
+    );
     
+    if (categoriasInvalidas.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Las siguientes categorías no son válidas: ${categoriasInvalidas.join(", ")}.`
+      });
+    }
+
+    // Adaptar los archivos de multer al formato esperado por el procesador
+    const adaptedFiles = files.map(file => ({
+      buffer: file.buffer, // Pasar el buffer directamente
+      filename: file.originalname,
+      mimetype: file.mimetype
+    }));
+
+    // Obtener el ID del socket del cliente (si está disponible)
+    const socketId = req.headers['socket-id'] || 'unknown';
+    
+    // Iniciar procesamiento asíncrono usando la nueva función para actualización
+    const sessionId = await actualizarDocumentosVehiculo(adaptedFiles, categoriasArray, id, socketId);
+    
+    // Devolver respuesta inmediata
+    return res.status(202).json({
+      success: true,
+      sessionId,
+      message: "El procesamiento de documentos ha comenzado. Recibirás actualizaciones en tiempo real."
+    });
+  } catch (error) {
+    console.error("Error al procesar la solicitud de actualización:", error);
     return res.status(500).json({
       success: false,
-      message: 'Error al actualizar el vehículo',
-      error: error.message
+      message: error.message || "Error interno del servidor"
     });
   }
 };
@@ -587,6 +616,37 @@ const getProgressProccess = async (req, res) => {
   }
 }
 
+const getVehiculoBasico = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const vehiculo = await Vehiculo.findByPk(id, {
+      attributes: ['id', 'placa'], // Solo selecciona estos campos
+      raw: true // Obtiene solo los datos planos, sin instancias de Sequelize
+    });
+    console.log(vehiculo)
+    
+    if (!vehiculo) {
+      return res.status(404).json({
+        success: false,
+        message: 'Vehículo no encontrado'
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      vehiculo: vehiculo
+    });
+  } catch (error) {
+    console.error('Error al obtener vehículo básico:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al obtener el vehículo',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+}
+
 // Middleware para manejar carga de archivos
 const uploadGaleriaImages = upload.array('galeria', 10); // Máximo 10 imágenes
 
@@ -603,6 +663,7 @@ module.exports = {
   asignarConductor,
   buscarVehiculosPorPlaca,
   getVehiculosBasicos,
+  getVehiculoBasico,
   uploadGaleriaImages,
   uploadDocumentos,
   getProgressProccess
