@@ -6,13 +6,54 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs').promises;
 const path = require('path');
 const { Vehiculo } = require('../models');
+const documentoController = require('../controllers/documentoController');
+const logger = require('../utils/logger'); // Asume un módulo de logging
 
 // Configuración de Redis con cliente unificado
 const { redisClient, redisOptions } = require('../config/redisClient');
 const Queue = require('bull');
 
 // Configuración de logging
-const logger = require('../utils/logger'); // Asume un módulo de logging
+
+// Directorio base para archivos temporales
+const TEMP_DIR = path.join(__dirname, '..', 'temp');
+
+/**
+ * Guarda un archivo temporalmente en el sistema de archivos local
+ * @param {Buffer} buffer - Buffer del archivo
+ * @param {string} sessionId - ID de la sesión
+ * @param {string} categoria - Categoría del documento
+ * @param {string} filename - Nombre original del archivo
+ * @returns {Promise<string>} - Ruta al archivo guardado
+ */
+async function guardarArchivoTemporal(buffer, sessionId, categoria, filename) {
+  // Crear directorios si no existen
+  const sessionDir = path.join(TEMP_DIR, sessionId);
+  await fs.mkdir(sessionDir, { recursive: true });
+
+  // Generar nombre único para el archivo
+  const uniqueFilename = `${Date.now()}-${filename || categoria + '.pdf'}`;
+  const filePath = path.join(sessionDir, uniqueFilename);
+
+  // Guardar archivo
+  await fs.writeFile(filePath, buffer);
+
+  return filePath;
+}
+
+/**
+ * Elimina el directorio temporal de una sesión
+ * @param {string} sessionId - ID de la sesión
+ */
+async function limpiarArchivosTemporales(sessionId) {
+  try {
+    const sessionDir = path.join(TEMP_DIR, sessionId);
+    await fs.rmdir(sessionDir, { recursive: true });
+    logger.info(`Directorio temporal eliminado: ${sessionDir}`);
+  } catch (error) {
+    logger.error(`Error al eliminar directorio temporal: ${error.message}`);
+  }
+}
 
 // Cola para procesar documentos
 const documentQueue = new Queue('document-processing', {
@@ -45,8 +86,6 @@ const vehicleCreationQueue = new Queue('vehicle-creation', {
 // Configuración para OCR
 const documentIntelligenceEndpoint = process.env.DOC_INTELLIGENCE;
 const subscriptionKey = process.env.DOC_INTELLIGENCE_KEY;
-
-console.log(documentIntelligenceEndpoint, subscriptionKey);
 
 // Asegurar que las variables de entorno estén definidas
 if (!documentIntelligenceEndpoint || !subscriptionKey) {
@@ -283,6 +322,25 @@ function notificarCliente(socketId, evento, datos) {
 }
 
 /**
+ * Notifica al cliente a través de WebSocket
+ * @param {string} evento - Nombre del evento a emitir
+ * @param {object} datos - Datos a enviar
+ */
+function notificarGlobal(evento, datos) {
+  if (!global.io) {
+    logger.error(`No se puede emitir evento global ${evento}: global.io no inicializado`);
+    return;
+  }
+
+  try {
+    global.io.emit(evento, datos);
+    logger.debug(`Evento ${evento} emitido globalmente a todos los clientes conectados`);
+  } catch (error) {
+    logger.error(`Error al emitir evento global ${evento}: ${error.message}`);
+  }
+}
+
+/**
  * Obtiene la placa del vehículo desde los datos de la tarjeta de propiedad
  * @param {string} sessionId - ID de la sesión
  * @returns {Promise<string>} - Placa del vehículo
@@ -495,6 +553,25 @@ documentQueue.process('procesar-documento', async (job) => {
       logger.warn(`Saltando procesamiento de ${categoria}: la sesión ${sessionId} está marcada como fallida`);
       return { skipped: true, reason: 'session_failed' };
     }
+
+    try {
+      // Guardar temporalmente el documento
+      const fileInfo = await documentoController.saveTemporaryDocument(
+        file,
+        sessionId,
+        categoria
+      );
+
+      // Guardar referencia en Redis
+      const fileInfoKey = `vehiculo:${sessionId}:files:${categoria}`;
+      await redisClient.set(fileInfoKey, JSON.stringify(fileInfo), 'EX', 24 * 60 * 60);
+
+      logger.info(`Documento ${categoria} guardado temporalmente en: ${fileInfo.path}`);
+    } catch (error) {
+      logger.error(`Error al guardar documento temporal: ${error.message}`);
+      // Continuar con el proceso aunque falle el guardado
+    }
+
 
     // Actualizar progreso
     job.progress(10);
@@ -899,7 +976,18 @@ vehicleCreationQueue.process('crear-vehiculo', async (job) => {
 
     // Notificar a través de WebSocket
     const socketId = await redisClient.hget(`vehiculo:${sessionId}`, 'socketId');
-    notificarCliente(socketId, 'vehiculo-creado', {
+    notificarCliente(socketId, 'vehiculo_creado', {
+      success: true,
+      vehiculo: nuevoVehiculo,
+      mensaje: 'Vehículo creado exitosamente',
+      detalles: {
+        documentosProcesados: Object.keys(documentosData).length,
+        fechaCreacion: nuevoVehiculo.fechaCreacion
+      }
+    });
+
+    // Notificación global a todos los clientes conectados
+    notificarGlobal('vehiculo_creado', {
       success: true,
       vehiculo: nuevoVehiculo,
       mensaje: 'Vehículo creado exitosamente',
@@ -1286,7 +1374,7 @@ vehicleCreationQueue.process('actualizar-vehiculo', async (job) => {
             actualizaciones[campo] = parsedDoc[campo];
           }
         }
-      } 
+      }
       // Para otros documentos, actualizar fechas de vencimiento
       else if (mapeoFechas[categoria] && parsedDoc) {
         // Validar placa si existe
@@ -1301,7 +1389,7 @@ vehicleCreationQueue.process('actualizar-vehiculo', async (job) => {
           // Validar formato de fecha
           if (isValidDate(parsedDoc[mapeoFechas[categoria]])) {
             actualizaciones[mapeoFechas[categoria]] = parsedDoc[mapeoFechas[categoria]];
-            
+
             // Actualizar estado de vigencia
             const hoy = new Date();
             if (new Date(parsedDoc[mapeoFechas[categoria]]) < hoy) {
@@ -1338,7 +1426,7 @@ vehicleCreationQueue.process('actualizar-vehiculo', async (job) => {
         // Actualizar vehículo en la base de datos
         await vehiculo.update(actualizaciones);
         vehiculoActualizado = await Vehiculo.findByPk(vehiculoId); // Recargar para obtener datos actualizados
-        
+
         logger.info(`Vehículo con placa ${vehiculo.placa} actualizado. Sesión: ${sessionId}`);
         break;
       } catch (dbError) {
@@ -1378,6 +1466,16 @@ vehicleCreationQueue.process('actualizar-vehiculo', async (job) => {
       detalles: {
         documentosProcesados: Object.keys(documentosData).length,
         fechaActualizacion: vehiculoActualizado.fechaActualizacion
+      }
+    });
+
+    notificarGlobal('vehiculo_actualizado', {
+      success: true,
+      vehiculo: vehiculoActualizado,
+      mensaje: 'Vehículo actualizado exitosamente',
+      detalles: {
+        documentosProcesados: Object.keys(documentosData).length,
+        fechaCreacion: vehiculoActualizado.fechaCreacion
       }
     });
 

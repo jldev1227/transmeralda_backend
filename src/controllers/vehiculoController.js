@@ -7,7 +7,7 @@ const { redisClient } = require('../config/redisClient');
 
 
 const storage = multer.memoryStorage();
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB límite
 });
@@ -15,42 +15,32 @@ const upload = multer({
 
 const uploadDocumentos = upload.array('documentos', 10); // Espera un campo llamado 'documentos'
 
-// Filtrar archivos permitidos
-const fileFilter = (req, file, cb) => {
-  const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Formato de archivo no válido. Solo se permiten JPEG, PNG y PDF.'), false);
-  }
-};
-
 // Obtener todos los vehículos
 const getVehiculos = async (req, res) => {
   try {
     const { estado, marca, propietarioId } = req.query;
-    
+
     const whereClause = {};
-    
+
     if (estado) {
       whereClause.estado = estado;
     }
-    
+
     if (marca) {
       whereClause.marca = { [Op.iLike]: `%${marca}%` };
     }
-    
+
     if (propietarioId) {
       whereClause.propietarioId = propietarioId;
     }
-    
+
     const vehiculos = await Vehiculo.findAll({
       where: whereClause,
       include: [
         { model: Conductor, as: 'conductor' }
       ]
     });
-    
+
     return res.status(200).json({
       success: true,
       count: vehiculos.length,
@@ -70,20 +60,20 @@ const getVehiculos = async (req, res) => {
 const getVehiculoById = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const vehiculo = await Vehiculo.findByPk(id, {
       include: [
         { model: Conductor, as: 'conductor' }
       ]
     });
-    
+
     if (!vehiculo) {
       return res.status(404).json({
         success: false,
         message: 'Vehículo no encontrado'
       });
     }
-    
+
     return res.status(200).json({
       success: true,
       vehiculo
@@ -137,7 +127,7 @@ const createVehiculo = async (req, res) => {
     const categoriasFaltantes = categoriasPermitidas.filter(
       (categoria) => !categoriasArray.includes(categoria)
     );
-    
+
     if (categoriasFaltantes.length > 0) {
       return res.status(400).json({
         success: false,
@@ -154,10 +144,10 @@ const createVehiculo = async (req, res) => {
 
     // Obtener el ID del socket del cliente (si está disponible)
     const socketId = req.headers['socket-id'] || 'unknown';
-    
+
     // Iniciar procesamiento asíncrono
     const sessionId = await procesarDocumentos(adaptedFiles, categoriasArray, socketId);
-    
+
     // Devolver respuesta inmediata
     return res.status(202).json({
       success: true,
@@ -178,7 +168,7 @@ const updateVehiculo = async (req, res) => {
   try {
     // Obtener el ID del vehículo de los parámetros de ruta
     const { id } = req.params;
-    
+
     // Verificar que el vehículo existe
     const vehiculo = await Vehiculo.findByPk(id);
     if (!vehiculo) {
@@ -187,7 +177,7 @@ const updateVehiculo = async (req, res) => {
         message: 'Vehículo no encontrado'
       });
     }
-    
+
     // El middleware uploadDocumentos debe aplicarse a nivel de ruta, no aquí
     const { categorias } = req.body;
     const files = req.files;
@@ -224,7 +214,7 @@ const updateVehiculo = async (req, res) => {
     const categoriasInvalidas = categoriasArray.filter(
       (categoria) => !categoriasPermitidas.includes(categoria)
     );
-    
+
     if (categoriasInvalidas.length > 0) {
       return res.status(400).json({
         success: false,
@@ -241,10 +231,10 @@ const updateVehiculo = async (req, res) => {
 
     // Obtener el ID del socket del cliente (si está disponible)
     const socketId = req.headers['socket-id'] || 'unknown';
-    
+
     // Iniciar procesamiento asíncrono usando la nueva función para actualización
     const sessionId = await actualizarDocumentosVehiculo(adaptedFiles, categoriasArray, id, socketId);
-    
+
     // Devolver respuesta inmediata
     return res.status(202).json({
       success: true,
@@ -264,16 +254,16 @@ const updateVehiculo = async (req, res) => {
 const deleteVehiculo = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const vehiculo = await Vehiculo.findByPk(id);
-    
+
     if (!vehiculo) {
       return res.status(404).json({
         success: false,
         message: 'Vehículo no encontrado'
       });
     }
-    
+
     // Eliminar archivos de galería si existen
     if (vehiculo.galeria && vehiculo.galeria.length > 0) {
       vehiculo.galeria.forEach(filePath => {
@@ -282,9 +272,9 @@ const deleteVehiculo = async (req, res) => {
         }
       });
     }
-    
+
     await vehiculo.destroy();
-    
+
     return res.status(200).json({
       success: true,
       message: 'Vehículo eliminado exitosamente'
@@ -304,25 +294,25 @@ const updateEstadoVehiculo = async (req, res) => {
   try {
     const { id } = req.params;
     const { estado } = req.body;
-    
+
     if (!['DISPONIBLE', 'NO DISPONIBLE', 'MANTENIMIENTO', 'INACTIVO'].includes(estado)) {
       return res.status(400).json({
         success: false,
         message: 'Estado no válido. Use: DISPONIBLE, NO DISPONIBLE, MANTENIMIENTO o INACTIVO'
       });
     }
-    
+
     const vehiculo = await Vehiculo.findByPk(id);
-    
+
     if (!vehiculo) {
       return res.status(404).json({
         success: false,
         message: 'Vehículo no encontrado'
       });
     }
-    
+
     await vehiculo.update({ estado });
-    
+
     return res.status(200).json({
       success: true,
       message: `Estado del vehículo actualizado a ${estado}`,
@@ -343,25 +333,25 @@ const updateUbicacionVehiculo = async (req, res) => {
   try {
     const { id } = req.params;
     const { latitud, longitud } = req.body;
-    
+
     if (!latitud || !longitud) {
       return res.status(400).json({
         success: false,
         message: 'Latitud y longitud son requeridas'
       });
     }
-    
+
     const vehiculo = await Vehiculo.findByPk(id);
-    
+
     if (!vehiculo) {
       return res.status(404).json({
         success: false,
         message: 'Vehículo no encontrado'
       });
     }
-    
+
     await vehiculo.update({ latitud, longitud });
-    
+
     return res.status(200).json({
       success: true,
       message: 'Ubicación del vehículo actualizada',
@@ -382,25 +372,25 @@ const updateKilometrajeVehiculo = async (req, res) => {
   try {
     const { id } = req.params;
     const { kilometraje } = req.body;
-    
+
     if (isNaN(kilometraje) || kilometraje < 0) {
       return res.status(400).json({
         success: false,
         message: 'El kilometraje debe ser un número positivo'
       });
     }
-    
+
     const vehiculo = await Vehiculo.findByPk(id);
-    
+
     if (!vehiculo) {
       return res.status(404).json({
         success: false,
         message: 'Vehículo no encontrado'
       });
     }
-    
+
     await vehiculo.update({ kilometraje });
-    
+
     return res.status(200).json({
       success: true,
       message: 'Kilometraje del vehículo actualizado',
@@ -421,23 +411,23 @@ const deleteGaleriaImage = async (req, res) => {
   try {
     const { id } = req.params;
     const { imagePath } = req.body;
-    
+
     if (!imagePath) {
       return res.status(400).json({
         success: false,
         message: 'Se requiere la ruta de la imagen a eliminar'
       });
     }
-    
+
     const vehiculo = await Vehiculo.findByPk(id);
-    
+
     if (!vehiculo) {
       return res.status(404).json({
         success: false,
         message: 'Vehículo no encontrado'
       });
     }
-    
+
     // Verificar si la imagen existe en la galería
     const galeriaActual = vehiculo.galeria || [];
     if (!galeriaActual.includes(imagePath)) {
@@ -446,16 +436,16 @@ const deleteGaleriaImage = async (req, res) => {
         message: 'Imagen no encontrada en la galería'
       });
     }
-    
+
     // Eliminar archivo físico
     if (fs.existsSync(imagePath)) {
       fs.unlinkSync(imagePath);
     }
-    
+
     // Actualizar galería en la base de datos
     const nuevaGaleria = galeriaActual.filter(img => img !== imagePath);
     await vehiculo.update({ galeria: nuevaGaleria });
-    
+
     return res.status(200).json({
       success: true,
       message: 'Imagen eliminada de la galería',
@@ -476,34 +466,34 @@ const asignarConductor = async (req, res) => {
   try {
     const { id } = req.params;
     const { conductorId } = req.body;
-    
+
     if (!conductorId) {
       return res.status(400).json({
         success: false,
         message: 'El ID del conductor es requerido'
       });
     }
-    
+
     const vehiculo = await Vehiculo.findByPk(id);
-    
+
     if (!vehiculo) {
       return res.status(404).json({
         success: false,
         message: 'Vehículo no encontrado'
       });
     }
-    
+
     const conductor = await Usuario.findByPk(conductorId);
-    
+
     if (!conductor) {
       return res.status(404).json({
         success: false,
         message: 'Conductor no encontrado'
       });
     }
-    
+
     await vehiculo.update({ conductorId });
-    
+
     return res.status(200).json({
       success: true,
       message: 'Conductor asignado exitosamente',
@@ -523,14 +513,14 @@ const asignarConductor = async (req, res) => {
 const buscarVehiculosPorPlaca = async (req, res) => {
   try {
     const { placa } = req.query;
-    
+
     if (!placa) {
       return res.status(400).json({
         success: false,
         message: 'Se requiere una placa para la búsqueda'
       });
     }
-    
+
     const vehiculos = await Vehiculo.findAll({
       where: {
         placa: {
@@ -542,7 +532,7 @@ const buscarVehiculosPorPlaca = async (req, res) => {
         { model: Usuario, as: 'conductor' }
       ]
     });
-    
+
     return res.status(200).json({
       success: true,
       count: vehiculos.length,
@@ -565,7 +555,7 @@ const getVehiculosBasicos = async (req, res) => {
       attributes: ['id', 'placa'], // Solo selecciona estos campos
       raw: true // Obtiene solo los datos planos, sin instancias de Sequelize
     });
-    
+
     return res.status(200).json({
       success: true,
       count: vehiculos.length,
@@ -584,21 +574,21 @@ const getVehiculosBasicos = async (req, res) => {
 const getProgressProccess = async (req, res) => {
   try {
     const { sessionId } = req.params;
-    
+
     // Obtener información del progreso desde Redis
     const procesados = await redisClient.hget(`vehiculo:${sessionId}`, 'procesados');
     const total = await redisClient.hget(`vehiculo:${sessionId}`, 'totalDocumentos');
-    
+
     if (!procesados || !total) {
-      return res.status(404).json({ 
-        error: 'No se encontró información para esta sesión' 
+      return res.status(404).json({
+        error: 'No se encontró información para esta sesión'
       });
     }
-    
+
     // Calcular el progreso
     const progreso = Math.floor((parseInt(procesados) / parseInt(total)) * 100);
     const completado = parseInt(procesados) === parseInt(total);
-    
+
     // Devolver la información de progreso
     return res.json({
       sessionId,
@@ -607,11 +597,11 @@ const getProgressProccess = async (req, res) => {
       progreso,
       completado
     });
-    
+
   } catch (error) {
     console.error('Error al consultar el progreso:', error);
-    return res.status(500).json({ 
-      error: 'Error al consultar el progreso del procesamiento' 
+    return res.status(500).json({
+      error: 'Error al consultar el progreso del procesamiento'
     });
   }
 }
@@ -619,20 +609,20 @@ const getProgressProccess = async (req, res) => {
 const getVehiculoBasico = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const vehiculo = await Vehiculo.findByPk(id, {
       attributes: ['id', 'placa'], // Solo selecciona estos campos
       raw: true // Obtiene solo los datos planos, sin instancias de Sequelize
     });
     console.log(vehiculo)
-    
+
     if (!vehiculo) {
       return res.status(404).json({
         success: false,
         message: 'Vehículo no encontrado'
       });
     }
-    
+
     return res.status(200).json({
       success: true,
       vehiculo: vehiculo
@@ -644,6 +634,80 @@ const getVehiculoBasico = async (req, res) => {
       message: 'Error al obtener el vehículo',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+  }
+}
+
+// Función para subir un documento
+async function uploadVehicleDocument(vehicleId, documentType, filePath, filename) {
+  const client = await sequelize.connectionManager.getConnection();
+
+  try {
+    await client.query('BEGIN');
+    const manager = new LargeObjectManager({ pg: client });
+
+    // Crear Large Object y obtener su ID
+    const oid = await manager.createAndWritableStream(16384, async (writeStream) => {
+      return new Promise((resolve, reject) => {
+        const readStream = fs.createReadStream(filePath);
+        readStream.pipe(writeStream);
+        readStream.on('end', resolve);
+        readStream.on('error', reject);
+      });
+    });
+
+    // Guardar referencia en la base de datos
+    await sequelize.models.Document.create({
+      vehicleId,
+      documentType,
+      fileOid: oid,
+      filename,
+      mimetype: getFileMimeType(filename),
+      uploadDate: new Date(),
+      metadata: {}
+    });
+
+    await client.query('COMMIT');
+    return true;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Función para recuperar un documento
+async function getVehicleDocument(documentId) {
+  const document = await sequelize.models.Document.findByPk(documentId);
+  if (!document) return null;
+
+  const client = await sequelize.connectionManager.getConnection();
+
+  try {
+    await client.query('BEGIN');
+    const manager = new LargeObjectManager({ pg: client });
+
+    // Leer contenido desde Large Object
+    const buffer = await manager.openAndReadableStream(document.fileOid, 16384, async (readStream) => {
+      return new Promise((resolve, reject) => {
+        const chunks = [];
+        readStream.on('data', chunk => chunks.push(chunk));
+        readStream.on('end', () => resolve(Buffer.concat(chunks)));
+        readStream.on('error', reject);
+      });
+    });
+
+    await client.query('COMMIT');
+
+    return {
+      document,
+      buffer
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -666,5 +730,7 @@ module.exports = {
   getVehiculoBasico,
   uploadGaleriaImages,
   uploadDocumentos,
-  getProgressProccess
+  getProgressProccess,
+  uploadVehicleDocument,
+  getVehicleDocument
 };
