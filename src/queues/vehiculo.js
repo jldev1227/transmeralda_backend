@@ -15,46 +15,6 @@ const Queue = require('bull');
 
 // Configuración de logging
 
-// Directorio base para archivos temporales
-const TEMP_DIR = path.join(__dirname, '..', 'temp');
-
-/**
- * Guarda un archivo temporalmente en el sistema de archivos local
- * @param {Buffer} buffer - Buffer del archivo
- * @param {string} sessionId - ID de la sesión
- * @param {string} categoria - Categoría del documento
- * @param {string} filename - Nombre original del archivo
- * @returns {Promise<string>} - Ruta al archivo guardado
- */
-async function guardarArchivoTemporal(buffer, sessionId, categoria, filename) {
-  // Crear directorios si no existen
-  const sessionDir = path.join(TEMP_DIR, sessionId);
-  await fs.mkdir(sessionDir, { recursive: true });
-
-  // Generar nombre único para el archivo
-  const uniqueFilename = `${Date.now()}-${filename || categoria + '.pdf'}`;
-  const filePath = path.join(sessionDir, uniqueFilename);
-
-  // Guardar archivo
-  await fs.writeFile(filePath, buffer);
-
-  return filePath;
-}
-
-/**
- * Elimina el directorio temporal de una sesión
- * @param {string} sessionId - ID de la sesión
- */
-async function limpiarArchivosTemporales(sessionId) {
-  try {
-    const sessionDir = path.join(TEMP_DIR, sessionId);
-    await fs.rmdir(sessionDir, { recursive: true });
-    logger.info(`Directorio temporal eliminado: ${sessionDir}`);
-  } catch (error) {
-    logger.error(`Error al eliminar directorio temporal: ${error.message}`);
-  }
-}
-
 // Cola para procesar documentos
 const documentQueue = new Queue('document-processing', {
   redis: redisOptions,
@@ -102,7 +62,7 @@ const scriptMapping = {
   'POLIZA_CONTRACTUAL': 'ocrPOLIZA_CONTRACTUAL.py',
   'POLIZA_EXTRACONTRACTUAL': 'ocrPOLIZA_EXTRACONTRACTUAL.py',
   'POLIZA_TODO_RIESGO': 'ocrPOLIZA_TODO_RIESGO.py'
-};
+}; ``
 
 // Claves para el mapeo de fechas de vencimiento
 const mapeoFechas = {
@@ -110,7 +70,7 @@ const mapeoFechas = {
   'TECNOMECANICA': 'tecnomecanicaVencimiento',
   'TARJETA_DE_OPERACION': 'tarjetaDeOperacionVencimiento',
   'POLIZA_CONTRACTUAL': 'polizaContractualVencimiento',
-  'POLIZA_EXTRACONTRACTUAL': 'polizaExtracontractualVencimiento',
+  'POLIZA_EXTRACONTRACTUAL': 'polizaExtraContractualVencimiento',
   'POLIZA_TODO_RIESGO': 'polizaTodoRiesgoVencimiento'
 };
 
@@ -228,7 +188,7 @@ async function runOcrScript(category, scriptName, filePath, placa = null) {
  */
 async function procesarConArchivoTemporal(categoria, scriptName, ocrData, placa = null) {
   const uniqueId = uuidv4().substring(0, 8); // Identificador único para evitar colisiones
-  const dirPath = path.join(__dirname, 'temp');
+  const dirPath = path.join(__dirname, '..', '..', 'temp');
   const filePath = path.join(dirPath, `tempOcrData_${categoria}_${uniqueId}.json`);
 
   try {
@@ -571,7 +531,6 @@ documentQueue.process('procesar-documento', async (job) => {
       logger.error(`Error al guardar documento temporal: ${error.message}`);
       // Continuar con el proceso aunque falle el guardado
     }
-
 
     // Actualizar progreso
     job.progress(10);
@@ -937,6 +896,7 @@ vehicleCreationQueue.process('crear-vehiculo', async (job) => {
     const maxIntentos = 3;
 
     while (intentos < maxIntentos && !nuevoVehiculo) {
+      logger.info(`Datos del vehiculo ${JSON.stringify(datos)}`)
       try {
         // En un entorno real, aquí iría la llamada a la base de datos
         nuevoVehiculo = await Vehiculo.create(datos);
@@ -970,6 +930,46 @@ vehicleCreationQueue.process('crear-vehiculo', async (job) => {
       'fechaCompletado': new Date().toISOString(),
       'resumenDocumentos': JSON.stringify(resumenDocumentos)
     });
+
+    // ** NUEVO BLOQUE - Subir documentos a S3 **
+    try {
+      logger.info(`Iniciando subida de documentos a S3 para vehículo: ${nuevoVehiculo.id}, sesión: ${sessionId}`);
+
+      // Llamar a la función para subir los documentos
+      const documentosSubidos = await documentoController.uploadProcessedDocuments(sessionId, nuevoVehiculo.id);
+
+      logger.info(`Subida de documentos completada. Total: ${documentosSubidos.length} documentos subidos para vehículo: ${nuevoVehiculo.id}`);
+
+      // Actualizar información en Redis con los documentos subidos
+      await redisClient.hmset(`vehiculo:${sessionId}`, {
+        'estado': 'completado',
+        'documentosSubidos': JSON.stringify(documentosSubidos.map(doc => ({
+          id: doc.id,
+          tipo: doc.documentType,
+          s3Key: doc.s3Key
+        }))),
+        'fechaCompletado': new Date().toISOString()
+      });
+    } catch (uploadError) {
+      // En caso de error en la subida de documentos, lo registramos pero continuamos
+      logger.error(`Error al subir documentos a S3 para vehículo: ${nuevoVehiculo.id}: ${uploadError.message}`);
+
+      // Actualizar estado en Redis indicando el problema
+      await redisClient.hmset(`vehiculo:${sessionId}`, {
+        'estado': 'completado_con_errores',
+        'error_documentos': uploadError.message,
+        'fechaCompletado': new Date().toISOString()
+      });
+
+      // Si quieres enviar una notificación específica sobre este error
+      const socketId = await redisClient.hget(`vehiculo:${sessionId}`, 'socketId');
+      notificarCliente(socketId, 'error_documentos', {
+        success: false,
+        vehiculo: nuevoVehiculo,
+        mensaje: 'Error al subir documentos del vehículo',
+        error: uploadError.message
+      });
+    }
 
     // Actualizar progreso
     job.progress(90);
@@ -1152,6 +1152,24 @@ documentQueue.process('procesar-documento-actualizacion', async (job) => {
       return { skipped: true, reason: 'session_failed' };
     }
 
+    try {
+      // Guardar temporalmente el documento
+      const fileInfo = await documentoController.saveTemporaryDocument(
+        file,
+        sessionId,
+        categoria
+      );
+
+      // Guardar referencia en Redis
+      const fileInfoKey = `vehiculo:${sessionId}:files:${categoria}`;
+      await redisClient.set(fileInfoKey, JSON.stringify(fileInfo), 'EX', 24 * 60 * 60);
+
+      logger.info(`Documento ${categoria} guardado temporalmente en: ${fileInfo.path}`);
+    } catch (error) {
+      logger.error(`Error al guardar documento temporal: ${error.message}`);
+      // Continuar con el proceso aunque falle el guardado
+    }
+
     // Actualizar progreso
     job.progress(10);
 
@@ -1296,7 +1314,7 @@ documentQueue.process('procesar-documento-actualizacion', async (job) => {
   }
 });
 
-// Procesar la actualización del vehículo
+// Corrección para el proceso de actualizar-vehiculo
 vehicleCreationQueue.process('actualizar-vehiculo', async (job) => {
   const { sessionId, vehiculoId } = job.data;
   logger.info(`Procesando actualización de vehículo ID ${vehiculoId}. Sesión: ${sessionId}`);
@@ -1382,8 +1400,6 @@ vehicleCreationQueue.process('actualizar-vehiculo', async (job) => {
           validarPlaca(parsedDoc.placa, vehiculo.placa, categoria);
         }
 
-        console.log(categoria, "HEREEE", parsedDoc, mapeoFechas[categoria], parsedDoc[mapeoFechas[categoria]]);
-
         // Añadir fecha de vencimiento si existe
         if (parsedDoc[mapeoFechas[categoria]]) {
           // Validar formato de fecha
@@ -1437,6 +1453,50 @@ vehicleCreationQueue.process('actualizar-vehiculo', async (job) => {
         }
         await new Promise(resolve => setTimeout(resolve, 1000)); // Esperar 1 segundo antes de reintentar
       }
+    }
+
+    // ** BLOQUE MODIFICADO - Subir documentos a S3 con eliminación previa de documentos antiguos **
+    try {
+      logger.info(`Iniciando subida de documentos a S3 para vehículo: ${vehiculoActualizado.id}, sesión: ${sessionId}`);
+
+      // Llamar a la función para subir los documentos, pasando true para indicar que es una actualización
+      const documentosSubidos = await documentoController.uploadProcessedDocuments(
+        sessionId, 
+        vehiculoActualizado.id,
+        true // Indicar que es una actualización para eliminar documentos antiguos
+      );
+
+      logger.info(`Subida de documentos completada. Total: ${documentosSubidos.length} documentos subidos para vehículo: ${vehiculoActualizado.id}`);
+
+      // Actualizar información en Redis con los documentos subidos
+      await redisClient.hmset(`vehiculo:${sessionId}`, {
+        'estado': 'completado',
+        'documentosSubidos': JSON.stringify(documentosSubidos.map(doc => ({
+          id: doc.id,
+          tipo: doc.document_type,
+          s3Key: doc.s3_key
+        }))),
+        'fechaCompletado': new Date().toISOString()
+      });
+    } catch (uploadError) {
+      // En caso de error en la subida de documentos, lo registramos pero continuamos
+      logger.error(`Error al subir documentos a S3 para vehículo: ${vehiculoActualizado.id}: ${uploadError.message}`);
+
+      // Actualizar estado en Redis indicando el problema
+      await redisClient.hmset(`vehiculo:${sessionId}`, {
+        'estado': 'completado_con_errores',
+        'error_documentos': uploadError.message,
+        'fechaCompletado': new Date().toISOString()
+      });
+
+      // Si quieres enviar una notificación específica sobre este error
+      const socketId = await redisClient.hget(`vehiculo:${sessionId}`, 'socketId');
+      notificarCliente(socketId, 'error_documentos', {
+        success: false,
+        vehiculo: vehiculoActualizado,
+        mensaje: 'Error al subir documentos del vehículo',
+        error: uploadError.message
+      });
     }
 
     // Actualizar progreso

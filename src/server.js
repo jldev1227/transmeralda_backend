@@ -156,6 +156,7 @@ app.use('/api/nomina', require('./routes/nominaRoutes'));
 app.use('/api/flota', require('./routes/flotaRoutes'));
 app.use('/api/empresas', require('./routes/empresaRoutes'));
 app.use('/api/conductores', require('./routes/conductoresRoutes.js'));
+app.use('/api/documentos', require('./routes/documentoRoutes.js'));
 app.use('/api/export', require('./routes/exportRoutes'));
 app.use('/api/pdf', require('./routes/pdfRoutes'));
 
