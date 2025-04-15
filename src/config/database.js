@@ -24,4 +24,14 @@ const testConnection = async () => {
   }
 };
 
-module.exports = { sequelize, testConnection };
+const getRawConnection = async () => {
+  try {
+    const connection = await sequelize.connectionManager.getConnection();
+    return connection;
+  } catch (error) {
+    console.error('Error al obtener una conexión de base de datos:', error);
+    throw error;
+  }
+};
+
+module.exports = { sequelize, testConnection, getRawConnection };

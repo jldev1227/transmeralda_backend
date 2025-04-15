@@ -12,7 +12,11 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.787.0",
+    "@aws-sdk/lib-storage": "^3.787.0",
+    "@aws-sdk/s3-request-presigner": "^3.787.0",
     "@react-pdf/renderer": "^4.3.0",
+    "axios": "^1.8.4",
     "bcrypt": "^5.1.1",
     "bull": "^4.16.5",
     "cookie-parser": "^1.4.7",
@@ -34,7 +38,8 @@
     "redis": "^4.7.0",
     "sequelize": "^6.37.6",
     "socket.io": "^4.8.1",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "winston": "^3.17.0"
   },
   "devDependencies": {
     "@bull-board/api": "^6.7.10",

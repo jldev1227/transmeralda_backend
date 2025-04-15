@@ -8,6 +8,9 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { sequelize, testConnection } = require('./config/database.js');
 const { setupBullQueues, setupBullBoard } = require('./config/bull');
+const path = require('path');
+const fs = require('fs');
+const documentController = require('./controllers/documentoController.js');
 
 // Inicializar app
 const app = express();
@@ -31,6 +34,8 @@ const allowedOrigins = [
   'https://nomina.transmeralda.com',
   'https://auth.transmeralda.com',
   'https://flota.transmeralda.com',
+  'http://flota.midominio.local:3000',
+  'http://auth.midominio.local:3001',
 ];
 
 const corsOptions = {
@@ -42,7 +47,8 @@ const corsOptions = {
     'Authorization', 
     'X-Requested-With', 
     'Accept', 
-    'Origin'
+    'Origin',
+    "socket-id"
   ]
 };
 
@@ -51,9 +57,20 @@ app.use(cors(corsOptions));
 
 // Configuración de Socket.IO
 const io = socketIO(server, {
-  path: '/socket.io/',
+  cors: {
+    // Permitir todos los orígenes necesarios
+    origin: [
+      "http://flota.midominio.local:3000",
+      "http://flota.midominio.local",
+      "http://localhost:3000"
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "socket-id"],
+    credentials: true
+  },
   transports: ['polling', 'websocket'] // Poner polling primero
 });
+global.io = io;
 
 // Almacenar conexiones de sockets por ID de usuario
 const userSockets = new Map();
@@ -108,7 +125,7 @@ const notifyUser = (userId, event, data) => {
 // Exponer funciones de socket.io a otros módulos
 app.set('io', io);
 app.set('notifyUser', notifyUser);
-app.set('trust proxy', true);
+app.set('trust proxy', false);
 
 
 // Rate limiting
@@ -121,12 +138,25 @@ const limiter = rateLimit({
 
 app.use('/api/', limiter);
 
+// En routes/documentRoutes.js, añade:
+
+// Ruta de prueba para subir un documento (requiere un archivo test.pdf en la raíz del proyecto)
+app.get('/test-upload/:vehicleId', async (req, res) => {
+  try {
+    // Llamamos al controlador
+    await documentController.testUpload(req, res);
+  } catch (error) {
+    console.error('Error en test-upload:', error);
+    res.status(500).json({ error: 'Error en test-upload' });
+  }
+});
 // Rutas
 app.use('/api/usuarios', require('./routes/userRoutes'));
 app.use('/api/nomina', require('./routes/nominaRoutes'));
 app.use('/api/flota', require('./routes/flotaRoutes'));
 app.use('/api/empresas', require('./routes/empresaRoutes'));
 app.use('/api/conductores', require('./routes/conductoresRoutes.js'));
+app.use('/api/documentos', require('./routes/documentoRoutes.js'));
 app.use('/api/export', require('./routes/exportRoutes'));
 app.use('/api/pdf', require('./routes/pdfRoutes'));
 
@@ -153,7 +183,6 @@ app.use((req, res) => {
   });
 });
 
-
 // Función para emitir eventos de liquidación a todos los clientes
 const emitLiquidacionEvent = (eventName, data) => {
   console.log(`Emitiendo evento ${eventName}:`, data);
@@ -179,52 +208,33 @@ const emitLiquidacionToUser = (userId, eventName, data) => {
 app.set('emitLiquidacionEvent', emitLiquidacionEvent);
 app.set('emitLiquidacionToUser', emitLiquidacionToUser);
 
-// Configurar namespace específico para liquidaciones (opcional)
-const liquidacionesNamespace = io.of('/liquidaciones');
 
-liquidacionesNamespace.on('connection', (socket) => {
-  console.log('Cliente conectado al namespace de liquidaciones:', socket.id);
-  
-  // Obtener userId de la consulta
-  const userId = socket.handshake.query.userId;
-  if (userId) {
-    // Almacenar la conexión de socket específica para liquidaciones
-    if (!userSockets.has(userId)) {
-      userSockets.set(userId, new Set());
-    }
-    userSockets.get(userId).add(socket.id);
+// Función para emitir eventos de vehiculos a todos los clientes
+const emitVehiculoEvent = (eventName, data) => {
+  console.log(`Emitiendo evento ${eventName}:`, data);
+  io.emit(eventName, data);
+};
+
+// Función para emitir eventos de vehiculo a un usuario específico
+const emitVehiculoToUser = (userId, eventName, data) => {
+  if (userSockets.has(userId)) {
+    const userSocketIds = userSockets.get(userId);
+    console.log(`Enviando ${eventName} a usuario ${userId} (${userSocketIds.size} conexiones)`);
     
-    console.log(`Usuario ${userId} conectado a liquidaciones con socket ${socket.id}`);
-    
-    // Unirse a sala según rol (opcional)
-    const userRole = socket.handshake.query.role; 
-    if (userRole === 'admin') {
-      socket.join('admins-liquidaciones');
-    } else if (userRole === 'conductor') {
-      socket.join('conductores-liquidaciones');
-      // También unirse a sala personal
-      socket.join(`liquidaciones-usuario-${userId}`);
+    for (const socketId of userSocketIds) {
+      io.to(socketId).emit(eventName, data);
     }
+    return true;
   }
-  
-  // Manejar desconexión
-  socket.on('disconnect', () => {
-    console.log('Cliente desconectado de liquidaciones:', socket.id);
-    
-    // Eliminar socket del registro de usuarios
-    if (userId && userSockets.has(userId)) {
-      userSockets.get(userId).delete(socket.id);
-      
-      // Si no hay más sockets para este usuario, eliminar entrada
-      if (userSockets.get(userId).size === 0) {
-        userSockets.delete(userId);
-      }
-    }
-  });
-});
+  console.log(`Usuario ${userId} no está conectado para recibir ${eventName}`);
+  return false;
+};
 
-// Exponer namespace de liquidaciones a otros módulos
-app.set('liquidacionesNamespace', liquidacionesNamespace);
+// Exponer funciones de socket.io para vehiculos a otros módulos
+app.set('emitVehiculoEvent', emitVehiculoEvent);
+app.set('emitVehiculoToUser', emitVehiculoToUser);
+
+
 
 // Middleware para manejo de errores
 app.use((err, req, res, next) => {
