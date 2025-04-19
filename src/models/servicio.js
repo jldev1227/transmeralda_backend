@@ -90,13 +90,13 @@ module.exports = (sequelize) => {
       }
     },
     estado: {
-      type: DataTypes.ENUM('en curso', 'completado', 'pendiente', 'realizado', 'cancelado', 'planificado'),
+      type: DataTypes.ENUM('en curso', 'completado', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado'),
       allowNull: false,
-      defaultValue: 'PENDIENTE',
+      defaultValue: 'solicitado',
       validate: {
         notNull: { msg: 'El estado es obligatorio' },
         isIn: {
-          args: [['en curso', 'completado', 'pendiente', 'realizado', 'cancelado', 'planificado']],
+          args: [['en curso', 'completado', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado']],
           msg: 'Estado no válido'
         }
       }
