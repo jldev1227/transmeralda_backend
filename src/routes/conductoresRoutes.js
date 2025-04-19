@@ -5,14 +5,15 @@ const {
   validarCreacionConductor, 
   validarActualizacionConductor 
 } = require('../middleware/validacionConductor'); // Crea este middleware de validación
+const { protect } = require('../middleware/auth');
 
 // CRUD de Conductores
-router.post('/', validarCreacionConductor, conductorController.crearConductor);
-router.get('/', conductorController.obtenerConductores);
-router.get('/basicos', conductorController.obtenerConductoresBasicos);
-router.get('/:id', conductorController.obtenerConductorPorId);
-router.put('/:id', validarActualizacionConductor, conductorController.actualizarConductor);
-router.delete('/:id', conductorController.eliminarConductor);
+router.post('/', protect, validarCreacionConductor, conductorController.crearConductor);
+router.get('/', protect, conductorController.obtenerConductores);
+router.get('/basicos', protect, conductorController.obtenerConductoresBasicos);
+router.get('/:id', protect, conductorController.obtenerConductorPorId);
+router.put('/:id', protect, validarActualizacionConductor, conductorController.actualizarConductor);
+router.delete('/:id', protect, conductorController.eliminarConductor);
 
 // Asignación de conductor a vehículo
 router.post('/asignar-vehiculo', conductorController.asignarConductorAVehiculo);

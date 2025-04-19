@@ -36,6 +36,7 @@ const allowedOrigins = [
   'https://flota.transmeralda.com',
   'http://flota.midominio.local:3000',
   'http://auth.midominio.local:3001',
+  "http://servicios.midominio.local:3000"
 ];
 
 const corsOptions = {
@@ -62,7 +63,7 @@ const io = socketIO(server, {
     origin: [
       "http://flota.midominio.local:3000",
       "http://flota.midominio.local",
-      "http://localhost:3000"
+      "http://servicios.midominio.local:3000"
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "socket-id"],

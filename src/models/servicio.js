@@ -59,7 +59,7 @@ module.exports = (sequelize) => {
       type: DataTypes.UUID,
       allowNull: false,
       references: {
-        model: 'users', // Asumiendo que tienes una tabla de usuarios para conductores
+        model: 'conductores', // Asumiendo que tienes una tabla de usuarios para conductores
         key: 'id'
       },
       validate: {
@@ -76,7 +76,6 @@ module.exports = (sequelize) => {
       },
       validate: {
         notNull: { msg: 'El vehículo es obligatorio' },
-        isInt: { msg: 'El ID del vehículo debe ser un número entero' }
       }
     },
     cliente_id: {
@@ -88,17 +87,16 @@ module.exports = (sequelize) => {
       },
       validate: {
         notNull: { msg: 'El cliente es obligatorio' },
-        isInt: { msg: 'El ID del cliente debe ser un número entero' }
       }
     },
     estado: {
-      type: DataTypes.ENUM('EN CURSO', 'COMPLETADO', 'PENDIENTE', 'REALIZADO', 'CANCELADO'),
+      type: DataTypes.ENUM('en curso', 'completado', 'pendiente', 'realizado', 'cancelado', 'planificado'),
       allowNull: false,
       defaultValue: 'PENDIENTE',
       validate: {
         notNull: { msg: 'El estado es obligatorio' },
         isIn: {
-          args: [['EN CURSO', 'COMPLETADO', 'PENDIENTE', 'REALIZADO', 'CANCELADO']],
+          args: [['en curso', 'completado', 'pendiente', 'realizado', 'cancelado', 'planificado']],
           msg: 'Estado no válido'
         }
       }
@@ -181,7 +179,7 @@ module.exports = (sequelize) => {
       foreignKey: 'destino_id'
     });
     
-    Servicio.belongsTo(models.User, { 
+    Servicio.belongsTo(models.Conductor, { 
       as: 'conductor',
       foreignKey: 'conductor_id'
     });

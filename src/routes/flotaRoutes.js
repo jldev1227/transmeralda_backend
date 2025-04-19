@@ -22,7 +22,7 @@ const {
 const { protect, hasRole } = require('../middleware/auth');
 
 // Rutas públicas
-router.get('/buscar', buscarVehiculosPorPlaca);
+router.get('/buscar', protect, buscarVehiculosPorPlaca);
 
 // Rutas para todos los usuarios autenticados
 router.get('/', protect, hasRole(['admin', 'gestor_flota']), getVehiculos);

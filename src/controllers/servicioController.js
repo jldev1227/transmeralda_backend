@@ -1,4 +1,4 @@
-const { Servicio, Municipio, User, Vehiculo, Cliente } = require('../models');
+const { Servicio, Municipio, Conductor, Vehiculo, Empresa } = require('../models');
 
 // Obtener todos los servicios
 exports.obtenerTodos = async (req, res) => {
@@ -7,9 +7,9 @@ exports.obtenerTodos = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: User, as: 'conductor', attributes: ['id', 'nombre'] },
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
-        { model: Cliente, as: 'cliente', attributes: ['id', 'nombre'] }
+        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre'] }
       ]
     });
     
@@ -35,11 +35,11 @@ exports.obtenerPorId = async (req, res) => {
     
     const servicio = await Servicio.findByPk(id, {
       include: [
-        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: User, as: 'conductor', attributes: ['id', 'nombre'] },
+        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
+        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
-        { model: Cliente, as: 'cliente', attributes: ['id', 'nombre'] }
+        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', 'NIT'] }
       ]
     });
     
@@ -83,7 +83,7 @@ exports.crear = async (req, res) => {
       valor,
       observaciones
     } = req.body;
-    
+
     // Validación adicional de datos, si es necesario
     if (!origen_id || !destino_id || !conductor_id || !vehiculo_id || !cliente_id) {
       return res.status(400).json({
@@ -96,11 +96,11 @@ exports.crear = async (req, res) => {
     const [origen, destino, conductor, vehiculo, cliente] = await Promise.all([
       Municipio.findByPk(origen_id),
       Municipio.findByPk(destino_id),
-      User.findByPk(conductor_id),
+      Conductor.findByPk(conductor_id),
       Vehiculo.findByPk(vehiculo_id),
-      Cliente.findByPk(cliente_id)
+      Empresa.findByPk(cliente_id)
     ]);
-    
+
     if (!origen || !destino || !conductor || !vehiculo || !cliente) {
       return res.status(400).json({
         success: false,
@@ -117,7 +117,7 @@ exports.crear = async (req, res) => {
       conductor_id,
       vehiculo_id,
       cliente_id,
-      estado: estado || 'PENDIENTE',
+      estado: estado || 'planificado',
       tipo_servicio,
       fecha_inicio,
       fecha_fin,
@@ -131,9 +131,9 @@ exports.crear = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: User, as: 'conductor', attributes: ['id', 'nombre'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
-        { model: Cliente, as: 'cliente', attributes: ['id', 'nombre'] }
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion'] },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'linea', 'modelo'] },
+        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre'] }
       ]
     });
     
@@ -207,7 +207,7 @@ exports.actualizar = async (req, res) => {
     }
     
     if (conductor_id && conductor_id !== servicio.conductor_id) {
-      promises.push(User.findByPk(conductor_id));
+      promises.push(Conductor.findByPk(conductor_id));
     }
     
     if (vehiculo_id && vehiculo_id !== servicio.vehiculo_id) {
@@ -215,7 +215,7 @@ exports.actualizar = async (req, res) => {
     }
     
     if (cliente_id && cliente_id !== servicio.cliente_id) {
-      promises.push(Cliente.findByPk(cliente_id));
+      promises.push(Empresa.findByPk(cliente_id));
     }
     
     if (promises.length > 0) {
@@ -251,9 +251,9 @@ exports.actualizar = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: User, as: 'conductor', attributes: ['id', 'nombre'] },
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
-        { model: Cliente, as: 'cliente', attributes: ['id', 'nombre'] }
+        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre'] }
       ]
     });
     
@@ -362,9 +362,9 @@ exports.buscarServicios = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: User, as: 'conductor', attributes: ['id', 'nombre'] },
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
-        { model: Cliente, as: 'cliente', attributes: ['id', 'nombre'] }
+        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre'] }
       ],
       order: [['fecha_inicio', 'DESC']]
     });
@@ -420,7 +420,7 @@ exports.cambiarEstado = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: User, as: 'conductor', attributes: ['id', 'nombre'] }
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre'] }
       ]
     });
     

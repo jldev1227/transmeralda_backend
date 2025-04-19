@@ -552,7 +552,7 @@ const buscarVehiculosPorPlaca = async (req, res) => {
 const getVehiculosBasicos = async (req, res) => {
   try {
     const vehiculos = await Vehiculo.findAll({
-      attributes: ['id', 'placa'], // Solo selecciona estos campos
+      attributes: ['id', 'placa', 'linea', 'modelo'], // Solo selecciona estos campos
       raw: true // Obtiene solo los datos planos, sin instancias de Sequelize
     });
 
@@ -611,7 +611,7 @@ const getVehiculoBasico = async (req, res) => {
     const { id } = req.params;
 
     const vehiculo = await Vehiculo.findByPk(id, {
-      attributes: ['id', 'placa'], // Solo selecciona estos campos
+      attributes: ['id', 'placa', 'linea', 'modelo'], // Solo selecciona estos campos
       raw: true // Obtiene solo los datos planos, sin instancias de Sequelize
     });
     console.log(vehiculo)
