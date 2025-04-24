@@ -44,12 +44,23 @@ class SOATProcessor:
     
     def extract_placa(self):
         """Extraer la placa del vehículo"""
-        # Si tenemos una placa proporcionada como parámetro, usarla primero
+        # Si tenemos una placa proporcionada como parámetro, usarla para buscarla en el contenido
         if self.placa_param:
-            self.result["placa"] = self.placa_param
-            return True
+            # Convertir a mayúsculas para hacer la comparación insensible a mayúsculas/minúsculas
+            placa_buscar = self.placa_param.upper()
             
-        # Si no, intentar extraerla del documento
+            # Buscar la placa en todo el contenido
+            for line in self.lines:
+                normalized_line = normalize_text(line)
+                if placa_buscar in normalized_line:
+                    # Si encuentra la placa en el contenido, la establece como resultado
+                    self.result["placa"] = self.placa_param
+                    return True
+                    
+            # Si llegamos aquí, la placa no se encontró en el contenido
+            return False
+                
+        # Si no hay placa como parámetro, mantén el comportamiento anterior con regex
         placa_idx = self.find_line_index("PLACA")
         if placa_idx >= 0:
             # Buscar en esta línea y las siguientes
@@ -67,7 +78,7 @@ class SOATProcessor:
                 return True
         
         return False
-    
+
     def extract_fecha_vencimiento(self):
         """Extraer fecha de vencimiento del SOAT"""
         # Buscar términos relacionados con la fecha de vencimiento
@@ -198,7 +209,7 @@ if __name__ == "__main__":
                 sys.exit(1)
         else:
             # Usar archivo por defecto
-            file_path = './src/temp/tempOcrDataSOAT.json'
+            file_path = 'temp/tempOcrData_SOAT.json'
             if not os.path.exists(file_path):
                 print(f"ERROR: El archivo por defecto {file_path} no existe", file=sys.stderr)
                 print(json.dumps({"error": f"Archivo por defecto no encontrado: {file_path}"}))
@@ -215,7 +226,7 @@ if __name__ == "__main__":
                 sys.exit(1)
         
         # Procesar los datos
-        result = process_soat_data(data)
+        result = process_soat_data(data, args.placa)
         
         # Imprimir resultado como JSON (único output a stdout)
         print(json.dumps(result, indent=4, ensure_ascii=False))
