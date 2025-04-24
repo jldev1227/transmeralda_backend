@@ -36,6 +36,7 @@ const allowedOrigins = [
   'https://flota.transmeralda.com',
   'http://flota.midominio.local:3000',
   'http://auth.midominio.local:3001',
+  "http://servicios.midominio.local:3000"
 ];
 
 const corsOptions = {
@@ -62,7 +63,7 @@ const io = socketIO(server, {
     origin: [
       "http://flota.midominio.local:3000",
       "http://flota.midominio.local",
-      "http://localhost:3000"
+      "http://servicios.midominio.local:3000"
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "socket-id"],
@@ -155,7 +156,9 @@ app.use('/api/usuarios', require('./routes/userRoutes'));
 app.use('/api/nomina', require('./routes/nominaRoutes'));
 app.use('/api/flota', require('./routes/flotaRoutes'));
 app.use('/api/empresas', require('./routes/empresaRoutes'));
+app.use('/api/municipios', require('./routes/municipioRoutes'));
 app.use('/api/conductores', require('./routes/conductoresRoutes.js'));
+app.use('/api/servicios', require('./routes/servicioRoutes.js'));
 app.use('/api/documentos', require('./routes/documentoRoutes.js'));
 app.use('/api/export', require('./routes/exportRoutes'));
 app.use('/api/pdf', require('./routes/pdfRoutes'));

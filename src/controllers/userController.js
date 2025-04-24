@@ -18,9 +18,7 @@ const generarCodigoVerificacion = () => {
 // Configuración de cookie
 const cookieOptions = () => {
   return {
-    expires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 horas
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    expires: new Date(Date.now() + 30.44 * 24 * 60 * 60 * 1000), // 1 mes (promedio)    secure: process.env.NODE_ENV === "production",
     domain: `.${process.env.DOMAIN}`,
     sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
   };
