@@ -37,7 +37,7 @@ exports.obtenerPorId = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre'] },
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion']},
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', 'NIT'] }
       ]
@@ -66,12 +66,17 @@ exports.obtenerPorId = async (req, res) => {
 
 // Crear un nuevo servicio
 exports.crear = async (req, res) => {
+  console.log(req.body)
   try {
     const {
       origen_id,
       destino_id,
       origen_especifico,
       destino_especifico,
+      origen_latitud,
+      origen_longitud,
+      destino_latitud,
+      destino_longitud,
       conductor_id,
       vehiculo_id,
       cliente_id,
@@ -81,6 +86,7 @@ exports.crear = async (req, res) => {
       fecha_fin,
       distancia_km,
       valor,
+      hourOut,
       observaciones
     } = req.body;
 
@@ -114,6 +120,10 @@ exports.crear = async (req, res) => {
       destino_id,
       origen_especifico,
       destino_especifico,
+      origen_latitud,
+      origen_longitud,
+      destino_latitud,
+      destino_longitud,
       conductor_id,
       vehiculo_id,
       cliente_id,
@@ -123,6 +133,7 @@ exports.crear = async (req, res) => {
       fecha_fin,
       distancia_km,
       valor,
+      hora_salida: hourOut,
       observaciones
     });
     
@@ -167,6 +178,7 @@ exports.crear = async (req, res) => {
 
 // Actualizar un servicio existente
 exports.actualizar = async (req, res) => {
+  console.log(req.body)
   try {
     const { id } = req.params;
     const {
@@ -174,6 +186,10 @@ exports.actualizar = async (req, res) => {
       destino_id,
       origen_especifico,
       destino_especifico,
+      origen_latitud,
+      origen_longitud,
+      destino_latitud,
+      destino_longitud,
       conductor_id,
       vehiculo_id,
       cliente_id,
@@ -183,6 +199,7 @@ exports.actualizar = async (req, res) => {
       fecha_fin,
       distancia_km,
       valor,
+      hourOut,
       observaciones
     } = req.body;
     
@@ -234,6 +251,10 @@ exports.actualizar = async (req, res) => {
       destino_id: destino_id || servicio.destino_id,
       origen_especifico: origen_especifico || servicio.origen_especifico,
       destino_especifico: destino_especifico || servicio.destino_especifico,
+      origen_latitud: origen_latitud !== undefined ? origen_latitud : servicio.origen_latitud,
+      origen_longitud: origen_longitud !== undefined ? origen_longitud : servicio.origen_longitud,
+      destino_latitud: destino_latitud !== undefined ? destino_latitud : servicio.destino_latitud,
+      destino_longitud: destino_longitud !== undefined ? destino_longitud : servicio.destino_longitud,
       conductor_id: conductor_id || servicio.conductor_id,
       vehiculo_id: vehiculo_id || servicio.vehiculo_id,
       cliente_id: cliente_id || servicio.cliente_id,
@@ -243,6 +264,7 @@ exports.actualizar = async (req, res) => {
       fecha_fin: fecha_fin || servicio.fecha_fin,
       distancia_km: distancia_km || servicio.distancia_km,
       valor: valor || servicio.valor,
+      hora_salida: hourOut !== undefined ? hourOut : servicio.hora_salida,
       observaciones: observaciones !== undefined ? observaciones : servicio.observaciones
     });
     

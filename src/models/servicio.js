@@ -124,6 +124,73 @@ module.exports = (sequelize) => {
         isDate: { msg: 'Debe ser una fecha válida' }
       }
     },
+    hora_salida: {
+      type: DataTypes.TIME,
+      allowNull: true,
+      validate: {
+        isDate: { msg: 'Debe ser una hora válida' }
+      }
+    },
+    origen_latitud: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      validate: {
+        isFloat: { msg: 'La latitud de origen debe ser un número' },
+        min: {
+          args: [-90],
+          msg: 'La latitud debe estar entre -90 y 90'
+        },
+        max: {
+          args: [90],
+          msg: 'La latitud debe estar entre -90 y 90'
+        }
+      }
+    },
+    origen_longitud: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      validate: {
+        isFloat: { msg: 'La longitud de origen debe ser un número' },
+        min: {
+          args: [-180],
+          msg: 'La longitud debe estar entre -180 y 180'
+        },
+        max: {
+          args: [180],
+          msg: 'La longitud debe estar entre -180 y 180'
+        }
+      }
+    },
+    destino_latitud: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      validate: {
+        isFloat: { msg: 'La latitud de destino debe ser un número' },
+        min: {
+          args: [-90],
+          msg: 'La latitud debe estar entre -90 y 90'
+        },
+        max: {
+          args: [90],
+          msg: 'La latitud debe estar entre -90 y 90'
+        }
+      }
+    },
+    destino_longitud: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      validate: {
+        isFloat: { msg: 'La longitud de destino debe ser un número' },
+        min: {
+          args: [-180],
+          msg: 'La longitud debe estar entre -180 y 180'
+        },
+        max: {
+          args: [180],
+          msg: 'La longitud debe estar entre -180 y 180'
+        }
+      }
+    },
     distancia_km: {
       type: DataTypes.FLOAT,
       allowNull: false,
