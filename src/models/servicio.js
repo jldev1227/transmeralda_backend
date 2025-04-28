@@ -90,13 +90,13 @@ module.exports = (sequelize) => {
       }
     },
     estado: {
-      type: DataTypes.ENUM('en curso', 'completado', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado'),
+      type: DataTypes.ENUM('en curso', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado'),
       allowNull: false,
       defaultValue: 'solicitado',
       validate: {
         notNull: { msg: 'El estado es obligatorio' },
         isIn: {
-          args: [['en curso', 'completado', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado']],
+          args: [['en curso', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado']],
           msg: 'Estado no válido'
         }
       }
@@ -109,26 +109,26 @@ module.exports = (sequelize) => {
         notEmpty: { msg: 'El tipo de servicio no puede estar vacío' }
       }
     },
-    fecha_inicio: {
+    fecha_solicitud: {
       type: DataTypes.DATE,
       allowNull: false,
+      dialectOptions: {
+        timezone: false
+      },
       validate: {
-        notNull: { msg: 'La fecha de inicio es obligatoria' },
+        notNull: { msg: 'La fecha de solicitud es obligatoria' },
         isDate: { msg: 'Debe ser una fecha válida' }
       }
     },
-    fecha_fin: {
+    
+    fecha_realizacion: {
       type: DataTypes.DATE,
       allowNull: true,
+      dialectOptions: {
+        timezone: false
+      },
       validate: {
         isDate: { msg: 'Debe ser una fecha válida' }
-      }
-    },
-    hora_salida: {
-      type: DataTypes.TIME,
-      allowNull: true,
-      validate: {
-        isDate: { msg: 'Debe ser una hora válida' }
       }
     },
     origen_latitud: {

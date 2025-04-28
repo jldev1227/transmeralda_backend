@@ -82,11 +82,10 @@ exports.crear = async (req, res) => {
       cliente_id,
       estado,
       tipo_servicio,
-      fecha_inicio,
-      fecha_fin,
+      fecha_solicitud,
+      fecha_realizacion,
       distancia_km,
       valor,
-      hourOut,
       observaciones
     } = req.body;
 
@@ -129,11 +128,10 @@ exports.crear = async (req, res) => {
       cliente_id,
       estado: estado || 'planificado',
       tipo_servicio,
-      fecha_inicio,
-      fecha_fin,
+      fecha_solicitud,
+      fecha_realizacion,
       distancia_km,
       valor,
-      hora_salida: hourOut,
       observaciones
     });
     
@@ -195,11 +193,10 @@ exports.actualizar = async (req, res) => {
       cliente_id,
       estado,
       tipo_servicio,
-      fecha_inicio,
-      fecha_fin,
+      fecha_solicitud,
+      fecha_realizacion,
       distancia_km,
       valor,
-      hourOut,
       observaciones
     } = req.body;
     
@@ -260,11 +257,10 @@ exports.actualizar = async (req, res) => {
       cliente_id: cliente_id || servicio.cliente_id,
       estado: estado || servicio.estado,
       tipo_servicio: tipo_servicio || servicio.tipo_servicio,
-      fecha_inicio: fecha_inicio || servicio.fecha_inicio,
-      fecha_fin: fecha_fin || servicio.fecha_fin,
+      fecha_solicitud: fecha_solicitud || servicio.fecha_solicitud,
+      fecha_realizacion: fecha_realizacion || servicio.fecha_realizacion,
       distancia_km: distancia_km || servicio.distancia_km,
       valor: valor || servicio.valor,
-      hora_salida: hourOut !== undefined ? hourOut : servicio.hora_salida,
       observaciones: observaciones !== undefined ? observaciones : servicio.observaciones
     });
     
@@ -346,8 +342,8 @@ exports.buscarServicios = async (req, res) => {
     const { 
       estado, 
       tipo_servicio, 
-      fecha_inicio, 
-      fecha_fin, 
+      fecha_solicitud, 
+      fecha_realizacion, 
       conductor_id, 
       cliente_id,
       origen_id,
@@ -365,17 +361,17 @@ exports.buscarServicios = async (req, res) => {
     if (destino_id) where.destino_id = destino_id;
     
     // Filtro de rango de fechas
-    if (fecha_inicio && fecha_fin) {
-      where.fecha_inicio = {
-        [Op.between]: [new Date(fecha_inicio), new Date(fecha_fin)]
+    if (fecha_solicitud && fecha_realizacion) {
+      where.fecha_solicitud = {
+        [Op.between]: [new Date(fecha_solicitud), new Date(fecha_realizacion)]
       };
-    } else if (fecha_inicio) {
-      where.fecha_inicio = {
-        [Op.gte]: new Date(fecha_inicio)
+    } else if (fecha_solicitud) {
+      where.fecha_solicitud = {
+        [Op.gte]: new Date(fecha_solicitud)
       };
-    } else if (fecha_fin) {
-      where.fecha_inicio = {
-        [Op.lte]: new Date(fecha_fin)
+    } else if (fecha_realizacion) {
+      where.fecha_solicitud = {
+        [Op.lte]: new Date(fecha_realizacion)
       };
     }
     
@@ -388,7 +384,7 @@ exports.buscarServicios = async (req, res) => {
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'nombre'] }
       ],
-      order: [['fecha_inicio', 'DESC']]
+      order: [['fecha_solicitud', 'DESC']]
     });
     
     return res.status(200).json({
@@ -432,7 +428,7 @@ exports.cambiarEstado = async (req, res) => {
     const datosActualizacion = { estado };
     
     if (estado === 'COMPLETADO' || estado === 'REALIZADO') {
-      datosActualizacion.fecha_fin = new Date();
+      datosActualizacion.fecha_realizacion = new Date();
     }
     
     await servicio.update(datosActualizacion);
