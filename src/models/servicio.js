@@ -57,26 +57,19 @@ module.exports = (sequelize) => {
     },
     conductor_id: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'conductores', // Asumiendo que tienes una tabla de usuarios para conductores
         key: 'id'
       },
-      validate: {
-        notNull: { msg: 'El conductor es obligatorio' },
-        notEmpty: { msg: 'El conductor no puede estar vacío' }
-      }
     },
     vehiculo_id: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'vehiculos', // Asumiendo que tienes una tabla de vehículos
         key: 'id'
       },
-      validate: {
-        notNull: { msg: 'El vehículo es obligatorio' },
-      }
     },
     cliente_id: {
       type: DataTypes.UUID,
@@ -188,18 +181,6 @@ module.exports = (sequelize) => {
         max: {
           args: [180],
           msg: 'La longitud debe estar entre -180 y 180'
-        }
-      }
-    },
-    distancia_km: {
-      type: DataTypes.FLOAT,
-      allowNull: false,
-      validate: {
-        notNull: { msg: 'La distancia es obligatoria' },
-        isFloat: { msg: 'La distancia debe ser un número' },
-        min: {
-          args: [0],
-          msg: 'La distancia no puede ser negativa'
         }
       }
     },
