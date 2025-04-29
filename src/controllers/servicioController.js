@@ -8,8 +8,8 @@ exports.obtenerTodos = async (req, res) => {
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre'] }
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "linea"]},
+        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT"] }
       ]
     });
     
@@ -80,7 +80,7 @@ exports.crear = async (req, res) => {
       vehiculo_id,
       cliente_id,
       estado,
-      tipo_servicio,
+      proposito_servicio,
       fecha_solicitud,
       fecha_realizacion,
       valor,
@@ -166,7 +166,7 @@ exports.crear = async (req, res) => {
       vehiculo_id: vehiculoId,    // Usar la versión convertida
       cliente_id,
       estado: estado || 'planificado',
-      tipo_servicio,
+      proposito_servicio,
       fecha_solicitud,
       fecha_realizacion,
       valor,
@@ -243,7 +243,7 @@ exports.actualizar = async (req, res) => {
       vehiculo_id,
       cliente_id,
       estado,
-      tipo_servicio,
+      proposito_servicio,
       fecha_solicitud,
       fecha_realizacion,
       valor,
@@ -309,7 +309,7 @@ exports.actualizar = async (req, res) => {
       vehiculo_id: vehiculo_id || servicio.vehiculo_id,
       cliente_id: cliente_id || servicio.cliente_id,
       estado: estado || servicio.estado,
-      tipo_servicio: tipo_servicio || servicio.tipo_servicio,
+      proposito_servicio: proposito_servicio || servicio.proposito_servicio,
       fecha_solicitud: fecha_solicitud || servicio.fecha_solicitud,
       fecha_realizacion: fecha_realizacion || servicio.fecha_realizacion,
       valor: valor || servicio.valor,
@@ -443,7 +443,7 @@ exports.buscarServicios = async (req, res) => {
   try {
     const { 
       estado, 
-      tipo_servicio, 
+      proposito_servicio, 
       fecha_solicitud, 
       fecha_realizacion, 
       conductor_id, 
@@ -456,7 +456,7 @@ exports.buscarServicios = async (req, res) => {
     const where = {};
     
     if (estado) where.estado = estado;
-    if (tipo_servicio) where.tipo_servicio = tipo_servicio;
+    if (proposito_servicio) where.proposito_servicio = proposito_servicio;
     if (conductor_id) where.conductor_id = conductor_id;
     if (cliente_id) where.cliente_id = cliente_id;
     if (origen_id) where.origen_id = origen_id;

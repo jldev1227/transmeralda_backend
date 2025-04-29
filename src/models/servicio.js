@@ -94,12 +94,16 @@ module.exports = (sequelize) => {
         }
       }
     },
-    tipo_servicio: {
-      type: DataTypes.STRING,
+    proposito_servicio: {
+      type: DataTypes.ENUM('personal', 'personal y herramienta'),
       allowNull: false,
+      defaultValue: 'personal',
       validate: {
-        notNull: { msg: 'El tipo de servicio es obligatorio' },
-        notEmpty: { msg: 'El tipo de servicio no puede estar vacío' }
+        notNull: { msg: 'El proposito del servicio es obligatorio' },
+        isIn: {
+          args: [['personal', 'personal y herramienta']],
+          msg: 'Proposito no válido'
+        }
       }
     },
     fecha_solicitud: {
