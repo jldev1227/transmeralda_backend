@@ -237,6 +237,31 @@ const emitVehiculoToUser = (userId, eventName, data) => {
 app.set('emitVehiculoEvent', emitVehiculoEvent);
 app.set('emitVehiculoToUser', emitVehiculoToUser);
 
+// Función para emitir eventos de servicios a todos los clientes
+const emitServicioEvent = (eventName, data) => {
+  console.log(`Emitiendo evento ${eventName}:`, data);
+  io.emit(eventName, data);
+};
+
+// Función para emitir eventos de servicio a un usuario específico
+const emitServicioToUser = (userId, eventName, data) => {
+  if (userSockets.has(userId)) {
+    const userSocketIds = userSockets.get(userId);
+    console.log(`Enviando ${eventName} a usuario ${userId} (${userSocketIds.size} conexiones)`);
+    
+    for (const socketId of userSocketIds) {
+      io.to(socketId).emit(eventName, data);
+    }
+    return true;
+  }
+  console.log(`Usuario ${userId} no está conectado para recibir ${eventName}`);
+  return false;
+};
+
+// Exponer funciones de socket.io para servicios a otros módulos
+app.set('emitServicioEvent', emitServicioEvent);
+app.set('emitServicioToUser', emitServicioToUser);
+
 
 
 // Middleware para manejo de errores

@@ -57,26 +57,19 @@ module.exports = (sequelize) => {
     },
     conductor_id: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'conductores', // Asumiendo que tienes una tabla de usuarios para conductores
         key: 'id'
       },
-      validate: {
-        notNull: { msg: 'El conductor es obligatorio' },
-        notEmpty: { msg: 'El conductor no puede estar vacío' }
-      }
     },
     vehiculo_id: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'vehiculos', // Asumiendo que tienes una tabla de vehículos
         key: 'id'
       },
-      validate: {
-        notNull: { msg: 'El vehículo es obligatorio' },
-      }
     },
     cliente_id: {
       type: DataTypes.UUID,
@@ -90,49 +83,108 @@ module.exports = (sequelize) => {
       }
     },
     estado: {
-      type: DataTypes.ENUM('en curso', 'completado', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado'),
+      type: DataTypes.ENUM('en curso', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado'),
       allowNull: false,
       defaultValue: 'solicitado',
       validate: {
         notNull: { msg: 'El estado es obligatorio' },
         isIn: {
-          args: [['en curso', 'completado', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado']],
+          args: [['en curso', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado']],
           msg: 'Estado no válido'
         }
       }
     },
-    tipo_servicio: {
-      type: DataTypes.STRING,
+    proposito_servicio: {
+      type: DataTypes.ENUM('personal', 'personal y herramienta'),
       allowNull: false,
+      defaultValue: 'personal',
       validate: {
-        notNull: { msg: 'El tipo de servicio es obligatorio' },
-        notEmpty: { msg: 'El tipo de servicio no puede estar vacío' }
+        notNull: { msg: 'El proposito del servicio es obligatorio' },
+        isIn: {
+          args: [['personal', 'personal y herramienta']],
+          msg: 'Proposito no válido'
+        }
       }
     },
-    fecha_inicio: {
+    fecha_solicitud: {
       type: DataTypes.DATE,
       allowNull: false,
+      dialectOptions: {
+        timezone: false
+      },
       validate: {
-        notNull: { msg: 'La fecha de inicio es obligatoria' },
+        notNull: { msg: 'La fecha de solicitud es obligatoria' },
         isDate: { msg: 'Debe ser una fecha válida' }
       }
     },
-    fecha_fin: {
+    
+    fecha_realizacion: {
       type: DataTypes.DATE,
       allowNull: true,
+      dialectOptions: {
+        timezone: false
+      },
       validate: {
         isDate: { msg: 'Debe ser una fecha válida' }
       }
     },
-    distancia_km: {
+    origen_latitud: {
       type: DataTypes.FLOAT,
-      allowNull: false,
+      allowNull: true,
       validate: {
-        notNull: { msg: 'La distancia es obligatoria' },
-        isFloat: { msg: 'La distancia debe ser un número' },
+        isFloat: { msg: 'La latitud de origen debe ser un número' },
         min: {
-          args: [0],
-          msg: 'La distancia no puede ser negativa'
+          args: [-90],
+          msg: 'La latitud debe estar entre -90 y 90'
+        },
+        max: {
+          args: [90],
+          msg: 'La latitud debe estar entre -90 y 90'
+        }
+      }
+    },
+    origen_longitud: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      validate: {
+        isFloat: { msg: 'La longitud de origen debe ser un número' },
+        min: {
+          args: [-180],
+          msg: 'La longitud debe estar entre -180 y 180'
+        },
+        max: {
+          args: [180],
+          msg: 'La longitud debe estar entre -180 y 180'
+        }
+      }
+    },
+    destino_latitud: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      validate: {
+        isFloat: { msg: 'La latitud de destino debe ser un número' },
+        min: {
+          args: [-90],
+          msg: 'La latitud debe estar entre -90 y 90'
+        },
+        max: {
+          args: [90],
+          msg: 'La latitud debe estar entre -90 y 90'
+        }
+      }
+    },
+    destino_longitud: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      validate: {
+        isFloat: { msg: 'La longitud de destino debe ser un número' },
+        min: {
+          args: [-180],
+          msg: 'La longitud debe estar entre -180 y 180'
+        },
+        max: {
+          args: [180],
+          msg: 'La longitud debe estar entre -180 y 180'
         }
       }
     },
