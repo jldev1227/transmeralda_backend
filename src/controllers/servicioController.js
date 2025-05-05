@@ -8,11 +8,11 @@ exports.obtenerTodos = async (req, res) => {
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "linea"]},
-        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT"] }
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
+        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
       ]
     });
-    
+
     return res.status(200).json({
       success: true,
       data: servicios,
@@ -32,24 +32,24 @@ exports.obtenerTodos = async (req, res) => {
 exports.obtenerPorId = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const servicio = await Servicio.findByPk(id, {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion']},
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', 'NIT'] }
       ]
     });
-    
+
     if (!servicio) {
       return res.status(404).json({
         success: false,
         message: 'Servicio no encontrado'
       });
     }
-    
+
     return res.status(200).json({
       success: true,
       data: servicio
@@ -116,7 +116,7 @@ exports.crear = async (req, res) => {
         });
       }
     }
-    
+
     // Verificar que existan los registros relacionados, omitiendo los valores nulos
     const promises = [
       Municipio.findByPk(origen_id),
@@ -151,7 +151,7 @@ exports.crear = async (req, res) => {
         message: 'El vehículo especificado no existe en la base de datos'
       });
     }
-    
+
     // Crear el servicio
     const nuevoServicio = await Servicio.create({
       origen_id,
@@ -172,7 +172,7 @@ exports.crear = async (req, res) => {
       valor,
       observaciones
     });
-    
+
     // Obtener el servicio con sus relaciones
     const servicioCreado = await Servicio.findByPk(nuevoServicio.id, {
       include: [
@@ -183,13 +183,13 @@ exports.crear = async (req, res) => {
         { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre'] }
       ]
     });
-    
+
     // Emitir evento para todos los clientes conectados
     const emitServicioEvent = req.app.get('emitServicioEvent');
     if (emitServicioEvent) {
       emitServicioEvent('servicio:creado', servicioCreado);
     }
-    
+
     // Emitir evento específicamente para el conductor asignado
     if (conductorId) {
       const emitServicioToUser = req.app.get('emitServicioToUser');
@@ -197,7 +197,7 @@ exports.crear = async (req, res) => {
         emitServicioToUser(conductorId, 'servicio:asignado', servicioCreado);
       }
     }
-    
+
     return res.status(201).json({
       success: true,
       message: 'Servicio creado exitosamente',
@@ -205,7 +205,7 @@ exports.crear = async (req, res) => {
     });
   } catch (error) {
     console.error('Error al crear el servicio:', error);
-    
+
     // Manejo específico de errores de validación de Sequelize
     if (error.name === 'SequelizeValidationError') {
       return res.status(400).json({
@@ -217,7 +217,7 @@ exports.crear = async (req, res) => {
         }))
       });
     }
-    
+
     return res.status(500).json({
       success: false,
       message: 'Error al crear el servicio',
@@ -249,39 +249,39 @@ exports.actualizar = async (req, res) => {
       valor,
       observaciones
     } = req.body;
-    
+
     // Verificar que el servicio exista
     const servicio = await Servicio.findByPk(id);
-    
+
     if (!servicio) {
       return res.status(404).json({
         success: false,
         message: 'Servicio no encontrado'
       });
     }
-    
+
     // Si se cambiaron IDs de referencia, verificar que existan
     const promises = [];
     if (origen_id && origen_id !== servicio.origen_id) {
       promises.push(Municipio.findByPk(origen_id));
     }
-    
+
     if (destino_id && destino_id !== servicio.destino_id) {
       promises.push(Municipio.findByPk(destino_id));
     }
-    
+
     if (conductor_id && conductor_id !== servicio.conductor_id) {
       promises.push(Conductor.findByPk(conductor_id));
     }
-    
+
     if (vehiculo_id && vehiculo_id !== servicio.vehiculo_id) {
       promises.push(Vehiculo.findByPk(vehiculo_id));
     }
-    
+
     if (cliente_id && cliente_id !== servicio.cliente_id) {
       promises.push(Empresa.findByPk(cliente_id));
     }
-    
+
     if (promises.length > 0) {
       const results = await Promise.all(promises);
       if (results.some(result => !result)) {
@@ -291,10 +291,10 @@ exports.actualizar = async (req, res) => {
         });
       }
     }
-    
+
     // Guardar el ID del conductor anterior para notificaciones
     const conductorAnteriorId = servicio.conductor_id;
-    
+
     // Actualizar el servicio
     await servicio.update({
       origen_id: origen_id || servicio.origen_id,
@@ -315,7 +315,7 @@ exports.actualizar = async (req, res) => {
       valor: valor || servicio.valor,
       observaciones: observaciones !== undefined ? observaciones : servicio.observaciones
     });
-    
+
     // Obtener el servicio actualizado con sus relaciones
     const servicioActualizado = await Servicio.findByPk(id, {
       include: [
@@ -326,13 +326,13 @@ exports.actualizar = async (req, res) => {
         { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre'] }
       ]
     });
-    
+
     // Emitir evento para todos los clientes conectados
     const emitServicioEvent = req.app.get('emitServicioEvent');
     if (emitServicioEvent) {
       emitServicioEvent('servicio:actualizado', servicioActualizado);
     }
-    
+
     // Emitir notificación al conductor si ha cambiado
     const emitServicioToUser = req.app.get('emitServicioToUser');
     if (emitServicioToUser) {
@@ -340,7 +340,7 @@ exports.actualizar = async (req, res) => {
       if (conductor_id && conductor_id !== conductorAnteriorId) {
         emitServicioToUser(conductor_id, 'servicio:asignado', servicioActualizado);
       }
-      
+
       // Notificar al conductor anterior que se le ha quitado el servicio
       if (conductorAnteriorId && conductor_id !== conductorAnteriorId) {
         emitServicioToUser(conductorAnteriorId, 'servicio:desasignado', {
@@ -349,7 +349,7 @@ exports.actualizar = async (req, res) => {
         });
       }
     }
-    
+
     return res.status(200).json({
       success: true,
       message: 'Servicio actualizado exitosamente',
@@ -357,7 +357,7 @@ exports.actualizar = async (req, res) => {
     });
   } catch (error) {
     console.error('Error al actualizar el servicio:', error);
-    
+
     // Manejo específico de errores de validación de Sequelize
     if (error.name === 'SequelizeValidationError') {
       return res.status(400).json({
@@ -369,7 +369,7 @@ exports.actualizar = async (req, res) => {
         }))
       });
     }
-    
+
     return res.status(500).json({
       success: false,
       message: 'Error al actualizar el servicio',
@@ -382,20 +382,20 @@ exports.actualizar = async (req, res) => {
 exports.eliminar = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const servicio = await Servicio.findByPk(id, {
       include: [
         { model: Conductor, as: 'conductor', attributes: ['id'] }
       ]
     });
-    
+
     if (!servicio) {
       return res.status(404).json({
         success: false,
         message: 'Servicio no encontrado'
       });
     }
-    
+
     // Guardar información relevante antes de eliminar
     const conductorId = servicio.conductor ? servicio.conductor.id : null;
     const servicioInfo = {
@@ -405,16 +405,16 @@ exports.eliminar = async (req, res) => {
       fecha_realizacion: servicio.fecha_realizacion,
       mensaje: 'Este servicio ha sido eliminado'
     };
-    
+
     // Eliminar el servicio
     await servicio.destroy();
-    
+
     // Emitir evento para todos los clientes conectados
     const emitServicioEvent = req.app.get('emitServicioEvent');
     if (emitServicioEvent) {
       emitServicioEvent('servicio:eliminado', { id, ...servicioInfo });
     }
-    
+
     // Notificar específicamente al conductor asignado
     if (conductorId) {
       const emitServicioToUser = req.app.get('emitServicioToUser');
@@ -422,7 +422,7 @@ exports.eliminar = async (req, res) => {
         emitServicioToUser(conductorId, 'servicio:eliminado', servicioInfo);
       }
     }
-    
+
     return res.status(200).json({
       success: true,
       message: 'Servicio eliminado exitosamente',
@@ -441,27 +441,27 @@ exports.eliminar = async (req, res) => {
 // Búsqueda avanzada de servicios
 exports.buscarServicios = async (req, res) => {
   try {
-    const { 
-      estado, 
-      proposito_servicio, 
-      fecha_solicitud, 
-      fecha_realizacion, 
-      conductor_id, 
+    const {
+      estado,
+      proposito_servicio,
+      fecha_solicitud,
+      fecha_realizacion,
+      conductor_id,
       cliente_id,
       origen_id,
       destino_id
     } = req.query;
-    
+
     // Construir condiciones de búsqueda
     const where = {};
-    
+
     if (estado) where.estado = estado;
     if (proposito_servicio) where.proposito_servicio = proposito_servicio;
     if (conductor_id) where.conductor_id = conductor_id;
     if (cliente_id) where.cliente_id = cliente_id;
     if (origen_id) where.origen_id = origen_id;
     if (destino_id) where.destino_id = destino_id;
-    
+
     // Filtro de rango de fechas
     if (fecha_solicitud && fecha_realizacion) {
       where.fecha_solicitud = {
@@ -476,7 +476,7 @@ exports.buscarServicios = async (req, res) => {
         [Op.lte]: new Date(fecha_realizacion)
       };
     }
-    
+
     const servicios = await Servicio.findAll({
       where,
       include: [
@@ -488,7 +488,7 @@ exports.buscarServicios = async (req, res) => {
       ],
       order: [['fecha_solicitud', 'DESC']]
     });
-    
+
     return res.status(200).json({
       success: true,
       data: servicios,
@@ -509,39 +509,41 @@ exports.cambiarEstado = async (req, res) => {
   try {
     const { id } = req.params;
     const { estado } = req.body;
-    
-    if (!estado || !['EN CURSO', 'COMPLETADO', 'PENDIENTE', 'REALIZADO', 'CANCELADO'].includes(estado)) {
+
+    console.log(req.body)
+
+    if (!estado || !['en_curso', 'realizado', 'planificado', 'realizado', 'cancelado'].includes(estado)) {
       return res.status(400).json({
         success: false,
         message: 'Estado no válido'
       });
     }
-    
+
     const servicio = await Servicio.findByPk(id, {
       include: [
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre'] }
       ]
     });
-    
+
     if (!servicio) {
       return res.status(404).json({
         success: false,
         message: 'Servicio no encontrado'
       });
     }
-    
+
     // Guardar estado anterior para comparación
     const estadoAnterior = servicio.estado;
-    
+
     // Actualizar solo el estado y registrar fecha de finalización si se completa
     const datosActualizacion = { estado };
-    
+
     if (estado === 'COMPLETADO' || estado === 'REALIZADO') {
       datosActualizacion.fecha_realizacion = new Date();
     }
-    
+
     await servicio.update(datosActualizacion);
-    
+
     // Obtener el servicio actualizado
     const servicioActualizado = await Servicio.findByPk(id, {
       include: [
@@ -552,18 +554,18 @@ exports.cambiarEstado = async (req, res) => {
         { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre'] }
       ]
     });
-    
+
     // Emitir evento para todos los clientes conectados
     const emitServicioEvent = req.app.get('emitServicioEvent');
     if (emitServicioEvent) {
       emitServicioEvent('servicio:estado-actualizado', {
-        id: servicioActualizado.id, 
+        id: servicioActualizado.id,
         estado: servicioActualizado.estado,
         estadoAnterior,
         servicio: servicioActualizado
       });
     }
-    
+
     // Notificar al conductor asignado
     if (servicio.conductor && servicio.conductor.id) {
       const emitServicioToUser = req.app.get('emitServicioToUser');
@@ -576,7 +578,7 @@ exports.cambiarEstado = async (req, res) => {
         });
       }
     }
-    
+
     return res.status(200).json({
       success: true,
       message: `Servicio actualizado a estado ${estado}`,
@@ -587,6 +589,105 @@ exports.cambiarEstado = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Error al cambiar estado del servicio',
+      error: error.message
+    });
+  }
+};
+
+// Añadir número de planilla a un servicio
+exports.asignarNumeroPlanilla = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { numero_planilla } = req.body;
+    const user_id = req.usuario.id; // Asumiendo que tienes middleware de autenticación
+
+    // Validar que se haya proporcionado un número de planilla
+    if (!numero_planilla) {
+      return res.status(400).json({
+        success: false,
+        message: 'El número de planilla es obligatorio'
+      });
+    }
+
+    // Validar el formato del número de planilla
+    if (!/^TM-\d{1,5}$/.test(numero_planilla)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Formato de número de planilla no válido. Debe ser TM-XXXXX con 1 a 5 dígitos'
+      });
+    }
+
+    const servicio = await Servicio.findByPk(id);
+
+    if (!servicio) {
+      return res.status(404).json({
+        success: false,
+        message: 'Servicio no encontrado'
+      });
+    }
+
+    // Pasar la información del usuario y datos adicionales para el historial
+    await servicio.update(
+      {
+        numero_planilla,
+        estado: 'planilla_asignada'  // Nuevo estado para indicar que tiene planilla
+      },
+      {
+        user_id: user_id,
+        ip_usuario: req.ip,
+        navegador_usuario: req.headers['user-agent'],
+        detalles: {
+          origen: 'API',
+          ruta: req.originalUrl,
+          metodo: req.method
+        }
+      }
+    );
+
+    // Obtener el servicio actualizado
+    const servicioActualizado = await Servicio.findByPk(id, {
+      include: [
+        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
+        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre'] },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
+        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre'] }
+      ]
+    });
+
+    // Emitir evento para todos los clientes conectados
+    const emitServicioEvent = req.app.get('emitServicioEvent');
+    if (emitServicioEvent) {
+      emitServicioEvent('servicio:numero-planilla-actualizado', {
+        id: servicioActualizado.id,
+        numero_planilla: servicioActualizado.numero_planilla,
+        servicio: servicioActualizado
+      });
+    }
+
+    // Notificar al conductor asignado
+    if (servicio.conductor && servicio.conductor.id) {
+      const emitServicioToUser = req.app.get('emitServicioToUser');
+      if (emitServicioToUser) {
+        emitServicioToUser(servicio.conductor.id, 'servicio:numero-planilla-actualizado', {
+          id: servicioActualizado.id,
+          estado: estadoActual,
+          numero_planilla: servicioActualizado.numero_planilla,
+          mensaje: `Se ha asignado el número de planilla ${numero_planilla} al servicio`
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Número de planilla ${numero_planilla} asignado al servicio`,
+      data: servicioActualizado
+    });
+  } catch (error) {
+    console.error('Error al asignar número de planilla al servicio:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al asignar número de planilla al servicio',
       error: error.message
     });
   }

@@ -153,7 +153,7 @@ exports.eliminarConductor = async (req, res) => {
 exports.obtenerConductoresBasicos = async (req, res) => {
   try {
     const conductores = await Conductor.findAll({
-      attributes: ['id', 'nombre', 'apellido', "numero_identificacion"]
+      attributes: ['id', 'nombre', 'apellido', "numero_identificacion", "salario_base"]
     });
 
     res.status(200).json({
