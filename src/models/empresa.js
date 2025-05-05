@@ -90,6 +90,14 @@ module.exports = (sequelize) =>{
           }
         }
       },
+      requiere_osi: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+      },
+      paga_recargos: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+      },
       old_id: {
         type: DataTypes.INTEGER,
         allowNull: true

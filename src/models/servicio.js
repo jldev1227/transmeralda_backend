@@ -83,13 +83,13 @@ module.exports = (sequelize) => {
       }
     },
     estado: {
-      type: DataTypes.ENUM('en curso', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado'),
+      type: DataTypes.ENUM('en_curso', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado', "planilla_asignada"),
       allowNull: false,
       defaultValue: 'solicitado',
       validate: {
         notNull: { msg: 'El estado es obligatorio' },
         isIn: {
-          args: [['en curso', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado']],
+          args: [['en_curso', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado', "planilla_asignada"]],
           msg: 'Estado no válido'
         }
       }
@@ -197,6 +197,16 @@ module.exports = (sequelize) => {
         min: {
           args: [0],
           msg: 'El valor no puede ser negativo'
+        }
+      }
+    },
+    numero_planilla: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      validate: {
+        is: {
+          args: /^TM-\d{1,5}$/,
+          msg: 'El formato debe ser TM-XXXXX (donde X son dígitos, de 1 a 5 dígitos)'
         }
       }
     },
