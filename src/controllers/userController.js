@@ -188,10 +188,10 @@ exports.logout = (req, res) => {
 // Obtener perfil de usuario
 exports.getPerfil = async (req, res) => {
   try {
-    // req.usuario ya está establecido por el middleware protect
+    // req.user ya está establecido por el middleware protect
     res.status(200).json({
       success: true,
-      data: req.usuario,
+      data: req.user,
     });
   } catch (error) {
     console.error("Error al obtener perfil:", error);
@@ -208,7 +208,7 @@ exports.actualizarPerfil = async (req, res) => {
     const { nombre, telefono, correo } = req.body;
 
     // Actualizar usuario
-    await req.usuario.update({
+    await req.user.update({
       nombre,
       telefono,
       correo
@@ -217,7 +217,7 @@ exports.actualizarPerfil = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Perfil actualizado correctamente",
-      data: req.usuario,
+      data: req.user,
     });
   } catch (error) {
     console.error("Error al actualizar perfil:", error);
@@ -247,7 +247,7 @@ exports.cambiarPassword = async (req, res) => {
     const { passwordActual, nuevaPassword } = req.body;
 
     // Verificar password actual
-    const isMatch = await req.usuario.compararPassword(passwordActual);
+    const isMatch = await req.user.compararPassword(passwordActual);
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -256,7 +256,7 @@ exports.cambiarPassword = async (req, res) => {
     }
 
     // Actualizar contraseña
-    await req.usuario.update({ password: nuevaPassword });
+    await req.user.update({ password: nuevaPassword });
 
     res.status(200).json({
       success: true,
@@ -283,8 +283,6 @@ exports.cambiarPassword = async (req, res) => {
     });
   }
 };
-
-
 
 // Función principal para solicitar cambio de contraseña
 exports.solicitarCambioPassword = async (req, res) => {
@@ -478,3 +476,24 @@ exports.establecerNuevaPassword = async (req, res) => {
     });
   }
 };
+
+exports.getAllUsers = async (req, res) => {
+  try {
+    const usuarios = await User.findAll({
+      attributes: ['id', 'nombre', "correo"]
+    });
+
+    res.status(200).json({
+      success: true,
+      count: usuarios.length,
+      data: usuarios
+    });
+  } catch (error) {
+    console.error('Error al obtener usuarios:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener usuarios',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+}

@@ -83,13 +83,13 @@ module.exports = (sequelize) => {
       }
     },
     estado: {
-      type: DataTypes.ENUM('en_curso', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado', "planilla_asignada"),
+      type: DataTypes.ENUM('en_curso', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado', "planilla_asignada", "liquidado"),
       allowNull: false,
       defaultValue: 'solicitado',
       validate: {
         notNull: { msg: 'El estado es obligatorio' },
         isIn: {
-          args: [['en_curso', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado', "planilla_asignada"]],
+          args: [['en_curso', 'pendiente', 'realizado', 'cancelado', 'planificado', 'solicitado', "planilla_asignada", "liquidado"]],
           msg: 'Estado no válido'
         }
       }
@@ -255,6 +255,12 @@ module.exports = (sequelize) => {
     Servicio.belongsTo(models.Empresa, { 
       as: 'cliente',
       foreignKey: 'cliente_id'
+    });
+
+    Servicio.belongsToMany(models.LiquidacionServicio, { 
+      through: models.ServicioLiquidacion, 
+      as: 'liquidaciones',
+      foreignKey: 'servicio_id'
     });
   };
   

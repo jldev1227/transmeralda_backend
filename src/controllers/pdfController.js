@@ -129,7 +129,7 @@ exports.generatePDFs = async (req, res) => {
     }
 
     // Obtener el ID de usuario
-    const userId = req.usuario?.id;
+    const userId = req.user?.id;
 
     // Crear un ID único para el trabajo
     const jobId = uuidv4();
@@ -195,7 +195,7 @@ exports.checkJobStatus = async (req, res) => {
     const job = activeJobs.get(jobId);
 
     // Verificar que el trabajo pertenece al usuario (seguridad)
-    if (job.userId !== req.usuario?.id) {
+    if (job.userId !== req.user?.id) {
       return res.status(403).json({
         success: false,
         message: "No tiene permiso para acceder a este trabajo",

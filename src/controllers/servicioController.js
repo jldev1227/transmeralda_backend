@@ -87,7 +87,6 @@ exports.crear = async (req, res) => {
       observaciones
     } = req.body;
 
-    console.log(req.body)
 
     // Validación adicional de datos, si es necesario
     if (!origen_id || !destino_id || !cliente_id) {
@@ -599,7 +598,7 @@ exports.asignarNumeroPlanilla = async (req, res) => {
   try {
     const { id } = req.params;
     const { numero_planilla } = req.body;
-    const user_id = req.usuario.id; // Asumiendo que tienes middleware de autenticación
+    const user_id = req.user.id; // Asumiendo que tienes middleware de autenticación
 
     // Validar que se haya proporcionado un número de planilla
     if (!numero_planilla) {

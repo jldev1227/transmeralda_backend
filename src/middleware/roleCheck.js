@@ -1,6 +1,6 @@
 exports.checkPermiso = (permiso) => {
     return (req, res, next) => {
-      if (!req.usuario) {
+      if (!req.user) {
         return res.status(401).json({
           success: false,
           message: 'Autenticación requerida'
@@ -8,7 +8,7 @@ exports.checkPermiso = (permiso) => {
       }
   
       // Verificar si es admin o tiene el permiso específico
-      if (req.usuario.role === 'admin' || req.usuario.permisos[permiso]) {
+      if (req.user.role === 'admin' || req.user.permisos[permiso]) {
         return next();
       }
   

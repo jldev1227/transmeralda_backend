@@ -206,7 +206,7 @@ exports.crearLiquidacion = async (req, res) => {
     } = req.body;
 
     // Obtener el ID del usuario desde el contexto
-    const usuario_id = req.usuario.id;
+    const usuario_id = req.user.id;
 
     // Verificar si el conductor existe
     const conductor = await Conductor.findByPk(conductor_id, {
@@ -400,7 +400,7 @@ exports.crearLiquidacion = async (req, res) => {
       // Emitir evento global
       emitLiquidacionEvent("liquidacion_creada", {
         liquidacion: liquidacionConDetalles, // Usar la variable correcta
-        usuarioCreador: req.usuario?.nombre || "Sistema",
+        usuarioCreador: req.user?.nombre || "Sistema",
       });
     }
 
@@ -460,7 +460,7 @@ exports.editarLiquidacion = async (req, res) => {
       estado,
     } = req.body;
 
-    const usuario_id = req.usuario.id;
+    const usuario_id = req.user.id;
 
     // Buscar la liquidación existente
     const liquidacion = await Liquidacion.findByPk(id, { transaction });
@@ -669,7 +669,7 @@ exports.editarLiquidacion = async (req, res) => {
       // Emitir evento global
       emitLiquidacionEvent("liquidacion_actualizada", {
         liquidacion: liquidacionActualizada, // Usar la variable correcta
-        usuarioActualizador: req.usuario?.nombre || "Sistema",
+        usuarioActualizador: req.user?.nombre || "Sistema",
       });
     }
 
