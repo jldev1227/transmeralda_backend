@@ -170,6 +170,15 @@ exports.crear = async (req, res) => {
       fecha_realizacion,
       valor,
       observaciones
+    }, {
+      user_id: req.user.id, // Pasar el ID del usuario para el histórico
+      ip_usuario: req.ip,
+      navegador_usuario: req.headers['user-agent'],
+      detalles: {
+        origen: 'API',
+        ruta: req.originalUrl,
+        metodo: req.method
+      }
     });
 
     // Obtener el servicio con sus relaciones
@@ -313,6 +322,15 @@ exports.actualizar = async (req, res) => {
       fecha_realizacion: fecha_realizacion || servicio.fecha_realizacion,
       valor: valor || servicio.valor,
       observaciones: observaciones !== undefined ? observaciones : servicio.observaciones
+    }, {
+      user_id: req.user.id, // Pasar el ID del usuario para el histórico
+      ip_usuario: req.ip,
+      navegador_usuario: req.headers['user-agent'],
+      detalles: {
+        origen: 'API',
+        ruta: req.originalUrl,
+        metodo: req.method
+      }
     });
 
     // Obtener el servicio actualizado con sus relaciones
@@ -406,7 +424,16 @@ exports.eliminar = async (req, res) => {
     };
 
     // Eliminar el servicio
-    await servicio.destroy();
+    await servicio.destroy({
+      user_id: req.user.id, // Pasar el ID del usuario para el histórico
+      ip_usuario: req.ip,
+      navegador_usuario: req.headers['user-agent'],
+      detalles: {
+        origen: 'API',
+        ruta: req.originalUrl,
+        metodo: req.method
+      }
+    });
 
     // Emitir evento para todos los clientes conectados
     const emitServicioEvent = req.app.get('emitServicioEvent');
@@ -541,7 +568,17 @@ exports.cambiarEstado = async (req, res) => {
       datosActualizacion.fecha_realizacion = new Date();
     }
 
-    await servicio.update(datosActualizacion);
+    await servicio.update(datosActualizacion, {
+      user_id: req.user.id, // Pasar el ID del usuario para el histórico
+      ip_usuario: req.ip,
+      navegador_usuario: req.headers['user-agent'],
+      detalles: {
+        origen: 'API',
+        ruta: req.originalUrl,
+        metodo: req.method,
+        estado_anterior: estadoAnterior
+      }
+    });
 
     // Obtener el servicio actualizado
     const servicioActualizado = await Servicio.findByPk(id, {

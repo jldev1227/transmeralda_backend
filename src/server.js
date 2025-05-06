@@ -32,6 +32,7 @@ const PORT = process.env.PORT || 5000;
 
 const allowedOrigins = [
   'https://nomina.transmeralda.com',
+  'http://nomina.midominio.local:3000',
   'https://auth.transmeralda.com',
   'https://flota.transmeralda.com',
   'http://flota.midominio.local:3000',
@@ -63,6 +64,7 @@ const io = socketIO(server, {
     origin: [
       "http://flota.midominio.local:3000",
       "http://flota.midominio.local",
+      "http://nomina.midominio.local:3000",
       "http://servicios.midominio.local:3000"
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -159,6 +161,8 @@ app.use('/api/empresas', require('./routes/empresaRoutes'));
 app.use('/api/municipios', require('./routes/municipioRoutes'));
 app.use('/api/conductores', require('./routes/conductoresRoutes.js'));
 app.use('/api/servicios', require('./routes/servicioRoutes.js'));
+app.use('/api/servicios-historico', require('./routes/servicioHistoricoRoutes.js'));
+app.use('/api/liquidaciones_servicios', require('./routes/liquidacionServiciosRoutes.js'));
 app.use('/api/documentos', require('./routes/documentoRoutes.js'));
 app.use('/api/export', require('./routes/exportRoutes'));
 app.use('/api/pdf', require('./routes/pdfRoutes'));

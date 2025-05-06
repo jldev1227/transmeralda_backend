@@ -97,93 +97,8 @@ module.exports = (sequelize) => {
     underscored: true,
     timestamps: true,
     hooks: {
-        beforeValidate: (servicio) => {
-          // Lógica existente...
-        },
-        
-        // Registrar cambios después de actualizar un servicio
-        afterUpdate: async (servicio, options) => {
-          if (!options.user_id) return; // Si no hay ID de usuario, no registrar
-          
-          try {
-            const changed = servicio.changed();
-            if (!changed || changed.length === 0) return;
-            
-            const historicosToCreate = [];
-            const ServicioHistorico = sequelize.models.ServicioHistorico;
-            
-            // Para cada campo modificado, crear un registro en el histórico
-            for (const campo of changed) {
-              // Ignorar campos que no queremos trackear como timestamps
-              if (['updated_at', 'created_at'].includes(campo)) continue;
-              
-              historicosToCreate.push({
-                servicio_id: servicio.id,
-                usuario_id: options.user_id,
-                campo_modificado: campo,
-                valor_anterior: servicio.previous(campo)?.toString() || null,
-                valor_nuevo: servicio.getDataValue(campo)?.toString() || null,
-                tipo_operacion: 'actualizacion',
-                ip_usuario: options.ip_usuario || null,
-                navegador_usuario: options.navegador_usuario || null,
-                detalles: options.detalles || null
-              });
-            }
-            
-            // Crear los registros del histórico
-            if (historicosToCreate.length > 0) {
-              await ServicioHistorico.bulkCreate(historicosToCreate);
-            }
-          } catch (error) {
-            console.error('Error al registrar histórico:', error);
-            // No lanzar error para no interrumpir la operación principal
-          }
-        },
-        
-        // Registrar creación de servicio
-        afterCreate: async (servicio, options) => {
-          if (!options.user_id) return;
-          
-          try {
-            const ServicioHistorico = sequelize.models.ServicioHistorico;
-            
-            await ServicioHistorico.create({
-              servicio_id: servicio.id,
-              usuario_id: options.user_id,
-              campo_modificado: 'creacion_servicio',
-              valor_anterior: null,
-              valor_nuevo: JSON.stringify(servicio.toJSON()),
-              tipo_operacion: 'creacion',
-              ip_usuario: options.ip_usuario || null,
-              navegador_usuario: options.navegador_usuario || null,
-              detalles: options.detalles || null
-            });
-          } catch (error) {
-            console.error('Error al registrar histórico de creación:', error);
-          }
-        },
-        
-        // Registrar eliminación (si es softDelete) o eliminación física
-        afterDestroy: async (servicio, options) => {
-          if (!options.user_id) return;
-          
-          try {
-            const ServicioHistorico = sequelize.models.ServicioHistorico;
-            
-            await ServicioHistorico.create({
-              servicio_id: servicio.id,
-              usuario_id: options.user_id,
-              campo_modificado: 'eliminacion_servicio',
-              valor_anterior: JSON.stringify(servicio.toJSON()),
-              valor_nuevo: null,
-              tipo_operacion: 'eliminacion',
-              ip_usuario: options.ip_usuario || null,
-              navegador_usuario: options.navegador_usuario || null,
-              detalles: options.detalles || null
-            });
-          } catch (error) {
-            console.error('Error al registrar histórico de eliminación:', error);
-          }
+        beforeValidate: (historico) => {
+          // Validación del histórico si es necesario
         }
       }
   });
@@ -201,11 +116,11 @@ module.exports = (sequelize) => {
     // Verificar si el modelo Usuario existe
     if (models.User) {
       ServicioHistorico.belongsTo(models.User, {
-        as: 'user',
-        foreignKey: 'user_id'
+        as: 'usuario',
+        foreignKey: 'usuario_id'
       });
     } else {
-      console.warn('Modelo User no encontrado. Asociación user en ServicioHistorico no creada.');
+      console.warn('Modelo User no encontrado. Asociación usuario en ServicioHistorico no creada.');
     }
   };
   
