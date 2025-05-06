@@ -104,7 +104,7 @@ function setupBullBoard(app, queues) {
     serverAdapter.setBasePath('/admin/queues');
     app.use('/admin/queues', (req, res, next) => {
       // Añadir autenticación aquí si es necesario
-      const isAdmin = req.usuario?.role === 'admin'; 
+      const isAdmin = req.user?.role === 'admin'; 
       if (!isAdmin) {
         return res.status(403).send('Acceso denegado');
       }

@@ -35,7 +35,7 @@ exports.protect = async (req, res, next) => {
     await usuario.update({ ultimo_acceso: new Date() });
 
     // Añadir usuario a la request
-    req.usuario = usuario;
+    req.user = usuario;
     next();
   } catch (error) {
     return res.status(401).json({
@@ -47,14 +47,14 @@ exports.protect = async (req, res, next) => {
 
 /**
  * Middleware para verificar si un usuario tiene rol o permisos de administrador
- * Se debe usar después del middleware protect que establece req.usuario
+ * Se debe usar después del middleware protect que establece req.user
  * @param {Object} req - Objeto request de Express
  * @param {Object} res - Objeto response de Express
  * @param {Function} next - Función next de Express
  */
 exports.isAdmin = async (req, res, next) => {
-  // Verificar que existe req.usuario (establecido por el middleware protect)
-  if (!req.usuario) {
+  // Verificar que existe req.user (establecido por el middleware protect)
+  if (!req.user) {
     return res.status(401).json({
       success: false,
       message: 'Usuario no autenticado'
@@ -63,7 +63,7 @@ exports.isAdmin = async (req, res, next) => {
 
   try {
     // Obtener usuario fresco de la base de datos para asegurar permisos actualizados
-    const usuario = await User.findByPk(req.usuario.id);
+    const usuario = await User.findByPk(req.user.id);
     
     if (!usuario) {
       return res.status(401).json({
@@ -77,8 +77,8 @@ exports.isAdmin = async (req, res, next) => {
     const isAdminPermiso = usuario.permisos && usuario.permisos.admin === true;
     
     if (isAdminRole || isAdminPermiso) {
-      // Actualizar req.usuario con datos frescos
-      req.usuario = usuario;
+      // Actualizar req.user con datos frescos
+      req.user = usuario;
       return next();
     }
 
@@ -104,8 +104,8 @@ exports.isAdmin = async (req, res, next) => {
  */
 exports.hasRole = (roles) => {
   return async (req, res, next) => {
-    // Verificar que existe req.usuario (establecido por el middleware protect)
-    if (!req.usuario) {
+    // Verificar que existe req.user (establecido por el middleware protect)
+    if (!req.user) {
       return res.status(401).json({
         success: false,
         message: 'Usuario no autenticado'
@@ -117,7 +117,7 @@ exports.hasRole = (roles) => {
       const rolesArray = Array.isArray(roles) ? roles : [roles];
 
       // Obtener usuario fresco de la base de datos
-      const usuario = await User.findByPk(req.usuario.id);
+      const usuario = await User.findByPk(req.user.id);
       
       if (!usuario) {
         return res.status(401).json({
@@ -128,8 +128,8 @@ exports.hasRole = (roles) => {
 
       // Verificar si el usuario tiene alguno de los roles permitidos
       if (rolesArray.includes(usuario.role)) {
-        // Actualizar req.usuario con datos frescos
-        req.usuario = usuario;
+        // Actualizar req.user con datos frescos
+        req.user = usuario;
         return next();
       }
 
@@ -156,8 +156,8 @@ exports.hasRole = (roles) => {
  */
 exports.hasPermiso = (permisos) => {
   return async (req, res, next) => {
-    // Verificar que existe req.usuario (establecido por el middleware protect)
-    if (!req.usuario) {
+    // Verificar que existe req.user (establecido por el middleware protect)
+    if (!req.user) {
       return res.status(401).json({
         success: false,
         message: 'Usuario no autenticado'
@@ -169,7 +169,7 @@ exports.hasPermiso = (permisos) => {
       const permisosArray = Array.isArray(permisos) ? permisos : [permisos];
 
       // Obtener usuario fresco de la base de datos
-      const usuario = await User.findByPk(req.usuario.id);
+      const usuario = await User.findByPk(req.user.id);
       
       if (!usuario) {
         return res.status(401).json({
@@ -180,7 +180,7 @@ exports.hasPermiso = (permisos) => {
 
       // El administrador tiene todos los permisos
       if (usuario.role === 'admin') {
-        req.usuario = usuario;
+        req.user = usuario;
         return next();
       }
 
@@ -190,8 +190,8 @@ exports.hasPermiso = (permisos) => {
       );
 
       if (tienePermiso) {
-        // Actualizar req.usuario con datos frescos
-        req.usuario = usuario;
+        // Actualizar req.user con datos frescos
+        req.user = usuario;
         return next();
       }
 
