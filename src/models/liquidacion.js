@@ -153,6 +153,14 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING,
         allowNull: true,
       },
+      periodo_start_incapacidad: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      periodo_end_incapacidad: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
       dias_laborados: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -190,6 +198,18 @@ module.exports = (sequelize) => {
         },
         get() {
           const value = this.getDataValue("ajuste_salarial");
+          return value === null ? null : parseFloat(value);
+        },
+      },
+      valor_incapacidad: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+        validate: {
+          isDecimal: { msg: "El valor incapacidad debe ser un valor numérico" },
+        },
+        get() {
+          const value = this.getDataValue("valor_incapacidad");
           return value === null ? null : parseFloat(value);
         },
       },

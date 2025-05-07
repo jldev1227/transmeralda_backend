@@ -169,6 +169,7 @@ exports.obtenerLiquidacionPorId = async (req, res) => {
     });
   }
 };
+
 // Crear liquidación con anticipos integrados
 exports.crearLiquidacion = async (req, res) => {
   const transaction = await Liquidacion.sequelize.transaction();
@@ -180,6 +181,8 @@ exports.crearLiquidacion = async (req, res) => {
       periodo_end,
       periodo_start_vacaciones,
       periodo_end_vacaciones,
+      periodo_start_incapacidad,
+      periodo_end_incapacidad,
       auxilio_transporte,
       sueldo_total,
       salario_devengado,
@@ -188,7 +191,9 @@ exports.crearLiquidacion = async (req, res) => {
       total_recargos,
       total_anticipos,
       total_vacaciones,
+      valor_incapacidad,
       dias_laborados,
+      dias_incapacidad,
       dias_laborados_villanueva,
       dias_laborados_anual,
       ajuste_salarial,
@@ -266,6 +271,10 @@ exports.crearLiquidacion = async (req, res) => {
         total_anticipos: finalTotalAnticipos, // Usar el total calculado
         total_vacaciones,
         dias_laborados,
+        periodo_start_incapacidad,
+        periodo_end_incapacidad,
+        valor_incapacidad,
+        dias_incapacidad,
         dias_laborados_villanueva,
         dias_laborados_anual,
         ajuste_salarial,
@@ -446,6 +455,10 @@ exports.editarLiquidacion = async (req, res) => {
       dias_laborados,
       dias_laborados_villanueva,
       dias_laborados_anual,
+      periodo_start_incapacidad,
+      periodo_end_incapacidad,
+      valor_incapacidad,
+      dias_incapacidad,
       ajuste_salarial,
       vehiculos,
       bonificaciones,
@@ -503,6 +516,10 @@ exports.editarLiquidacion = async (req, res) => {
         periodo_start_vacaciones,
         periodo_end_vacaciones,
         dias_laborados,
+        periodo_start_incapacidad,
+        periodo_end_incapacidad,
+        valor_incapacidad,
+        dias_incapacidad,
         dias_laborados_villanueva,
         dias_laborados_anual,
         ajuste_salarial,

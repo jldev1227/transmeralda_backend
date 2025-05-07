@@ -202,8 +202,6 @@ exports.checkJobStatus = async (req, res) => {
       });
     }
 
-    console.log(job)
-
     return res.status(200).json({
       success: true,
       data: {
@@ -279,8 +277,6 @@ pdfQueue.process(async (job, done) => {
       try {
         // Generar PDF para la liquidación
         const pdfBuffer = await generatePDF(liquidacion);
-
-        console.log(pdfBuffer, "bufferssss");
 
         // Verificar que el buffer es válido
         if (!Buffer.isBuffer(pdfBuffer)) {

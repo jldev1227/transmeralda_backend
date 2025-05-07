@@ -224,6 +224,128 @@ module.exports = (sequelize) => {
       beforeValidate: (servicio) => {
         // Puedes agregar lógica adicional aquí, como cálculos automáticos
         // Por ejemplo, calcular la distancia o el valor basado en origen y destino
+      },
+      
+      // Registrar cambios después de actualizar un servicio
+      afterUpdate: async (servicio, options) => {
+        console.log('Servicio afterUpdate hook called with options:', JSON.stringify(options));
+        console.log('Servicio ID:', servicio.id);
+        
+        if (!options.user_id) {
+          console.log('No user_id provided in options, skipping historical record update');
+          return;
+        }
+        
+        try {
+          const changed = servicio.changed();
+          console.log('Changed fields:', changed);
+          
+          if (!changed || changed.length === 0) {
+            console.log('No fields changed, skipping historical record update');
+            return;
+          }
+          
+          const historicosToCreate = [];
+          const ServicioHistorico = sequelize.models.ServicioHistorico;
+          
+          // Para cada campo modificado, crear un registro en el histórico
+          for (const campo of changed) {
+            // Ignorar campos que no queremos trackear como timestamps
+            if (['updated_at', 'created_at'].includes(campo)) {
+              console.log(`Skipping timestamp field: ${campo}`);
+              continue;
+            }
+            
+            const valorAnterior = servicio.previous(campo)?.toString() || null;
+            const valorNuevo = servicio.getDataValue(campo)?.toString() || null;
+            
+            console.log(`Field ${campo} changed from '${valorAnterior}' to '${valorNuevo}'`);
+            
+            historicosToCreate.push({
+              servicio_id: servicio.id,
+              usuario_id: options.user_id,
+              campo_modificado: campo,
+              valor_anterior: valorAnterior,
+              valor_nuevo: valorNuevo,
+              tipo_operacion: 'actualizacion',
+              ip_usuario: options.ip_usuario || null,
+              navegador_usuario: options.navegador_usuario || null,
+              detalles: options.detalles || null
+            });
+          }
+          
+          // Crear los registros del histórico
+          if (historicosToCreate.length > 0) {
+            console.log(`Creating ${historicosToCreate.length} historical records for update`);
+            const createdHistoricos = await ServicioHistorico.bulkCreate(historicosToCreate);
+            console.log(`Created ${createdHistoricos.length} historical records successfully`);
+          }
+        } catch (error) {
+          console.error('Error al registrar histórico:', error);
+          // No lanzar error para no interrumpir la operación principal
+        }
+      },
+      
+      // Registrar creación de servicio
+      afterCreate: async (servicio, options) => {
+        console.log('Servicio afterCreate hook called with options:', JSON.stringify(options));
+        console.log('Servicio ID:', servicio.id);
+        
+        if (!options.user_id) {
+          console.log('No user_id provided in options, skipping historical record creation');
+          return;
+        }
+
+        try {
+          const ServicioHistorico = sequelize.models.ServicioHistorico;
+          
+          const historico = await ServicioHistorico.create({
+            servicio_id: servicio.id,
+            usuario_id: options.user_id,
+            campo_modificado: 'creacion_servicio',
+            valor_anterior: null,
+            valor_nuevo: JSON.stringify(servicio.toJSON()),
+            tipo_operacion: 'creacion',
+            ip_usuario: options.ip_usuario || null,
+            navegador_usuario: options.navegador_usuario || null,
+            detalles: options.detalles || null
+          });
+          
+          console.log('Histórico creado correctamente con ID:', historico.id);
+        } catch (error) {
+          console.error('Error al registrar histórico de creación:', error);
+        }
+      },
+      
+      // Registrar eliminación (si es softDelete) o eliminación física
+      afterDestroy: async (servicio, options) => {
+        console.log('Servicio afterDestroy hook called with options:', JSON.stringify(options));
+        console.log('Servicio ID:', servicio.id);
+        
+        if (!options.user_id) {
+          console.log('No user_id provided in options, skipping historical record for deletion');
+          return;
+        }
+        
+        try {
+          const ServicioHistorico = sequelize.models.ServicioHistorico;
+          
+          const historico = await ServicioHistorico.create({
+            servicio_id: servicio.id,
+            usuario_id: options.user_id,
+            campo_modificado: 'eliminacion_servicio',
+            valor_anterior: JSON.stringify(servicio.toJSON()),
+            valor_nuevo: null,
+            tipo_operacion: 'eliminacion',
+            ip_usuario: options.ip_usuario || null,
+            navegador_usuario: options.navegador_usuario || null,
+            detalles: options.detalles || null
+          });
+          
+          console.log('Histórico de eliminación creado correctamente con ID:', historico.id);
+        } catch (error) {
+          console.error('Error al registrar histórico de eliminación:', error);
+        }
       }
     }
   });
