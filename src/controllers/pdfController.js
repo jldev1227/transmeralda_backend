@@ -251,6 +251,7 @@ pdfQueue.process(async (job, done) => {
       ],
     });
 
+
     if (liquidaciones.length === 0) {
       throw new Error("No se encontraron liquidaciones para procesar");
     }
@@ -300,9 +301,8 @@ pdfQueue.process(async (job, done) => {
 
         pdfBuffers.push({
           data: pdfBuffer,
-          filename: `Liquidacion_${liquidacion.conductor?.nombre || ""}_${
-            liquidacion.conductor?.apellido || ""
-          }_${liquidacion.id}.pdf`,
+          filename: `Liquidacion_${liquidacion.conductor?.nombre || ""}_${liquidacion.conductor?.apellido || ""
+            }_${liquidacion.id}.pdf`,
           conductorId: liquidacion.conductor?.id,
           email: liquidacion.conductor?.email,
         });
@@ -504,10 +504,8 @@ emailQueue.process(async (job, done) => {
       // Log para depuración de los archivos adjuntos
       attachments.forEach((att, idx) => {
         console.log(
-          `  Adjunto ${idx + 1}: ${
-            att.filename
-          }, tipo=${typeof att.content}, tamaño=${
-            Buffer.isBuffer(att.content) ? att.content.length : "N/A"
+          `  Adjunto ${idx + 1}: ${att.filename
+          }, tipo=${typeof att.content}, tamaño=${Buffer.isBuffer(att.content) ? att.content.length : "N/A"
           } bytes`
         );
       });
@@ -668,6 +666,21 @@ async function generatePDF(liquidacion) {
             ? value
             : parseInt(value)
           : defaultValue;
+      };
+
+      // Función para calcular la diferencia en días entre dos fechas
+      const calcularDiferenciaDias = (fechaInicio, fechaFin) => {
+        // Convertir strings a objetos Date
+        const inicio = new Date(fechaInicio);
+        const fin = new Date(fechaFin);
+
+        // Calcular la diferencia en milisegundos
+        const diferenciaMs = fin.getTime() - inicio.getTime();
+
+        // Convertir milisegundos a días (1 día = 24 * 60 * 60 * 1000 ms)
+        const diferenciaDias = Math.round(diferenciaMs / (24 * 60 * 60 * 1000));
+
+        return diferenciaDias + 1;
       };
 
       const formatToCOP = (amount) => {
@@ -875,6 +888,27 @@ async function generatePDF(liquidacion) {
             color: "gray",
             fontSize: 12,
             bgColor: "#F0F0F0",
+            marginRight: 5,
+          },
+          valueAlign: "right",
+          rowHeight: 26,
+          drawVerticalBorders: false,
+          borderStyle: "outer",
+        }
+      );
+
+      // Incapacidad remuneración
+      drawTableRow(
+        doc,
+        "Remuneración por incapacidad",
+        formatToCOP(safeValue(liquidacion.valor_incapacidad, "0")),
+        {
+          middleText: `${safeValue(calcularDiferenciaDias(liquidacion.periodo_start_incapacidad, liquidacion.periodo_end_incapacidad), "0")} días`,
+          middleAlign: "center",
+          valueStyle: {
+            color: "#2E8B57",
+            fontSize: 12,
+            bgColor: "#F3F8F5",
             marginRight: 5,
           },
           valueAlign: "right",
@@ -1304,11 +1338,11 @@ async function generatePDF(liquidacion) {
       if (safeValue(liquidacion.total_vacaciones, "0") > 0) {
         const vacationDays =
           liquidacion.periodo_start_vacaciones &&
-          liquidacion.periodo_end_vacaciones
+            liquidacion.periodo_end_vacaciones
             ? obtenerDiferenciaDias({
-                start: liquidacion.periodo_start_vacaciones,
-                end: liquidacion.periodo_end_vacaciones,
-              })
+              start: liquidacion.periodo_start_vacaciones,
+              end: liquidacion.periodo_end_vacaciones,
+            })
             : 0;
 
         drawTableRow(
