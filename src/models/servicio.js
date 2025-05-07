@@ -228,7 +228,8 @@ module.exports = (sequelize) => {
       
       // Registrar cambios después de actualizar un servicio
       afterUpdate: async (servicio, options) => {
-        console.log('Servicio afterUpdate hook called with options:', JSON.stringify(options));
+        // Evitar la conversión a JSON de objetos que puedan tener referencias circulares
+        console.log('Servicio afterUpdate hook called with user_id:', options?.user_id);
         console.log('Servicio ID:', servicio.id);
         
         if (!options.user_id) {
@@ -261,6 +262,22 @@ module.exports = (sequelize) => {
             
             console.log(`Field ${campo} changed from '${valorAnterior}' to '${valorNuevo}'`);
             
+            // Crear una copia segura de los detalles para evitar referencias circulares
+            let detallesSeguros = null;
+            if (options.detalles) {
+              try {
+                // Intentar crear una copia profunda simple
+                detallesSeguros = JSON.parse(JSON.stringify(options.detalles));
+              } catch (e) {
+                // Si hay error al serializar, crear un objeto básico con información esencial
+                detallesSeguros = {
+                  origen: options.detalles.origen || 'API',
+                  mensaje: 'Detalles originales no serializables'
+                };
+                console.log('No se pudieron serializar los detalles completos:', e.message);
+              }
+            }
+            
             historicosToCreate.push({
               servicio_id: servicio.id,
               usuario_id: options.user_id,
@@ -270,7 +287,7 @@ module.exports = (sequelize) => {
               tipo_operacion: 'actualizacion',
               ip_usuario: options.ip_usuario || null,
               navegador_usuario: options.navegador_usuario || null,
-              detalles: options.detalles || null
+              detalles: detallesSeguros
             });
           }
           
@@ -288,7 +305,8 @@ module.exports = (sequelize) => {
       
       // Registrar creación de servicio
       afterCreate: async (servicio, options) => {
-        console.log('Servicio afterCreate hook called with options:', JSON.stringify(options));
+        // Evitar la conversión a JSON de objetos que puedan tener referencias circulares
+        console.log('Servicio afterCreate hook called with user_id:', options?.user_id);
         console.log('Servicio ID:', servicio.id);
         
         if (!options.user_id) {
@@ -299,16 +317,40 @@ module.exports = (sequelize) => {
         try {
           const ServicioHistorico = sequelize.models.ServicioHistorico;
           
+          // Obtener una versión segura de los datos del servicio para JSON
+          const servicioData = servicio.toJSON();
+          
+          // Eliminar posibles referencias circulares o complejas que no sean necesarias para el histórico
+          if (servicioData.sequelize) delete servicioData.sequelize;
+          if (servicioData.options) delete servicioData.options;
+          if (servicioData._previousDataValues) delete servicioData._previousDataValues;
+          
+          // Crear una copia segura de los detalles para evitar referencias circulares
+          let detallesSeguros = null;
+          if (options.detalles) {
+            try {
+              // Intentar crear una copia profunda simple
+              detallesSeguros = JSON.parse(JSON.stringify(options.detalles));
+            } catch (e) {
+              // Si hay error al serializar, crear un objeto básico con información esencial
+              detallesSeguros = {
+                origen: options.detalles.origen || 'API',
+                mensaje: 'Detalles originales no serializables'
+              };
+              console.log('No se pudieron serializar los detalles completos:', e.message);
+            }
+          }
+          
           const historico = await ServicioHistorico.create({
             servicio_id: servicio.id,
             usuario_id: options.user_id,
             campo_modificado: 'creacion_servicio',
             valor_anterior: null,
-            valor_nuevo: JSON.stringify(servicio.toJSON()),
+            valor_nuevo: JSON.stringify(servicioData),
             tipo_operacion: 'creacion',
             ip_usuario: options.ip_usuario || null,
             navegador_usuario: options.navegador_usuario || null,
-            detalles: options.detalles || null
+            detalles: detallesSeguros
           });
           
           console.log('Histórico creado correctamente con ID:', historico.id);
@@ -319,7 +361,8 @@ module.exports = (sequelize) => {
       
       // Registrar eliminación (si es softDelete) o eliminación física
       afterDestroy: async (servicio, options) => {
-        console.log('Servicio afterDestroy hook called with options:', JSON.stringify(options));
+        // Evitar la conversión a JSON de objetos que puedan tener referencias circulares
+        console.log('Servicio afterDestroy hook called with user_id:', options?.user_id);
         console.log('Servicio ID:', servicio.id);
         
         if (!options.user_id) {
@@ -330,16 +373,40 @@ module.exports = (sequelize) => {
         try {
           const ServicioHistorico = sequelize.models.ServicioHistorico;
           
+          // Obtener una versión segura de los datos del servicio para JSON
+          const servicioData = servicio.toJSON();
+          
+          // Eliminar posibles referencias circulares o complejas que no sean necesarias para el histórico
+          if (servicioData.sequelize) delete servicioData.sequelize;
+          if (servicioData.options) delete servicioData.options;
+          if (servicioData._previousDataValues) delete servicioData._previousDataValues;
+          
+          // Crear una copia segura de los detalles para evitar referencias circulares
+          let detallesSeguros = null;
+          if (options.detalles) {
+            try {
+              // Intentar crear una copia profunda simple
+              detallesSeguros = JSON.parse(JSON.stringify(options.detalles));
+            } catch (e) {
+              // Si hay error al serializar, crear un objeto básico con información esencial
+              detallesSeguros = {
+                origen: options.detalles.origen || 'API',
+                mensaje: 'Detalles originales no serializables'
+              };
+              console.log('No se pudieron serializar los detalles completos:', e.message);
+            }
+          }
+          
           const historico = await ServicioHistorico.create({
             servicio_id: servicio.id,
             usuario_id: options.user_id,
             campo_modificado: 'eliminacion_servicio',
-            valor_anterior: JSON.stringify(servicio.toJSON()),
+            valor_anterior: JSON.stringify(servicioData),
             valor_nuevo: null,
             tipo_operacion: 'eliminacion',
             ip_usuario: options.ip_usuario || null,
             navegador_usuario: options.navegador_usuario || null,
-            detalles: options.detalles || null
+            detalles: detallesSeguros
           });
           
           console.log('Histórico de eliminación creado correctamente con ID:', historico.id);

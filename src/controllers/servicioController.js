@@ -1,4 +1,4 @@
-const { Servicio, Municipio, Conductor, Vehiculo, Empresa } = require('../models');
+const { Servicio, Municipio, Conductor, Vehiculo, Empresa, ServicioHistorico } = require('../models');
 
 // Obtener todos los servicios
 exports.obtenerTodos = async (req, res) => {
@@ -35,11 +35,11 @@ exports.obtenerPorId = async (req, res) => {
 
     const servicio = await Servicio.findByPk(id, {
       include: [
-        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
-        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
+        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
+        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', 'NIT'] }
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
+        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
       ]
     });
 
@@ -186,9 +186,9 @@ exports.crear = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'linea', 'modelo'] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre'] }
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion'] },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
+        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
       ]
     });
 
@@ -278,11 +278,13 @@ exports.actualizar = async (req, res) => {
       promises.push(Municipio.findByPk(destino_id));
     }
 
-    if (conductor_id && conductor_id !== servicio.conductor_id) {
+    // Solo verificar los IDs de conductor si se proporciona un ID válido (no nulo o vacío)
+    if (req.body.hasOwnProperty('conductor_id') && conductor_id && conductor_id !== servicio.conductor_id) {
       promises.push(Conductor.findByPk(conductor_id));
     }
 
-    if (vehiculo_id && vehiculo_id !== servicio.vehiculo_id) {
+    // Solo verificar los IDs de vehículo si se proporciona un ID válido (no nulo o vacío)
+    if (req.body.hasOwnProperty('vehiculo_id') && vehiculo_id && vehiculo_id !== servicio.vehiculo_id) {
       promises.push(Vehiculo.findByPk(vehiculo_id));
     }
 
@@ -303,8 +305,8 @@ exports.actualizar = async (req, res) => {
     // Guardar el ID del conductor anterior para notificaciones
     const conductorAnteriorId = servicio.conductor_id;
 
-    // Actualizar el servicio
-    await servicio.update({
+    // Preparar objeto de actualización
+    const updateData = {
       origen_id: origen_id || servicio.origen_id,
       destino_id: destino_id || servicio.destino_id,
       origen_especifico: origen_especifico || servicio.origen_especifico,
@@ -313,16 +315,173 @@ exports.actualizar = async (req, res) => {
       origen_longitud: origen_longitud !== undefined ? origen_longitud : servicio.origen_longitud,
       destino_latitud: destino_latitud !== undefined ? destino_latitud : servicio.destino_latitud,
       destino_longitud: destino_longitud !== undefined ? destino_longitud : servicio.destino_longitud,
-      conductor_id: conductor_id || servicio.conductor_id,
-      vehiculo_id: vehiculo_id || servicio.vehiculo_id,
       cliente_id: cliente_id || servicio.cliente_id,
       estado: estado || servicio.estado,
       proposito_servicio: proposito_servicio || servicio.proposito_servicio,
       fecha_solicitud: fecha_solicitud || servicio.fecha_solicitud,
       fecha_realizacion: fecha_realizacion || servicio.fecha_realizacion,
       valor: valor || servicio.valor,
+      // Manejo especial para observaciones: preservar cadenas vacías cuando se envían explícitamente
       observaciones: observaciones !== undefined ? observaciones : servicio.observaciones
-    }, {
+    };
+    
+    // Manejar conductor_id: si está presente en req.body pero es null/vacío, lo establecemos a null
+    // para desasociar al conductor del servicio
+    if (req.body.hasOwnProperty('conductor_id')) {
+      // Si conductor_id está presente pero es null, vacío o undefined, asignar null
+      const conductorDesasociado = conductor_id === null || conductor_id === '' || conductor_id === undefined;
+      updateData.conductor_id = conductorDesasociado ? null : conductor_id;
+      
+      // Agregar detalle especial para el registro histórico si se está desasociando un conductor
+      if (conductorDesasociado && servicio.conductor_id) {
+        if (!updateData.detalles) updateData.detalles = {};
+        updateData.detalles.conductor_desasociado = true;
+        updateData.detalles.conductor_id_anterior = servicio.conductor_id;
+        updateData.detalles.descripcion_cambio_conductor = "Se desvinculó el conductor del servicio";
+        
+        // Obtener información del conductor que se está desvinculando para el histórico
+        try {
+            // Buscar los datos del conductor para tener información más completa en el histórico
+            const conductorAnterior = await Conductor.findByPk(servicio.conductor_id, {
+                attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion']
+            });
+            
+            let valorAnterior = `Conductor ID: ${servicio.conductor_id}`;
+            if (conductorAnterior) {
+                valorAnterior = `Conductor: ${conductorAnterior.nombre} ${conductorAnterior.apellido} (${conductorAnterior.tipo_identificacion}: ${conductorAnterior.numero_identificacion})`;
+            }
+            
+            // Crear un registro histórico específico para la desvinculación del conductor
+            await ServicioHistorico.create({
+              servicio_id: servicio.id,
+              usuario_id: req.user.id,
+              campo_modificado: 'desvinculacion_conductor',
+              valor_anterior: valorAnterior,
+              valor_nuevo: 'Sin conductor asignado',
+              tipo_operacion: 'actualizacion',
+              ip_usuario: req.ip || null,
+              navegador_usuario: req.headers['user-agent'] || null,
+              detalles: {
+                origen: 'API',
+                ruta: req.originalUrl,
+                metodo: req.method,
+                accion: 'Desvinculación de conductor',
+                conductor_id_anterior: servicio.conductor_id,
+                datos_conductor: conductorAnterior ? conductorAnterior.toJSON() : null
+              }
+            });
+            console.log(`Registro histórico creado para la desvinculación del conductor en servicio ID: ${servicio.id}`);
+        } catch (error) {
+          console.error('Error al registrar la desvinculación del conductor en histórico:', error);
+        }
+      }
+    } else {
+      updateData.conductor_id = servicio.conductor_id;
+    }
+    
+    // Manejar vehiculo_id: si está presente en req.body pero es null/vacío, lo establecemos a null
+    // para desasociar al vehículo del servicio
+    if (req.body.hasOwnProperty('vehiculo_id')) {
+      // Si vehiculo_id está presente pero es null, vacío o undefined, asignar null
+      const vehiculoDesasociado = vehiculo_id === null || vehiculo_id === '' || vehiculo_id === undefined;
+      updateData.vehiculo_id = vehiculoDesasociado ? null : vehiculo_id;
+      
+      // Agregar detalle especial para el registro histórico si se está desasociando un vehículo
+      if (vehiculoDesasociado && servicio.vehiculo_id) {
+        if (!updateData.detalles) updateData.detalles = {};
+        updateData.detalles.vehiculo_desasociado = true;
+        updateData.detalles.vehiculo_id_anterior = servicio.vehiculo_id;
+        updateData.detalles.descripcion_cambio_vehiculo = "Se desvinculó el vehículo del servicio";
+        
+        // Obtener información del vehículo que se está desvinculando para el histórico
+        try {
+            // Buscar los datos del vehículo para tener información más completa en el histórico
+            const vehiculoAnterior = await Vehiculo.findByPk(servicio.vehiculo_id, {
+                attributes: ['id', 'placa', 'marca', 'linea', 'modelo']
+            });
+            
+            let valorAnterior = `Vehículo ID: ${servicio.vehiculo_id}`;
+            if (vehiculoAnterior) {
+                valorAnterior = `Vehículo: ${vehiculoAnterior.placa} (${vehiculoAnterior.marca} ${vehiculoAnterior.linea} - ${vehiculoAnterior.modelo})`;
+            }
+            
+            // Crear un registro histórico específico para la desvinculación del vehículo
+            await ServicioHistorico.create({
+              servicio_id: servicio.id,
+              usuario_id: req.user.id,
+              campo_modificado: 'desvinculacion_vehiculo',
+              valor_anterior: valorAnterior,
+              valor_nuevo: 'Sin vehículo asignado',
+              tipo_operacion: 'actualizacion',
+              ip_usuario: req.ip || null,
+              navegador_usuario: req.headers['user-agent'] || null,
+              detalles: {
+                origen: 'API',
+                ruta: req.originalUrl,
+                metodo: req.method,
+                accion: 'Desvinculación de vehículo',
+                vehiculo_id_anterior: servicio.vehiculo_id,
+                datos_vehiculo: vehiculoAnterior ? vehiculoAnterior.toJSON() : null
+              }
+            });
+            console.log(`Registro histórico creado para la desvinculación del vehículo en servicio ID: ${servicio.id}`);
+        } catch (error) {
+          console.error('Error al registrar la desvinculación del vehículo en histórico:', error);
+        }
+      }
+    } else {
+      updateData.vehiculo_id = servicio.vehiculo_id;
+    }
+    
+    // Manejar específicamente el cambio en observaciones para el histórico
+    if (req.body.hasOwnProperty('observaciones') && (
+        // Caso 1: Cambio de observaciones vacías a observaciones con contenido
+        ((servicio.observaciones === null || servicio.observaciones === '' || servicio.observaciones === undefined) && 
+         (observaciones !== null && observaciones !== '' && observaciones !== undefined)) ||
+        // Caso 2: Cambio de observaciones con contenido a observaciones vacías
+        ((observaciones === null || observaciones === '' || observaciones === undefined) && 
+         (servicio.observaciones !== null && servicio.observaciones !== '' && servicio.observaciones !== undefined))
+    )) {
+        
+      try {
+        // Crear un registro histórico específico para el cambio de observaciones vacías a no vacías o viceversa
+        const esVacioAnterior = !servicio.observaciones || servicio.observaciones.trim() === '';
+        const esVacioNuevo = !observaciones || observaciones.trim() === '';
+        
+        const valorAnterior = esVacioAnterior ? '(Sin observaciones)' : servicio.observaciones;
+        const valorNuevo = esVacioNuevo ? '(Sin observaciones)' : observaciones;
+        
+        // Solo registrar si hay un cambio real entre vacío y con valor o viceversa
+        if (esVacioAnterior !== esVacioNuevo) {
+            
+          await ServicioHistorico.create({
+            servicio_id: servicio.id,
+            usuario_id: req.user.id,
+            campo_modificado: 'cambio_observaciones',
+            valor_anterior: valorAnterior,
+            valor_nuevo: valorNuevo,
+            tipo_operacion: 'actualizacion',
+            ip_usuario: req.ip || null,
+            navegador_usuario: req.headers['user-agent'] || null,
+            detalles: {
+              origen: 'API',
+              ruta: req.originalUrl,
+              metodo: req.method,
+              accion: esVacioNuevo ? 
+                'Eliminación de observaciones' : 
+                'Adición de observaciones (campo vacío a campo con valor)'
+            }
+          });
+          
+          console.log(`Registro histórico creado para el cambio de observaciones en servicio ID: ${servicio.id}`);
+        }
+      } catch (error) {
+        console.error('Error al registrar cambio de observaciones en histórico:', error);
+      }
+    }
+    
+    // Preparar opciones para el histórico
+    const updateOptions = {
       user_id: req.user.id, // Pasar el ID del usuario para el histórico
       ip_usuario: req.ip,
       navegador_usuario: req.headers['user-agent'],
@@ -331,16 +490,24 @@ exports.actualizar = async (req, res) => {
         ruta: req.originalUrl,
         metodo: req.method
       }
-    });
+    };
+    
+    // Agregar información de desasociación a los detalles si es necesario
+    if (updateData.detalles) {
+      updateOptions.detalles = { ...updateOptions.detalles, ...updateData.detalles };
+    }
+    
+    // Actualizar el servicio
+    await servicio.update(updateData, updateOptions);
 
     // Obtener el servicio actualizado con sus relaciones
     const servicioActualizado = await Servicio.findByPk(id, {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'linea', 'modelo'] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre'] }
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion'] },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
+        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
       ]
     });
 
@@ -353,16 +520,24 @@ exports.actualizar = async (req, res) => {
     // Emitir notificación al conductor si ha cambiado
     const emitServicioToUser = req.app.get('emitServicioToUser');
     if (emitServicioToUser) {
-      // Notificar al conductor nuevo
-      if (conductor_id && conductor_id !== conductorAnteriorId) {
-        emitServicioToUser(conductor_id, 'servicio:asignado', servicioActualizado);
+      // Notificar al conductor nuevo (si se ha asignado uno)
+      if (updateData.conductor_id && updateData.conductor_id !== conductorAnteriorId) {
+        emitServicioToUser(updateData.conductor_id, 'servicio:asignado', servicioActualizado);
       }
 
-      // Notificar al conductor anterior que se le ha quitado el servicio
-      if (conductorAnteriorId && conductor_id !== conductorAnteriorId) {
+      // Notificar al conductor anterior que se le ha quitado el servicio (si había uno y ha cambiado o se ha eliminado)
+      if (conductorAnteriorId && 
+          (req.body.hasOwnProperty('conductor_id') && 
+            (updateData.conductor_id !== conductorAnteriorId || updateData.conductor_id === null))) {
+        
+        // Mensaje específico para cuando se elimina completamente la asignación
+        const mensaje = updateData.conductor_id === null ? 
+          'Este servicio ha sido desvinculado de tu cuenta' :
+          'Este servicio ya no está asignado a usted';
+          
         emitServicioToUser(conductorAnteriorId, 'servicio:desasignado', {
           id: servicioActualizado.id,
-          mensaje: 'Este servicio ya no está asignado a usted'
+          mensaje: mensaje
         });
       }
     }
@@ -508,9 +683,9 @@ exports.buscarServicios = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre'] }
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion'] },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
+        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
       ],
       order: [['fecha_solicitud', 'DESC']]
     });

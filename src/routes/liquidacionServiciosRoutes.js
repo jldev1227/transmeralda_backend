@@ -1,4 +1,4 @@
-// routes/liquidacionesRoutes.js
+5// routes/liquidacionesRoutes.js
 const express = require('express');
 const router = express.Router();
 const liquidacionController = require('../controllers/liquidacionServiciosController');
@@ -11,6 +11,7 @@ router.get('/', protect, liquidacionController.obtenerLiquidaciones);
 router.get('/:id', protect, liquidacionController.obtenerLiquidacionPorId);
 router.patch('/:id', protect, liquidacionController.actualizarLiquidacion);
 router.delete('/:id', protect, liquidacionController.anularLiquidacion);
+router.patch('/:id/aprobar', protect, liquidacionController.aprobarLiquidacion);
 
 // Ruta para obtener servicios disponibles para liquidar
 router.get('/servicios-disponibles', protect, liquidacionController.obtenerServiciosParaLiquidar);

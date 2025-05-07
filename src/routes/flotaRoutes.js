@@ -26,7 +26,7 @@ router.get('/buscar', protect, buscarVehiculosPorPlaca);
 
 // Rutas para todos los usuarios autenticados
 router.get('/', protect, hasRole(['admin', 'gestor_flota']), getVehiculos);
-router.get('/basicos', protect, hasRole(['admin', 'gestor_flota']), getVehiculosBasicos);
+router.get('/basicos', protect, getVehiculosBasicos);
 router.get('/:id', protect, hasRole(['admin', 'gestor_flota']), getVehiculoById);
 router.get('/basico/:id', protect, hasRole(['admin', 'gestor_flota']), getVehiculoBasico);
 

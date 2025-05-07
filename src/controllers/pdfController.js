@@ -251,7 +251,6 @@ pdfQueue.process(async (job, done) => {
       ],
     });
 
-
     if (liquidaciones.length === 0) {
       throw new Error("No se encontraron liquidaciones para procesar");
     }
