@@ -247,6 +247,12 @@ const emitServicioEvent = (eventName, data) => {
   io.emit(eventName, data);
 };
 
+// Función para emitir eventos de servicios a todos los clientes
+const emitLiquidacionServicioEvent = (eventName, data) => {
+  console.log(`Emitiendo evento ${eventName}:`, data);
+  io.emit(eventName, data);
+};
+
 // Función para emitir eventos de servicio a un usuario específico
 const emitServicioToUser = (userId, eventName, data) => {
   if (userSockets.has(userId)) {
@@ -265,7 +271,7 @@ const emitServicioToUser = (userId, eventName, data) => {
 // Exponer funciones de socket.io para servicios a otros módulos
 app.set('emitServicioEvent', emitServicioEvent);
 app.set('emitServicioToUser', emitServicioToUser);
-
+app.set('emitLiquidacionServicioEvent', emitLiquidacionServicioEvent);
 
 
 // Middleware para manejo de errores

@@ -298,7 +298,7 @@ const actualizarLiquidacion = async (req, res) => {
 };
 
 // Anular una liquidación
-const anularLiquidacion = async (req, res) => {
+const rechazarLiquidacion = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
@@ -324,21 +324,37 @@ const anularLiquidacion = async (req, res) => {
 
     if (!liquidacion) {
       await transaction.rollback();
+      // Emitir evento de error
+      const emitLiquidacionServicioEvent = req.app.get('emitLiquidacionServicioEvent');
+      if (emitLiquidacionServicioEvent) {
+      emitLiquidacionServicioEvent('liquidacion:error', {
+        error: 'Liquidación no encontrada',
+        id
+      });
+      }
       return res.status(404).json({ error: 'Liquidación no encontrada' });
     }
 
-    // Verificar que no esté ya anulada
-    if (liquidacion.estado === 'anulada') {
+    // Verificar que no esté ya rechazada
+    if (liquidacion.estado === 'rechazada') {
       await transaction.rollback();
-      return res.status(400).json({ error: 'La liquidación ya está anulada' });
+      // Emitir evento de error
+      const emitLiquidacionServicioEvent = req.app.get('emitLiquidacionServicioEvent');
+      if (emitLiquidacionServicioEvent) {
+      emitLiquidacionServicioEvent('liquidacion:error', {
+        error: 'La liquidación ya está rechazada',
+        id: liquidacion.id
+      });
+      }
+      return res.status(400).json({ error: 'La liquidación ya está rechazada' });
     }
 
     // Obtener IDs de servicios relacionados
     const serviciosIds = liquidacion.servicios.map(s => s.id);
 
     // Actualizar estado de la liquidación
-    await liquidacion.update(
-      { estado: 'anulada' },
+    const liquidacionActualizada = await liquidacion.update(
+      { estado: 'rechazada' },
       {
         transaction,
         individualHooks: true,
@@ -359,10 +375,21 @@ const anularLiquidacion = async (req, res) => {
       );
     }
 
+    // Emitir evento para todos los clientes conectados
+    const emitLiquidacionServicioEvent = req.app.get('emitLiquidacionServicioEvent');
+    if (emitLiquidacionServicioEvent) {
+      emitLiquidacionServicioEvent('liquidacion:estado-rechazada', {
+        id: liquidacionActualizada.id,
+        estado: liquidacionActualizada.estado,
+        liquidacion: liquidacionActualizada
+      });
+    }
+
     await transaction.commit();
-
-    return res.status(200).json({ message: 'Liquidación anulada correctamente' });
-
+    return res.status(200).json({
+      message: `Liquidación rechazada correctamente`,
+      liquidacion: liquidacionActualizada
+    });
   } catch (error) {
     await transaction.rollback();
     console.error('Error al anular liquidación:', error);
@@ -372,9 +399,10 @@ const anularLiquidacion = async (req, res) => {
 
 // Aprobar una liquidación
 const aprobarLiquidacion = async (req, res) => {
-  const transaction = await sequelize.transaction();
+  let transaction;
 
   try {
+    transaction = await sequelize.transaction();
     const { id } = req.params;
 
     // Verificar que la liquidación existe
@@ -386,7 +414,7 @@ const aprobarLiquidacion = async (req, res) => {
           through: { attributes: ['servicio_id'] },
           include: [
             {
-              model: Empresa,  // Quitado el prefijo sequelize
+              model: Empresa,
               as: 'cliente'
             }
           ]
@@ -396,22 +424,12 @@ const aprobarLiquidacion = async (req, res) => {
     });
 
     if (!liquidacion) {
-      await transaction.rollback();
-      return res.status(404).json({ error: 'Liquidación no encontrada' });
+      throw new Error('Liquidación no encontrada');
     }
 
-    // Verificar que no esté ya anulada
-    if (liquidacion.estado === 'aprobado') {
-      await transaction.rollback();
-      return res.status(400).json({ error: 'La liquidación ya está aprobada' });
-    }
-
-    // Obtener IDs de servicios relacionados
-    const serviciosIds = liquidacion.servicios.map(s => s.id);
-
-    // Actualizar estado de la liquidación
-    await liquidacion.update(
-      { estado: 'aprobado' },
+    // Actualizar el estado de la liquidación
+    const liquidacionActualizada = await liquidacion.update(
+      { estado: "aprobado" },
       {
         transaction,
         individualHooks: true,
@@ -419,14 +437,111 @@ const aprobarLiquidacion = async (req, res) => {
       }
     );
 
-    await transaction.commit();
+    // Emitir evento para todos los clientes conectados
+    const emitLiquidacionServicioEvent = req.app.get('emitLiquidacionServicioEvent');
+    if (emitLiquidacionServicioEvent) {
+      emitLiquidacionServicioEvent('liquidacion:estado-aprobado', {
+        id: liquidacionActualizada.id,
+        estado: liquidacionActualizada.estado,
+        liquidacion: liquidacionActualizada
+      });
+    }
 
-    return res.status(200).json({ message: 'Liquidación aprobada correctamente' });
+    await transaction.commit();
+    return res.status(200).json({
+      message: `Liquidación aprobada correctamente`,
+      liquidacion: liquidacionActualizada
+    });
 
   } catch (error) {
-    await transaction.rollback();
-    console.error('Error al anular liquidación:', error);
-    return res.status(500).json({ error: 'Error al anular liquidación' });
+    // Asegurarse de hacer rollback si hay una transacción activa
+    if (transaction) await transaction.rollback();
+
+    console.error('Error al procesar liquidación:', error);
+
+    // Mejorar los mensajes de error según el tipo
+    if (error.message === 'Liquidación no encontrada') {
+      return res.status(404).json({ error: error.message });
+    }
+
+    return res.status(500).json({
+      error: 'Error al procesar la liquidación',
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// regresar una liquidación a estado liquidado
+const regresarEstadoLiquidado = async (req, res) => {
+  let transaction;
+
+  try {
+    transaction = await sequelize.transaction();
+    const { id } = req.params;
+
+    // Verificar que la liquidación existe
+    const liquidacion = await LiquidacionServicio.findByPk(id, {
+      include: [
+        {
+          model: Servicio,
+          as: 'servicios',
+          through: { attributes: ['servicio_id'] },
+          include: [
+            {
+              model: Empresa,
+              as: 'cliente'
+            }
+          ]
+        }
+      ],
+      transaction
+    });
+
+    if (!liquidacion) {
+      throw new Error('Liquidación no encontrada');
+    }
+
+    // Actualizar el estado de la liquidación
+    const liquidacionActualizada = await liquidacion.update(
+      { estado: "liquidado" },
+      {
+        transaction,
+        individualHooks: true,
+        user_id: req.user.id
+      }
+    );
+
+    // Emitir evento para todos los clientes conectados
+    const emitLiquidacionServicioEvent = req.app.get('emitLiquidacionServicioEvent');
+    if (emitLiquidacionServicioEvent) {
+      emitLiquidacionServicioEvent('liquidacion:estado-regresa-liquidado', {
+        id: liquidacionActualizada.id,
+        estado: liquidacionActualizada.estado,
+        liquidacion: liquidacionActualizada
+      });
+    }
+
+    await transaction.commit();
+    return res.status(200).json({
+      message: `Liquidación aprobada correctamente`,
+      liquidacion: liquidacionActualizada
+    });
+
+  } catch (error) {
+    // Asegurarse de hacer rollback si hay una transacción activa
+    if (transaction) await transaction.rollback();
+
+    console.error('Error al procesar liquidación:', error);
+
+    // Mejorar los mensajes de error según el tipo
+    if (error.message === 'Liquidación no encontrada') {
+      return res.status(404).json({ error: error.message });
+    }
+
+    return res.status(500).json({
+      error: 'Error al procesar la liquidación',
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
@@ -609,8 +724,9 @@ module.exports = {
   obtenerLiquidaciones,
   obtenerLiquidacionPorId,
   actualizarLiquidacion,
-  anularLiquidacion,
+  rechazarLiquidacion,
   aprobarLiquidacion,
+  regresarEstadoLiquidado,
   obtenerServiciosParaLiquidar,
   reporteLiquidacionesPorPeriodo,
   reporteLiquidacionesPorCliente

@@ -49,13 +49,13 @@ module.exports = (sequelize) => {
             }
         },
         estado: {
-            type: DataTypes.ENUM('liquidado', 'aprobado', 'facturado', 'anulado'),
+            type: DataTypes.ENUM('liquidado', 'aprobado', 'rechazada', 'facturado', 'anulado'),
             allowNull: false,
             defaultValue: 'pendiente',
             validate: {
                 notNull: { msg: 'El estado es obligatorio' },
                 isIn: {
-                    args: [['liquidado', 'aprobado', 'facturado', 'anulado']],
+                    args: [['liquidado', 'aprobado', 'rechazada', 'facturado', 'anulado']],
                     msg: 'Estado no válido'
                 }
             }
