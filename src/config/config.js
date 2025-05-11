@@ -8,7 +8,8 @@ module.exports = {
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,
     dialect: 'postgres',
-    logging: false
+    logging: false,
+    timezone: 'America/Bogota', // Ajusta a tu zona horaria
   },
   test: {
     // configuración similar...
@@ -20,6 +21,7 @@ module.exports = {
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,
     dialect: 'postgres',
-    logging: false
+    logging: false,
+    timezone: 'America/Bogota', // Ajusta a tu zona horaria
   }
 };

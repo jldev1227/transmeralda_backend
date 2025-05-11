@@ -8,9 +8,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { sequelize, testConnection } = require('./config/database.js');
 const { setupBullQueues, setupBullBoard } = require('./config/bull');
-const path = require('path');
-const fs = require('fs');
 const documentController = require('./controllers/documentoController.js');
+const { scheduleRecurringCheck, runCheckNow } = require('./queues/serviceStatusQueue');
 
 // Inicializar app
 const app = express();
@@ -302,6 +301,7 @@ const iniciarServidor = async () => {
     
     // Configurar colas de Bull
     setupBullQueues(app);
+    scheduleRecurringCheck();
     
     // Iniciar servidor HTTP con Socket.IO
     server.listen(PORT, () => {
