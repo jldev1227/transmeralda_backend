@@ -709,11 +709,14 @@ exports.buscarServicios = async (req, res) => {
 exports.cambiarEstado = async (req, res) => {
   try {
     const { id } = req.params;
-    const { estado } = req.body;
+    const { estado, fecha_finalizacion } = req.body;
 
-    console.log(req.body)
-
-    if (!estado || !['en_curso', 'realizado', 'planificado', 'realizado', 'cancelado'].includes(estado)) {
+    if (
+      !estado ||
+      !['en_curso', 'realizado', 'planificado', 'cancelado'].includes(
+        estado.toLowerCase()
+      )
+    ) {
       return res.status(400).json({
         success: false,
         message: 'Estado no válido'
@@ -736,11 +739,15 @@ exports.cambiarEstado = async (req, res) => {
     // Guardar estado anterior para comparación
     const estadoAnterior = servicio.estado;
 
-    // Actualizar solo el estado y registrar fecha de finalización si se completa
+    // Actualizar solo el estado y registrar fecha de finalización si corresponde
     const datosActualizacion = { estado };
 
-    if (estado === 'COMPLETADO' || estado === 'REALIZADO') {
+    // Si el estado es 'realizado', actualizar fecha_realizacion y opcionalmente fecha_finalizacion
+    if (estado.toLowerCase() === 'realizado') {
       datosActualizacion.fecha_realizacion = new Date();
+      if (fecha_finalizacion) {
+        datosActualizacion.fecha_finalizacion = fecha_finalizacion;
+      }
     }
 
     await servicio.update(datosActualizacion, {

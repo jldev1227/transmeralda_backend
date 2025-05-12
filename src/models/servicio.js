@@ -117,8 +117,17 @@ module.exports = (sequelize) => {
         isDate: { msg: 'Debe ser una fecha válida' }
       }
     },
-    
     fecha_realizacion: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      dialectOptions: {
+        timezone: false
+      },
+      validate: {
+        isDate: { msg: 'Debe ser una fecha válida' }
+      }
+    },
+    fecha_finalizacion: {
       type: DataTypes.DATE,
       allowNull: true,
       dialectOptions: {

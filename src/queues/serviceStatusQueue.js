@@ -18,10 +18,10 @@ const serviceStatusQueue = new Queue('serviceStatusUpdate', {
 serviceStatusQueue.process(async (job) => {
   try {
     console.log('Verificando servicios planificados vencidos...');
-    
+
     // Obtener la fecha actual
     const now = new Date();
-    
+
     // Buscar servicios planificados con fecha de realización pasada
     const serviciosParaActualizar = await Servicio.findAll({
       where: {
@@ -32,9 +32,7 @@ serviceStatusQueue.process(async (job) => {
         },
       },
     });
-    
-    console.log(`Encontrados ${serviciosParaActualizar.length} servicios para actualizar`);
-    
+
     // Actualizar los servicios encontrados
     if (serviciosParaActualizar.length > 0) {
       const actualizaciones = serviciosParaActualizar.map(async (servicio) => {
@@ -43,13 +41,23 @@ serviceStatusQueue.process(async (job) => {
         });
         return servicio.id;
       });
-      
+
       const idsActualizados = await Promise.all(actualizaciones);
+
+      const emitServicioToUser = req.app.get('emitServicioToUser');
+      if (emitServicioToUser) {
+        emitServicioToUser(servicio.conductor.id, 'servicio:estado-actualizado', {
+          id: servicioActualizado.id,
+          estado: servicioActualizado.estado,
+          estadoAnterior,
+          mensaje: `El estado del servicio ha cambiado a ${estado}`
+        });
+      }
       console.log(`Servicios actualizados: ${idsActualizados.join(', ')}`);
-      
+
       return { processed: idsActualizados.length, ids: idsActualizados };
     }
-    
+
     return { processed: 0 };
   } catch (error) {
     console.error('Error al procesar la cola de actualización de servicios:', error);
@@ -71,12 +79,12 @@ module.exports = {
     );
     console.log('Verificación programada cada 5 minutos');
   },
-  
+
   // Ejecución manual para pruebas
   runCheckNow: () => {
     return serviceStatusQueue.add({}, { priority: 1 });
   },
-  
+
   // Acceso a la cola para uso en otros módulos
   queue: serviceStatusQueue,
 };
