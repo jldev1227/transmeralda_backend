@@ -16,7 +16,7 @@ router.put('/:id', protect, servicioController.actualizar);
 router.delete('/:id', isAdmin, servicioController.eliminar);
 
 // Ruta específica para cambiar estado
-router.patch('/:id/cancelar', protect, servicioController.cambiarEstado);
+router.patch('/:id/estado', protect, servicioController.cambiarEstado);
 router.patch('/:id/planilla', protect, servicioController.asignarNumeroPlanilla);
 
 module.exports = router;

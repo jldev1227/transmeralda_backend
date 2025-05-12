@@ -8,9 +8,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { sequelize, testConnection } = require('./config/database.js');
 const { setupBullQueues, setupBullBoard } = require('./config/bull');
-const path = require('path');
-const fs = require('fs');
 const documentController = require('./controllers/documentoController.js');
+const { scheduleRecurringCheck, runCheckNow } = require('./queues/serviceStatusQueue');
 
 // Inicializar app
 const app = express();
@@ -247,6 +246,12 @@ const emitServicioEvent = (eventName, data) => {
   io.emit(eventName, data);
 };
 
+// Función para emitir eventos de servicios a todos los clientes
+const emitLiquidacionServicioEvent = (eventName, data) => {
+  console.log(`Emitiendo evento ${eventName}:`, data);
+  io.emit(eventName, data);
+};
+
 // Función para emitir eventos de servicio a un usuario específico
 const emitServicioToUser = (userId, eventName, data) => {
   if (userSockets.has(userId)) {
@@ -265,7 +270,7 @@ const emitServicioToUser = (userId, eventName, data) => {
 // Exponer funciones de socket.io para servicios a otros módulos
 app.set('emitServicioEvent', emitServicioEvent);
 app.set('emitServicioToUser', emitServicioToUser);
-
+app.set('emitLiquidacionServicioEvent', emitLiquidacionServicioEvent);
 
 
 // Middleware para manejo de errores
@@ -296,6 +301,7 @@ const iniciarServidor = async () => {
     
     // Configurar colas de Bull
     setupBullQueues(app);
+    scheduleRecurringCheck();
     
     // Iniciar servidor HTTP con Socket.IO
     server.listen(PORT, () => {

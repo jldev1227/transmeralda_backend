@@ -30,8 +30,6 @@ const BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME || 'transmeralda';
  */
 
 async function saveTemporaryDocument(file, sessionId, categoria) {
-    console.log(file);
-
     try {
         // PASO 1: Convertir el objeto buffer a un Buffer real de Node.js
         let bufferToWrite;

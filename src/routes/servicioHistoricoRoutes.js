@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const servicioHistoricoController = require('../controllers/servicioHistoricoController');
-const { protect, hasRole, isAdmin } = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 
 // Rutas públicas (si las hay)
 

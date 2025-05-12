@@ -125,7 +125,6 @@ class GenericExportController {
       // Eliminar el archivo Excel una vez enviado
       fileStream.on("end", () => {
         fs_export.unlinkSync(outputPath);  // Cambiar a outputPath y usar fs_regular
-        console.log(`Archivo temporal eliminado: ${outputPath}`);
       });
     } catch (error) {
       console.error("Error en exportación a Excel:", error);
@@ -156,13 +155,11 @@ class GenericExportController {
       // Capturar la salida estándar
       pythonProcess.stdout.on("data", (data) => {
         stdoutData += data.toString();
-        console.log(stdoutData);
       });
 
       // Capturar los errores
       pythonProcess.stderr.on("data", (data) => {
         stderrData += data.toString();
-        console.log(stderrData);
         console.error(`Error en script Python: ${data.toString()}`);
       });
 
@@ -173,7 +170,6 @@ class GenericExportController {
           // Extraer la ruta del archivo generado (última línea de la salida)
           const outputPath = stdoutData.trim().split("\n").pop();
 
-          console.log(outputPath, "j");
           resolve({
             success: true,
             code,
