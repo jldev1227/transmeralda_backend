@@ -237,10 +237,6 @@ module.exports = (sequelize) => {
       
       // Registrar cambios después de actualizar un servicio
       afterUpdate: async (servicio, options) => {
-        // Evitar la conversión a JSON de objetos que puedan tener referencias circulares
-        console.log('Servicio afterUpdate hook called with user_id:', options?.user_id);
-        console.log('Servicio ID:', servicio.id);
-        
         if (!options.user_id) {
           console.log('No user_id provided in options, skipping historical record update');
           return;
@@ -262,14 +258,11 @@ module.exports = (sequelize) => {
           for (const campo of changed) {
             // Ignorar campos que no queremos trackear como timestamps
             if (['updated_at', 'created_at'].includes(campo)) {
-              console.log(`Skipping timestamp field: ${campo}`);
               continue;
             }
             
             const valorAnterior = servicio.previous(campo)?.toString() || null;
             const valorNuevo = servicio.getDataValue(campo)?.toString() || null;
-            
-            console.log(`Field ${campo} changed from '${valorAnterior}' to '${valorNuevo}'`);
             
             // Crear una copia segura de los detalles para evitar referencias circulares
             let detallesSeguros = null;

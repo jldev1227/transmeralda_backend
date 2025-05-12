@@ -614,7 +614,6 @@ const getVehiculoBasico = async (req, res) => {
       attributes: ['id', 'placa', 'linea', 'modelo'], // Solo selecciona estos campos
       raw: true // Obtiene solo los datos planos, sin instancias de Sequelize
     });
-    console.log(vehiculo)
 
     if (!vehiculo) {
       return res.status(404).json({

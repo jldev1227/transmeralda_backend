@@ -25,7 +25,6 @@ const crearLiquidacion = async (req, res) => {
 
     // Extraer IDs
     const servicios_ids = servicios.map(s => s.id).filter(Boolean);
-    console.log(servicios_ids);
 
     if (servicios_ids.length === 0) {
       return res.status(400).json({ error: 'No se proporcionaron IDs de servicios válidos' });

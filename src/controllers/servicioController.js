@@ -235,7 +235,6 @@ exports.crear = async (req, res) => {
 };
 // Actualizar un servicio existente
 exports.actualizar = async (req, res) => {
-  console.log(req.body)
   try {
     const { id } = req.params;
     const {
@@ -744,7 +743,6 @@ exports.cambiarEstado = async (req, res) => {
 
     // Si el estado es 'realizado', actualizar fecha_realizacion y opcionalmente fecha_finalizacion
     if (estado.toLowerCase() === 'realizado') {
-      datosActualizacion.fecha_realizacion = new Date();
       if (fecha_finalizacion) {
         datosActualizacion.fecha_finalizacion = fecha_finalizacion;
       }
