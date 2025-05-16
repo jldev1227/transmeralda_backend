@@ -2,7 +2,7 @@
 const { Model, DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
-  class Vehiculo extends Model {}
+  class Vehiculo extends Model { }
 
   Vehiculo.init({
     id: {
@@ -45,13 +45,17 @@ module.exports = (sequelize) => {
     },
     color: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
-        notNull: { msg: 'El color es obligatorio' },
-        notEmpty: { msg: 'El color no puede estar vacío' }
+        notEmptyIfPresent(value) {
+          // Si es una string vacía, la convertimos a null automáticamente
+          if (value !== null && value !== undefined && value.trim() === '') {
+            this.setDataValue('color', null);
+          }
+        }
       }
     },
-    claseVehiculo: {
+    clase_vehiculo: {
       type: DataTypes.STRING,
       allowNull: false,
       validate: {
@@ -59,68 +63,92 @@ module.exports = (sequelize) => {
         notEmpty: { msg: 'La clase de vehículo no puede estar vacía' }
       }
     },
-    tipoCarroceria: {
+    tipo_carroceria: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
-        notNull: { msg: 'El tipo de carrocería es obligatorio' },
-        notEmpty: { msg: 'El tipo de carrocería no puede estar vacío' }
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('El tipo de carrocería no puede estar vacío si se proporciona');
+          }
+        }
       }
     },
     combustible: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
-        notNull: { msg: 'El tipo de combustible es obligatorio' },
-        notEmpty: { msg: 'El tipo de combustible no puede estar vacío' }
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('El tipo de combustible no puede estar vacío si se proporciona');
+          }
+        }
       }
     },
-    numeroMotor: {
+    numero_motor: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
-        notNull: { msg: 'El número de motor es obligatorio' },
-        notEmpty: { msg: 'El número de motor no puede estar vacío' }
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('El número de motor no puede estar vacío si se proporciona');
+          }
+        }
       }
     },
     vin: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
-        notNull: { msg: 'El VIN es obligatorio' },
-        notEmpty: { msg: 'El VIN no puede estar vacío' }
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('El VIN no puede estar vacío si se proporciona');
+          }
+        }
       }
     },
-    numeroSerie: {
+    numero_serie: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
-        notNull: { msg: 'El número de serie es obligatorio' },
-        notEmpty: { msg: 'El número de serie no puede estar vacío' }
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('El número de serie no puede estar vacío si se proporciona');
+          }
+        }
       }
     },
-    numeroChasis: {
+    numero_chasis: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
-        notNull: { msg: 'El número de chasis es obligatorio' },
-        notEmpty: { msg: 'El número de chasis no puede estar vacío' }
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('El número de chasis no puede estar vacío si se proporciona');
+          }
+        }
       }
     },
-    propietarioNombre: {
+    propietario_nombre: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
-        notNull: { msg: 'El nombre del propietario es obligatorio' },
-        notEmpty: { msg: 'El nombre del propietario no puede estar vacío' }
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('El nombre del propietario no puede estar vacío si se proporciona');
+          }
+        }
       }
     },
-    propietarioIdentificacion: {
+    propietario_identificacion: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
-        notNull: { msg: 'La identificación del propietario es obligatoria' },
-        notEmpty: { msg: 'La identificación del propietario no puede estar vacía' }
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('La identificación del propietario no puede estar vacía si se proporciona');
+          }
+        }
       }
     },
     kilometraje: {
@@ -134,7 +162,7 @@ module.exports = (sequelize) => {
     estado: {
       type: DataTypes.ENUM('DISPONIBLE', 'NO DISPONIBLE', 'MANTENIMIENTO', 'INACTIVO'),
       defaultValue: 'DISPONIBLE',
-      allowNull: false
+      allowNull: true
     },
     latitud: {
       type: DataTypes.FLOAT,
@@ -146,7 +174,7 @@ module.exports = (sequelize) => {
     },
     galeria: {
       type: DataTypes.TEXT,
-      allowNull: false,
+      allowNull: true,
       defaultValue: '[]',
       get() {
         const rawValue = this.getDataValue('galeria');
@@ -157,41 +185,92 @@ module.exports = (sequelize) => {
       },
       validate: {
         isValidJSON(value) {
-          try {
-            JSON.parse(value);
-          } catch (e) {
-            throw new Error('El formato de galería debe ser JSON válido');
+          if (value !== null && value !== undefined) {
+            try {
+              JSON.parse(value);
+            } catch (e) {
+              throw new Error('El formato de galería debe ser JSON válido');
+            }
           }
         }
       }
     },
-    fechaMatricula: {
+    fecha_matricula: {
       type: DataTypes.STRING,
-      allowNull: true
+      allowNull: true,
+      validate: {
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('La fecha de matrícula no puede estar vacía si se proporciona');
+          }
+        }
+      }
     },
-    soatVencimiento: {
+    soat_vencimiento: {
       type: DataTypes.STRING,
-      allowNull: true
+      allowNull: true,
+      validate: {
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('La fecha de vencimiento del SOAT no puede estar vacía si se proporciona');
+          }
+        }
+      }
     },
-    tecnomecanicaVencimiento: {
+    tecnomecanica_vencimiento: {
       type: DataTypes.STRING,
-      allowNull: true
+      allowNull: true,
+      validate: {
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('La fecha de vencimiento de la tecnomecánica no puede estar vacía si se proporciona');
+          }
+        }
+      }
     },
-    tarjetaDeOperacionVencimiento: {
+    tarjeta_de_operacion_vencimiento: {
       type: DataTypes.STRING,
-      allowNull: true
+      allowNull: true,
+      validate: {
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('La fecha de vencimiento de la tarjeta de operación no puede estar vacía si se proporciona');
+          }
+        }
+      }
     },
-    polizaContractualVencimiento: {
+    poliza_contractual_vencimiento: {
       type: DataTypes.STRING,
-      allowNull: true
+      allowNull: true,
+      validate: {
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('La fecha de vencimiento de la póliza contractual no puede estar vacía si se proporciona');
+          }
+        }
+      }
     },
-    polizaExtraContractualVencimiento: {
+    poliza_extra_contractual_vencimiento: {
       type: DataTypes.STRING,
-      allowNull: true
+      allowNull: true,
+      validate: {
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('La fecha de vencimiento de la póliza extracontractual no puede estar vacía si se proporciona');
+          }
+        }
+      }
     },
-    polizaTodoRiesgoVencimiento: {
+    poliza_todo_riesgo_vencimiento: {
       type: DataTypes.STRING,
-      allowNull: true
+      allowNull: true,
+      validate: {
+        notEmptyIfPresent(value) {
+          if (value !== null && value !== undefined && value.trim() === '') {
+            throw new Error('La fecha de vencimiento de la póliza todo riesgo no puede estar vacía si se proporciona');
+          }
+        }
+      }
     }
   }, {
     sequelize,
@@ -207,13 +286,13 @@ module.exports = (sequelize) => {
         foreignKey: 'propietario_id',
         as: 'propietario'
       });
-      
+
       Vehiculo.belongsTo(models.Conductor, {
         foreignKey: 'conductor_id',
         as: 'conductor'
       });
     }
-    
+
     if (models.Documento) {
       Vehiculo.hasMany(models.Documento, {
         foreignKey: 'modelo_id',

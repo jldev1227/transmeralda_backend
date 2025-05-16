@@ -17,7 +17,9 @@ const {
   uploadGaleriaImages,
   uploadDocumentos,
   getProgressProccess,
-  getVehiculoBasico
+  getVehiculoBasico,
+  createVehiculoBasico,
+  updateVehiculoBasico
 } = require('../controllers/vehiculoController');
 const { protect, hasRole } = require('../middleware/auth');
 
@@ -32,7 +34,9 @@ router.get('/basico/:id', protect, hasRole(['admin', 'gestor_flota']), getVehicu
 
 // Rutas solo para administradores
 router.post('/', protect, hasRole(['admin', 'gestor_flota']), uploadDocumentos, createVehiculo);
+router.post('/basico', protect, hasRole(['admin', 'gestor_flota']), createVehiculoBasico);
 router.put('/:id', protect, hasRole(['admin', 'gestor_flota']), uploadDocumentos, updateVehiculo);
+router.put('/:id/basico', protect, hasRole(['admin', 'gestor_flota']), uploadDocumentos, updateVehiculoBasico);
 router.delete('/:id', protect, hasRole(['admin', 'gestor_flota']), deleteVehiculo);
 router.patch('/:id/estado', protect, hasRole(['admin', 'gestor_flota']), updateEstadoVehiculo);
 router.patch('/:id/ubicacion', protect, hasRole(['admin', 'gestor_flota']), updateUbicacionVehiculo);

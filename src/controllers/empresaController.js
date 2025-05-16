@@ -5,20 +5,60 @@ const { Op } = require('sequelize');
 // Obtener todas las empresas
 exports.getEmpresas = async (req, res) => {
   try {
-    const empresas = await Empresa.findAll({
-      order: [['Nombre', 'ASC']]
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sort = 'createdAt',
+      order = 'DESC'
+    } = req.query;
+
+    const sequelizeOrder = order === 'ascending' ? 'ASC' : 'DESC';
+
+    const whereClause = {};
+
+    // Procesamiento de búsqueda general (busca en varios campos)
+    if (search) {
+      whereClause[Op.or] = [
+        { nombre: { [Op.iLike]: `%${search}%` } },
+        { nit: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    // Si había filtros simples, intégralos también
+    if (req.query.nombre) whereClause.nombre = { [Op.iLike]: `%${req.query.nombre}%` };
+
+    const offset = (page - 1) * limit;
+
+    // Determinación del ordenamiento
+    let orderArray = [[sort, sequelizeOrder]];
+
+    // Si el ordenamiento es por nombre completo (para mostrar nombre + apellido)
+    if (sort === 'empresa') {
+      orderArray = [['nombre', sequelizeOrder], ['nit', sequelizeOrder]];
+    }
+
+    const { count, rows } = await Empresa.findAndCountAll({
+      where: whereClause,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: orderArray,
+      distinct: true  // Importante para contar correctamente con includes
     });
-    
-    return res.status(200).json({
+
+    res.status(200).json({
       success: true,
-      data: empresas
+      count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: parseInt(page),
+      data: rows
     });
   } catch (error) {
     console.error('Error al obtener empresas:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Error al obtener empresas',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -27,16 +67,16 @@ exports.getEmpresas = async (req, res) => {
 exports.getEmpresaById = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const empresa = await Empresa.findByPk(id);
-    
+
     if (!empresa) {
       return res.status(404).json({
         success: false,
         message: 'Empresa no encontrada'
       });
     }
-    
+
     return res.status(200).json({
       success: true,
       data: empresa
@@ -55,10 +95,10 @@ exports.getEmpresaById = async (req, res) => {
 exports.getEmpresasBasicos = async (req, res) => {
   try {
     const empresasBasicos = await Empresa.findAll({
-      attributes: ['id', 'NIT', 'Nombre'],
-      order: [['Nombre', 'ASC']]
+      attributes: ['id', 'nit', 'nombre'],
+      order: [['nombre', 'ASC']]
     });
-    
+
     return res.status(200).json({
       success: true,
       data: empresasBasicos
@@ -77,36 +117,46 @@ exports.getEmpresasBasicos = async (req, res) => {
 exports.createEmpresa = async (req, res) => {
   try {
     const {
-      NIT,
-      Nombre,
-      Representante,
-      Cedula,
-      Telefono,
-      Direccion
+      nit,
+      nombre,
+      representante,
+      cedula,
+      telefono,
+      direccion,
+      requiere_osi,
+      paga_recargos
     } = req.body;
-    
-    // Verificar si ya existe una empresa con el mismo NIT
+
+    // Verificar si ya existe una empresa con el mismo nit
     const empresaExistente = await Empresa.findOne({
-      where: { NIT }
+      where: { nit }
     });
-    
+
     if (empresaExistente) {
       return res.status(400).json({
         success: false,
-        message: `Ya existe una empresa con el NIT ${NIT}`
+        message: `Ya existe una empresa con el nit ${nit}`
       });
     }
-    
+
     // Crear la nueva empresa
     const nuevaEmpresa = await Empresa.create({
-      NIT,
-      Nombre,
-      Representante,
-      Cedula,
-      Telefono,
-      Direccion
+      nit,
+      nombre,
+      representante,
+      cedula,
+      telefono,
+      direccion,
+      requiere_osi,
+      paga_recargos
     });
-    
+
+    // Emitir evento para todos los clientes conectados
+    const emitEmpresaEvent = req.app.get('emitEmpresaEvent');
+    if (emitEmpresaEvent) {
+      emitEmpresaEvent('empresa:creado', nuevaEmpresa);
+    }
+
     return res.status(201).json({
       success: true,
       message: 'Empresa creada exitosamente',
@@ -114,21 +164,21 @@ exports.createEmpresa = async (req, res) => {
     });
   } catch (error) {
     console.error('Error al crear empresa:', error);
-    
+
     // Manejo de errores de validación
     if (error.name === 'SequelizeValidationError') {
       const errores = error.errors.map(err => ({
         campo: err.path,
         mensaje: err.message
       }));
-      
+
       return res.status(400).json({
         success: false,
         message: 'Error de validación',
         errores
       });
     }
-    
+
     return res.status(500).json({
       success: false,
       message: 'Error al crear empresa',
@@ -142,51 +192,61 @@ exports.updateEmpresa = async (req, res) => {
   try {
     const { id } = req.params;
     const {
-      NIT,
-      Nombre,
-      Representante,
-      Cedula,
-      Telefono,
-      Direccion
+      nit,
+      nombre,
+      representante,
+      cedula,
+      telefono,
+      direccion,
+      requiere_osi,
+      paga_recargos
     } = req.body;
-    
+
     // Verificar si la empresa existe
     const empresa = await Empresa.findByPk(id);
-    
+
     if (!empresa) {
       return res.status(404).json({
         success: false,
         message: 'Empresa no encontrada'
       });
     }
-    
-    // Verificar si hay otra empresa con el mismo NIT (excepto la actual)
-    if (NIT && NIT !== empresa.NIT) {
+
+    // Verificar si hay otra empresa con el mismo nit (excepto la actual)
+    if (nit && nit !== empresa.nit) {
       const empresaExistente = await Empresa.findOne({
         where: {
-          NIT,
+          nit,
           id: { [Op.ne]: id }
         }
       });
-      
+
       if (empresaExistente) {
         return res.status(400).json({
           success: false,
-          message: `Ya existe otra empresa con el NIT ${NIT}`
+          message: `Ya existe otra empresa con el nit ${nit}`
         });
       }
     }
-    
+
     // Actualizar la empresa
-    await empresa.update({
-      NIT: NIT || empresa.NIT,
-      Nombre: Nombre || empresa.Nombre,
-      Representante: Representante || empresa.Representante,
-      Cedula: Cedula || empresa.Cedula,
-      Telefono: Telefono || empresa.Telefono,
-      Direccion: Direccion || empresa.Direccion
+    const empresaActualizada = await empresa.update({
+      nit: nit,
+      nombre: nombre,
+      representante,
+      cedula,
+      telefono,
+      direccion,
+      requiere_osi,
+      paga_recargos
     });
-    
+
+    // Emitir evento para todos los clientes conectados
+    const emitEmpresaEvent = req.app.get('emitEmpresaEvent');
+    if (emitEmpresaEvent) {
+      emitEmpresaEvent('empresa:actualizado', empresaActualizada);
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Empresa actualizada exitosamente',
@@ -194,21 +254,21 @@ exports.updateEmpresa = async (req, res) => {
     });
   } catch (error) {
     console.error('Error al actualizar empresa:', error);
-    
+
     // Manejo de errores de validación
     if (error.name === 'SequelizeValidationError') {
       const errores = error.errors.map(err => ({
         campo: err.path,
         mensaje: err.message
       }));
-      
+
       return res.status(400).json({
         success: false,
         message: 'Error de validación',
         errores
       });
     }
-    
+
     return res.status(500).json({
       success: false,
       message: 'Error al actualizar empresa',
@@ -221,20 +281,20 @@ exports.updateEmpresa = async (req, res) => {
 exports.deleteEmpresa = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Verificar si la empresa existe
     const empresa = await Empresa.findByPk(id);
-    
+
     if (!empresa) {
       return res.status(404).json({
         success: false,
         message: 'Empresa no encontrada'
       });
     }
-    
+
     // Eliminar la empresa (soft delete)
     await empresa.destroy();
-    
+
     return res.status(200).json({
       success: true,
       message: 'Empresa eliminada exitosamente'
@@ -253,21 +313,21 @@ exports.deleteEmpresa = async (req, res) => {
 exports.restoreEmpresa = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Restaurar la empresa
     const result = await Empresa.restore({
       where: { id }
     });
-    
+
     if (result === 0) {
       return res.status(404).json({
         success: false,
         message: 'Empresa no encontrada o ya está activa'
       });
     }
-    
+
     const empresaRestaurada = await Empresa.findByPk(id);
-    
+
     return res.status(200).json({
       success: true,
       message: 'Empresa restaurada exitosamente',
@@ -287,25 +347,25 @@ exports.restoreEmpresa = async (req, res) => {
 exports.searchEmpresas = async (req, res) => {
   try {
     const { query } = req.query;
-    
+
     if (!query) {
       return res.status(400).json({
         success: false,
         message: 'Se requiere un término de búsqueda'
       });
     }
-    
+
     const empresas = await Empresa.findAll({
       where: {
         [Op.or]: [
-          { NIT: { [Op.like]: `%${query}%` } },
-          { Nombre: { [Op.like]: `%${query}%` } },
-          { Representante: { [Op.like]: `%${query}%` } }
+          { nit: { [Op.like]: `%${query}%` } },
+          { nombre: { [Op.like]: `%${query}%` } },
+          { representante: { [Op.like]: `%${query}%` } }
         ]
       },
-      order: [['Nombre', 'ASC']]
+      order: [['nombre', 'ASC']]
     });
-    
+
     return res.status(200).json({
       success: true,
       data: empresas

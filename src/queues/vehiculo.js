@@ -70,7 +70,7 @@ const mapeoFechas = {
   'TECNOMECANICA': 'tecnomecanicaVencimiento',
   'TARJETA_DE_OPERACION': 'tarjetaDeOperacionVencimiento',
   'POLIZA_CONTRACTUAL': 'polizaContractualVencimiento',
-  'POLIZA_EXTRACONTRACTUAL': 'polizaExtraContractualVencimiento',
+  'POLIZA_EXTRACONTRACTUAL': 'poliza_extra_contractual_vencimiento',
   'POLIZA_TODO_RIESGO': 'polizaTodoRiesgoVencimiento'
 };
 
@@ -821,7 +821,7 @@ vehicleCreationQueue.process('crear-vehiculo', async (job) => {
     const datos = { ...tarjetaDePropiedad };
 
     // Verificar campos obligatorios en la tarjeta de propiedad
-    const camposObligatorios = ['placa', 'marca', 'linea', 'modelo'];
+    const camposObligatorios = ['placa', 'marca', 'linea', 'modelo', "clase_vehiculo"];
     const camposFaltantes = camposObligatorios.filter(campo =>
       !datos[campo] || datos[campo].toString().trim() === ''
     );
@@ -869,7 +869,7 @@ vehicleCreationQueue.process('crear-vehiculo', async (job) => {
         throw new Error('Vehículos de servicio público requieren Tarjeta de Operación');
       }
 
-      if (!datos.polizaContractualVencimiento || !datos.polizaExtraContractualVencimiento) {
+      if (!datos.polizaContractualVencimiento || !datos.poliza_extra_contractual_vencimiento) {
         throw new Error('Vehículos de servicio público requieren pólizas Contractual y Extracontractual');
       }
     }
