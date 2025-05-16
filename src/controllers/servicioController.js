@@ -9,7 +9,7 @@ exports.obtenerTodos = async (req, res) => {
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
+        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
     });
 
@@ -39,7 +39,7 @@ exports.obtenerPorId = async (req, res) => {
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
+        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
     });
 
@@ -188,7 +188,7 @@ exports.crear = async (req, res) => {
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
+        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
     });
 
@@ -506,7 +506,7 @@ exports.actualizar = async (req, res) => {
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
+        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
     });
 
@@ -684,7 +684,7 @@ exports.buscarServicios = async (req, res) => {
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
+        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ],
       order: [['fecha_solicitud', 'DESC']]
     });
@@ -768,7 +768,7 @@ exports.cambiarEstado = async (req, res) => {
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre'] }
+        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre'] }
       ]
     });
 
@@ -868,7 +868,7 @@ exports.asignarNumeroPlanilla = async (req, res) => {
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre'] }
+        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre'] }
       ]
     });
 
