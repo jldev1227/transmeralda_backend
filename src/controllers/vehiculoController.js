@@ -18,39 +18,61 @@ const uploadDocumentos = upload.array('documentos', 10); // Espera un campo llam
 // Obtener todos los vehículos
 const getVehiculos = async (req, res) => {
   try {
-    const { estado, marca, propietarioId } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sort = 'placa',
+      order = 'ASC'
+    } = req.query;
+
+    const sequelizeOrder = order === 'ascending' ? 'ASC' : 'DESC';
 
     const whereClause = {};
 
-    if (estado) {
-      whereClause.estado = estado;
+    // Procesamiento de búsqueda general (busca en varios campos)
+    if (search) {
+      whereClause[Op.or] = [
+        { placa: { [Op.iLike]: `%${search}%` } },
+        { marca: { [Op.iLike]: `%${search}%` } },
+        { modelo: { [Op.iLike]: `%${search}%` } },
+        { linea: { [Op.iLike]: `%${search}%` } },
+      ];
     }
 
-    if (marca) {
-      whereClause.marca = { [Op.iLike]: `%${marca}%` };
+    // Si había filtros simples, intégralos también
+    if (req.query.placa) whereClause.placa = { [Op.iLike]: `%${req.query.placa}%` };
+
+    const offset = (page - 1) * limit;
+
+    // Determinación del ordenamiento
+    let orderArray = [[sort, sequelizeOrder]];
+
+    // Si el ordenamiento es por placa completo (para mostrar placa + apellido)
+    if (sort === 'vehiculo') {
+      orderArray = [['placa', sequelizeOrder], ['marca', sequelizeOrder], ['modelo', sequelizeOrder], ['linea', sequelizeOrder]];
     }
 
-    if (propietarioId) {
-      whereClause.propietarioId = propietarioId;
-    }
-
-    const vehiculos = await Vehiculo.findAll({
+    const { count, rows } = await Vehiculo.findAndCountAll({
       where: whereClause,
-      include: [
-        { model: Conductor, as: 'conductor' }
-      ]
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: orderArray,
+      distinct: true  // Importante para contar correctamente con includes
     });
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
-      count: vehiculos.length,
-      data: vehiculos
+      count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: parseInt(page),
+      data: rows
     });
   } catch (error) {
     console.error('Error al obtener vehículos:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
-      message: 'Error al obtener los vehículos',
+      message: 'Error al obtener vehículos',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -102,7 +124,6 @@ const createVehiculo = async (req, res) => {
         message: "Archivos y categorías son requeridos."
       });
     }
-
     // Convertir categorías a array si llega como string (para manejar formato form-data)
     let categoriasArray = categorias;
     if (typeof categorias === 'string') {
@@ -123,15 +144,30 @@ const createVehiculo = async (req, res) => {
       "POLIZA_TODO_RIESGO",
     ];
 
-    // Verificar que todas las categorías requeridas estén presentes
-    const categoriasFaltantes = categoriasPermitidas.filter(
+    // Definir categorías obligatorias - solo tarjeta de propiedad
+    const categoriasObligatorias = ["TARJETA_DE_PROPIEDAD"];
+
+    // Verificar si todas las categorías proporcionadas son permitidas
+    const categoriasInvalidas = categoriasArray.filter(
+      (categoria) => !categoriasPermitidas.includes(categoria)
+    );
+
+    if (categoriasInvalidas.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Las siguientes categorías no son válidas: ${categoriasInvalidas.join(", ")}.`
+      });
+    }
+
+    // Verificar que todas las categorías obligatorias estén presentes
+    const categoriasFaltantes = categoriasObligatorias.filter(
       (categoria) => !categoriasArray.includes(categoria)
     );
 
     if (categoriasFaltantes.length > 0) {
       return res.status(400).json({
         success: false,
-        message: `Faltan las siguientes categorías: ${categoriasFaltantes.join(", ")}.`
+        message: `Falta la tarjeta de propiedad, que es obligatoria.`
       });
     }
 
@@ -156,6 +192,79 @@ const createVehiculo = async (req, res) => {
     });
   } catch (error) {
     console.error("Error al procesar la solicitud:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error interno del servidor"
+    });
+  }
+};
+
+// Crear un nuevo vehículo básico
+const createVehiculoBasico = async (req, res) => {
+  try {
+    // Obtener datos del vehículo del body
+    const vehiculoData = req.body;
+
+    // Verificar campos mínimos obligatorios
+    const camposObligatorios = ['placa', 'marca', 'modelo', 'clase_vehiculo', 'linea'];
+    const camposFaltantes = camposObligatorios.filter(campo => !vehiculoData[campo]);
+
+    if (camposFaltantes.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Los siguientes campos son obligatorios: ${camposFaltantes.join(', ')}`
+      });
+    }
+
+    // Convertir campos camelCase a snake_case si es necesario
+    const datosNormalizados = {
+      placa: vehiculoData.placa,
+      marca: vehiculoData.marca,
+      modelo: vehiculoData.modelo,
+      linea: vehiculoData.linea,
+      clase_vehiculo: vehiculoData.clase_vehiculo,
+      color: vehiculoData.color || null,
+    };
+
+    // Crear vehículo en la base de datos
+    const nuevoVehiculo = await Vehiculo.create(datosNormalizados);
+
+    // Emitir evento para todos los clientes conectados
+    const emitVehiculoEvent = req.app.get('emitVehiculoEvent');
+    if (emitVehiculoEvent) {
+      emitVehiculoEvent('vehiculo:creado', nuevoVehiculo);
+    }
+
+
+    // Responder con el vehículo creado
+    return res.status(201).json({
+      success: true,
+      message: "Vehículo registrado correctamente",
+      data: nuevoVehiculo
+    });
+
+  } catch (error) {
+    console.error("Error al registrar vehículo:", error);
+
+    // Manejo específico para error de placa duplicada
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(400).json({
+        success: false,
+        message: "Ya existe un vehículo con esta placa"
+      });
+    }
+
+    // Manejo para errores de validación
+    if (error.name === 'SequelizeValidationError') {
+      const errores = error.errors.map(err => `${err.path}: ${err.message}`);
+      return res.status(400).json({
+        success: false,
+        message: "Error de validación",
+        errors: errores
+      });
+    }
+
+    // Error genérico
     return res.status(500).json({
       success: false,
       message: error.message || "Error interno del servidor"
@@ -246,6 +355,43 @@ const updateVehiculo = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Error interno del servidor"
+    });
+  }
+};
+
+// Actualizar un vehículo existente de manera básica
+const updateVehiculoBasico = async (req, res) => {
+  try {
+    const [updated] = await Vehiculo.update(req.body, {
+      where: { id: req.params.id }
+    });
+
+    if (updated === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Vehículo no encontrado'
+      });
+    }
+
+    const vehiculoActualizado = await Vehiculo.findByPk(req.params.id);
+
+    // Emitir evento para todos los clientes conectados
+    const emitVehiculoEvent = req.app.get('emitVehiculoEvent');
+    if (emitVehiculoEvent) {
+      emitVehiculoEvent('vehiculo:actualizado', vehiculoActualizado);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Vehículo actualizado exitosamente',
+      data: vehiculoActualizado
+    });
+  } catch (error) {
+    console.error('Error al actualizar vehiculo:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al actualizar conductor',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -500,7 +646,7 @@ const asignarConductor = async (req, res) => {
       vehiculo
     });
   } catch (error) {
-    console.error('Error al asignar conductor:', error);
+    console.error('Error al asignar vehiculo:', error);
     return res.status(500).json({
       success: false,
       message: 'Error al asignar el conductor',
@@ -717,7 +863,9 @@ module.exports = {
   getVehiculos,
   getVehiculoById,
   createVehiculo,
+  createVehiculoBasico,
   updateVehiculo,
+  updateVehiculoBasico,
   deleteVehiculo,
   updateEstadoVehiculo,
   updateUbicacionVehiculo,

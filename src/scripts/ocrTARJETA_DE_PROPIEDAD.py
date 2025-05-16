@@ -123,7 +123,7 @@ class TarjetaPropiedadProcessor:
             line = self.lines[clase_idx]
             parts = line.split("CLASE DE VEHÍCULO")
             if len(parts) > 1:
-                self.result["claseVehiculo"] = parts[1].strip()
+                self.result["clase_vehiculo"] = parts[1].strip()
                 return True
                 
         # Buscar clases de vehículo específicas
@@ -131,7 +131,7 @@ class TarjetaPropiedadProcessor:
         for line in self.lines:
             for clase in clases_vehiculo:
                 if clase in line:
-                    self.result["claseVehiculo"] = clase
+                    self.result["clase_vehiculo"] = clase
                     return True
         return False
 
@@ -210,7 +210,7 @@ class TarjetaPropiedadProcessor:
                 # Patrón alfanumérico para número de motor
                 match = re.search(r'\b[A-Z0-9]{2,}[A-Z0-9\s-]{4,}\b', line)
                 if match and len(line) < 25:
-                    self.result["numeroMotor"] = match.group(0)
+                    self.result["numero_motor"] = match.group(0)
                     return True
         return False
     
@@ -234,7 +234,7 @@ class TarjetaPropiedadProcessor:
             for i in range(chasis_idx, min(chasis_idx + 3, len(self.lines))):
                 match = re.search(vin_pattern, self.lines[i])
                 if match:
-                    self.result["numeroChasis"] = match.group(0)
+                    self.result["numero_chasis"] = match.group(0)
         
         # Buscar SERIE explícitamente
         serie_idx = self.find_line_index("SERIE")
@@ -242,16 +242,16 @@ class TarjetaPropiedadProcessor:
             for i in range(serie_idx, min(serie_idx + 3, len(self.lines))):
                 match = re.search(vin_pattern, self.lines[i])
                 if match:
-                    self.result["numeroSerie"] = match.group(0)
+                    self.result["numero_serie"] = match.group(0)
         
         # Si encontramos VIN pero no chasis/serie, usar el mismo valor
         if "vin" in self.result:
-            if "numeroChasis" not in self.result:
-                self.result["numeroChasis"] = self.result["vin"]
-            if "numeroSerie" not in self.result:
-                self.result["numeroSerie"] = self.result["vin"]
+            if "numero_chasis" not in self.result:
+                self.result["numero_chasis"] = self.result["vin"]
+            if "numero_serie" not in self.result:
+                self.result["numero_serie"] = self.result["vin"]
                 
-        return "vin" in self.result or "numeroChasis" in self.result
+        return "vin" in self.result or "numero_chasis" in self.result
     
     def extract_propietario(self):
         """Extraer nombre e identificación del propietario"""
@@ -265,7 +265,7 @@ class TarjetaPropiedadProcessor:
                 nombre = texto.replace("APELLIDO(S) Y NOMBRE(S)", "").strip()
                 
                 if nombre:
-                    self.result["propietarioNombre"] = nombre
+                    self.result["propietario_nombre"] = nombre
                     break
         
         # Buscar línea con IDENTIFICACION
@@ -276,7 +276,7 @@ class TarjetaPropiedadProcessor:
                     self.result["propietarioIdentificacion"] = f"NIT {match.group(1)}"
                     break
         
-        return "propietarioNombre" in self.result
+        return "propietario_nombre" in self.result
 
     def extract_fecha_matricula(self):
         """Extraer fecha de matrícula"""

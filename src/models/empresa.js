@@ -1,90 +1,96 @@
 const { DataTypes, Model } = require('sequelize');
 
 
-module.exports = (sequelize) =>{
-    class Empresa extends Model {
-      static associate(models) {
-        // Define associations here if needed
-        // Example: 
-        // this.hasMany(models.Proyecto, { foreignKey: 'empresaId' });
-      }
+module.exports = (sequelize) => {
+  class Empresa extends Model {
+    static associate(models) {
+      // Define associations here if needed
+      // Example: 
+      // this.hasMany(models.Proyecto, { foreignKey: 'empresaId' });
     }
+  }
   Empresa.init(
     {
       id: {
         type: DataTypes.UUID,
         defaultValue: DataTypes.UUIDV4,
-        primaryKey: true
+        primaryKey: true,
+        allowNull: false
       },
-      NIT: {
+      nit: {
         type: DataTypes.STRING,
         allowNull: false,
-        field: 'NIT', // Asegúrate de que Sequelize busque exactamente 'NIT'
+        field: 'nit',
         unique: true,
         validate: {
-          notNull: {
-            msg: 'El NIT es obligatorio'
-          },
           notEmpty: {
-            msg: 'El NIT no puede estar vacío'
+            msg: 'El nit no puede estar vacío'
+          },
+          isValidNIT(value) {
+            // Eliminar puntos de miles y espacios
+            const cleanNIT = value.replace(/\./g, '').trim();
+
+            // Verificar que solo contenga números y posiblemente un guion para el dígito de verificación
+            if (!/^[0-9]+(-[0-9])?$/.test(cleanNIT)) {
+              throw new Error('El nit debe contener solo números y opcionalmente un guion con el dígito de verificación');
+            }
+
+            // Si llega aquí, el valor es válido, así que asignamos el valor limpio
+            this.setDataValue('nit', cleanNIT);
+          }
+        },
+        set(value) {
+          if (value) {
+            // Eliminar puntos de miles y espacios al guardar
+            const cleanValue = value.replace(/\./g, '').trim();
+            this.setDataValue('nit', cleanValue);
           }
         }
       },
-      Nombre: {
+      nombre: {
         type: DataTypes.STRING,
         allowNull: false,
         validate: {
-          notNull: {
-            msg: 'El nombre de la empresa es obligatorio'
-          },
           notEmpty: {
             msg: 'El nombre de la empresa no puede estar vacío'
           }
         }
       },
-      Representante: {
+      representante: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
         validate: {
-          notNull: {
-            msg: 'El nombre del representante es obligatorio'
-          },
+          // Solo validamos si hay un valor, pero permitimos null
           notEmpty: {
             msg: 'El nombre del representante no puede estar vacío'
           }
         }
       },
-      Cedula: {
+      cedula: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
         validate: {
-          notNull: {
-            msg: 'La cédula es obligatoria'
-          },
+          // Solo validamos si hay un valor, pero permitimos null
           notEmpty: {
             msg: 'La cédula no puede estar vacía'
           }
         }
       },
-      Telefono: {
+      telefono: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
         validate: {
-          notNull: {
-            msg: 'El teléfono es obligatorio'
-          },
+          // Solo validamos si hay un valor, pero permitimos null
           notEmpty: {
             msg: 'El teléfono no puede estar vacío'
           }
         }
       },
-      Direccion: {
+      direccion: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
         validate: {
-          notNull: {
-            msg: 'La dirección es obligatoria'
-          },
+          // Solo validamos si hay un valor, pero permitimos null
           notEmpty: {
             msg: 'La dirección no puede estar vacía'
           }
@@ -93,15 +99,13 @@ module.exports = (sequelize) =>{
       requiere_osi: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
+        defaultValue: false
       },
       paga_recargos: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
+        defaultValue: false
       },
-      old_id: {
-        type: DataTypes.INTEGER,
-        allowNull: true
-      }
     },
     {
       sequelize,
@@ -110,12 +114,6 @@ module.exports = (sequelize) =>{
       timestamps: true,
       underscored: false,
       paranoid: true, // Soft delete
-      indexes: [
-        {
-          unique: true,
-          fields: ['NIT']
-        }
-      ]
     }
   );
 
@@ -130,7 +128,7 @@ module.exports = (sequelize) =>{
       foreignKey: 'empresa_id',
       as: 'pernotes'
     });
-    
+
     // Aquí irían otras asociaciones de Empresa
   };
 

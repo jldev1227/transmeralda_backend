@@ -25,7 +25,7 @@ class PolizaExtraContractualProcessor:
         self.placa_param = placa_param.upper() if placa_param else None
         self.result = {
             "placa": None,
-            "polizaExtraContractualVencimiento": None,
+            "poliza_extra_contractual_vencimiento": None,
         }
         
         # Palabras clave para identificar contextos relevantes
@@ -106,7 +106,7 @@ class PolizaExtraContractualProcessor:
                 # Si no hay fechas futuras, tomar la más reciente
                 fecha_vencimiento = max(fechas_datetime)
             
-            self.result["polizaExtraContractualVencimiento"] = fecha_vencimiento.strftime("%Y-%m-%d")
+            self.result["poliza_extra_contractual_vencimiento"] = fecha_vencimiento.strftime("%Y-%m-%d")
             return True
             
         return False

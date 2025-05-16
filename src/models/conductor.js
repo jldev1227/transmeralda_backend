@@ -51,12 +51,16 @@ module.exports = (sequelize) => {
     },
     email: {
       type: DataTypes.STRING,
-      allowNull: false,
-      unique: true,
+      allowNull: true,  // Cambiado de false a true
+      unique: {
+        args: true,
+        msg: 'Este correo electrónico ya está registrado en el sistema'
+      },
       validate: {
-        notNull: { msg: 'El correo electrónico es obligatorio' },
-        notEmpty: { msg: 'El correo electrónico no puede estar vacío' },
-        isEmail: { msg: 'Debe proporcionar un correo electrónico válido' }
+        isEmail: {
+          args: true,
+          msg: 'Debe proporcionar un correo electrónico válido'
+        }
       }
     },
     telefono: {
@@ -69,13 +73,15 @@ module.exports = (sequelize) => {
     },
     password: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
-        notNull: { msg: 'La contraseña es obligatoria' },
-        notEmpty: { msg: 'La contraseña no puede estar vacía' },
-        len: {
-          args: [8, 100],
-          msg: 'La contraseña debe tener al menos 8 caracteres'
+        passwordValidation(value) {
+          // Solo validar si se proporciona una contraseña
+          if (value !== null && value !== undefined && value !== '') {
+            if (value.length < 8 || value.length > 16) {
+              throw new Error('La contraseña debe tener entre 8 y 16 caracteres');
+            }
+          }
         }
       }
     },
@@ -193,10 +199,27 @@ module.exports = (sequelize) => {
     timestamps: true,
     hooks: {
       beforeSave: async (conductor) => {
-        // Hash de contraseña antes de guardar
-        if (conductor.changed('password')) {
-          const salt = await bcrypt.genSalt(10);
-          conductor.password = await bcrypt.hash(conductor.password, salt);
+        // Hash de contraseña antes de guardar, pero solo si existe y ha cambiado
+        if (conductor.changed('password') && conductor.password !== null && conductor.password !== undefined) {
+          // Verificar que la contraseña no sea una cadena vacía
+          if (conductor.password.trim() !== '') {
+            const salt = await bcrypt.genSalt(10);
+            conductor.password = await bcrypt.hash(conductor.password, salt);
+          } else {
+            // Si la contraseña es una cadena vacía o solo con espacios, la establecemos como null
+            conductor.password = null;
+          }
+        }
+      },
+      beforeValidate: (conductor) => {
+        // Convertir cadenas vacías a null para email
+        if (conductor.email !== null && conductor.email !== undefined && conductor.email.trim() === '') {
+          conductor.email = null;
+        }
+
+        // Convertir cadenas vacías a null para password
+        if (conductor.password !== null && conductor.password !== undefined && conductor.password.trim() === '') {
+          conductor.password = null;
         }
       }
     }
@@ -209,7 +232,7 @@ module.exports = (sequelize) => {
         as: 'creadoPor'
       });
     }
-    
+
     if (models.Documento) {
       Conductor.hasMany(models.Documento, {
         foreignKey: 'modelo_id',
@@ -217,21 +240,21 @@ module.exports = (sequelize) => {
         scope: { modelo_tipo: 'Conductor' }
       });
     }
-    
+
     if (models.Liquidacion) {
       Conductor.hasMany(models.Liquidacion, {
         foreignKey: 'conductor_id',
         as: 'liquidaciones'
       });
     }
-    
+
     if (models.Anticipo) {
       Conductor.hasMany(models.Anticipo, {
         foreignKey: 'conductor_id',
         as: 'anticipos'
       });
     }
-    
+
     if (models.Vehiculo) {
       Conductor.hasMany(models.Vehiculo, {
         foreignKey: 'conductor_id',

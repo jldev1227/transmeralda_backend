@@ -90,10 +90,6 @@ exports.enviarCorreoVerificacion = async (destinatario, codigo, nombreUsuario) =
     </head>
     <body>
       <div class="container">
-        <div class="header">
-          <!-- Logo de la empresa -->
-          <img src="https://www.pixelstalk.net/wp-content/uploads/2016/07/Download-Free-Pictures-3840x2160.jpg" alt="Logo" class="logo">
-        </div>
         <div class="content">
           <h2>Código de verificación</h2>
           <p>Hola ${nombreUsuario},</p>
@@ -112,7 +108,7 @@ exports.enviarCorreoVerificacion = async (destinatario, codigo, nombreUsuario) =
         </div>
         <div class="footer">
           <p>Este es un correo electrónico automático, por favor no respondas a este mensaje.</p>
-          <p>&copy; ${new Date().getFullYear()} Sistema de Gestión de Nómina. Todos los derechos reservados.</p>
+          <p>&copy; ${new Date().getFullYear()} Sistema de Gestión de Transmeralda. Todos los derechos reservados.</p>
         </div>
       </div>
     </body>

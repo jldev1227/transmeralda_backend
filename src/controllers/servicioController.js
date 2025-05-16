@@ -7,7 +7,7 @@ exports.obtenerTodos = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion'] },
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
       ]
@@ -37,7 +37,7 @@ exports.obtenerPorId = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion'] },
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
       ]
@@ -186,7 +186,7 @@ exports.crear = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion'] },
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
       ]
@@ -342,7 +342,7 @@ exports.actualizar = async (req, res) => {
         try {
             // Buscar los datos del conductor para tener información más completa en el histórico
             const conductorAnterior = await Conductor.findByPk(servicio.conductor_id, {
-                attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion']
+                attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono']
             });
             
             let valorAnterior = `Conductor ID: ${servicio.conductor_id}`;
@@ -504,7 +504,7 @@ exports.actualizar = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion'] },
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
       ]
@@ -682,7 +682,7 @@ exports.buscarServicios = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion'] },
+        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'Nombre', "NIT", "requiere_osi"] }
       ],
@@ -709,6 +709,7 @@ exports.cambiarEstado = async (req, res) => {
   try {
     const { id } = req.params;
     const { estado, fecha_finalizacion } = req.body;
+    console.log(fecha_finalizacion)
 
     if (
       !estado ||
