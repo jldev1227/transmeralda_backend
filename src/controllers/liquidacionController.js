@@ -105,7 +105,7 @@ exports.obtenerLiquidacionPorId = async (req, res) => {
             {
               model: Empresa,
               as: "empresa",
-              attributes: ["id", "Nombre", "NIT"],
+              attributes: ["id", "nombre", "nit"],
               required: false,
             },
           ],
@@ -123,7 +123,7 @@ exports.obtenerLiquidacionPorId = async (req, res) => {
             {
               model: Empresa,
               as: "empresa",
-              attributes: ["id", "Nombre", "NIT"],
+              attributes: ["id", "nombre", "nit"],
               required: false,
             },
           ],
