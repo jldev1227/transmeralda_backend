@@ -17,6 +17,6 @@ router.delete('/:id', protect, hasRole(['gestor_servicio', 'admin']), servicioCo
 
 // Ruta específica para cambiar estado
 router.patch('/:id/estado', protect, servicioController.cambiarEstado);
-router.patch('/:id/planilla', protect, hasRole(['gestor_planillas, admin']), servicioController.asignarNumeroPlanilla);
+router.patch('/:id/planilla', protect, hasRole(['gestor_planillas', 'admin']), servicioController.asignarNumeroPlanilla);
 
 module.exports = router;
