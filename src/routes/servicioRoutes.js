@@ -13,7 +13,7 @@ router.get('/:id', servicioController.obtenerPorId);
 // Rutas que requieren permisos de creación/edición
 router.post('/', protect, servicioController.crear);
 router.put('/:id', protect, servicioController.actualizar);
-router.delete('/:id', protect, hasRole(['gestor_servicio, admin']), servicioController.eliminar);
+router.delete('/:id', protect, hasRole(['gestor_servicio', 'admin']), servicioController.eliminar);
 
 // Ruta específica para cambiar estado
 router.patch('/:id/estado', protect, servicioController.cambiarEstado);
