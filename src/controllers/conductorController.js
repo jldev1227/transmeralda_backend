@@ -177,6 +177,8 @@ exports.obtenerConductores = async (req, res) => {
       order = 'DESC'
     } = req.query;
 
+    const sequelizeOrder = order;
+
     const whereClause = {};
 
     // Procesamiento de búsqueda general (busca en varios campos)
@@ -221,11 +223,13 @@ exports.obtenerConductores = async (req, res) => {
     const offset = (page - 1) * limit;
 
     // Determinación del ordenamiento
-    let orderArray = [[sort, order]];
+    let orderArray = [[sort, sequelizeOrder]];
 
+
+    console.log(sort, sequelizeOrder);
     // Si el ordenamiento es por nombre completo (para mostrar nombre + apellido)
     if (sort === 'conductor') {
-      orderArray = [['nombre', order], ['apellido', order]];
+      orderArray = [['nombre', sequelizeOrder], ['apellido', sequelizeOrder]];
     }
 
     const { count, rows } = await Conductor.findAndCountAll({

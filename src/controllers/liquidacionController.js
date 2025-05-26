@@ -21,7 +21,7 @@ exports.obtenerLiquidaciones = async (req, res) => {
         { model: Vehiculo, as: "vehiculos" },
         { model: Bonificacion, as: "bonificaciones" },
         { model: Pernote, as: "pernotes" },
-        { model: Recargo, as: "recargos" },
+        { model: Recargo, as: "recargos", include: [{ model: Empresa, as: "empresa" }] },
         { model: Anticipo, as: "anticipos" },
         {
           model: User,
