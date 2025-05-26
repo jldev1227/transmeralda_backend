@@ -1,8 +1,7 @@
 const Queue = require('bull');
 const { redisOptions } = require('../config/redisClient');
 const logger = require('../utils/logger');
-const { Vehiculo } = require('../models');
-const Documento = require('../models/Documento');
+const { Vehiculo, Documento } = require('../models');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs').promises;
