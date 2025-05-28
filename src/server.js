@@ -10,6 +10,7 @@ const { sequelize, testConnection } = require('./config/database.js');
 const { setupBullQueues, setupBullBoard } = require('./config/bull');
 const documentController = require('./controllers/documentoController.js');
 const { scheduleRecurringCheck, runCheckNow } = require('./queues/serviceStatusQueue');
+const { inicializarProcesadores } = require('./queues/vehiculo.js');
 
 // Inicializar app
 const app = express();
@@ -302,6 +303,7 @@ const iniciarServidor = async () => {
     // Configurar colas de Bull
     setupBullQueues(app);
     scheduleRecurringCheck();
+    inicializarProcesadores()
     
     // Iniciar servidor HTTP con Socket.IO
     server.listen(PORT, () => {

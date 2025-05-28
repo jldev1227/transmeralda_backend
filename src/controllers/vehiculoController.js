@@ -1,10 +1,9 @@
 // src/controllers/vehiculoController.js
-const { Vehiculo, Conductor } = require('../models');
+const { Vehiculo, Conductor, Documento } = require('../models');
 const { Op } = require('sequelize');
 const multer = require('multer');
 const { procesarDocumentos, actualizarDocumentosVehiculo } = require('../queues/vehiculo');
 const { redisClient } = require('../config/redisClient');
-
 
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -39,6 +38,18 @@ const getVehiculos = async (req, res) => {
       ];
     }
 
+    // Procesamiento de filtro por estado (puede ser múltiple)
+    if (req.query.estado) {
+      const estados = req.query.estado.split(',');
+      whereClause.estado = { [Op.in]: estados };
+    }
+
+    // Procesamiento de filtro por clase (puede ser múltiple)
+    if (req.query.clase) {
+      const clases = req.query.clase.split(',');
+      whereClause.clase_vehiculo = { [Op.in]: clases };
+    }
+
     // Si había filtros simples, intégralos también
     if (req.query.placa) whereClause.placa = { [Op.iLike]: `%${req.query.placa}%` };
 
@@ -54,6 +65,9 @@ const getVehiculos = async (req, res) => {
 
     const { count, rows } = await Vehiculo.findAndCountAll({
       where: whereClause,
+      include: [
+        { model: Documento, as: 'documentos' }
+      ],
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: orderArray,
@@ -116,7 +130,17 @@ const createVehiculo = async (req, res) => {
     const { categorias, fechasVigencia, ...vehiculoData } = req.body;
     const files = req.files;
 
-    console.log(req.body, req.files);
+    // Validar que la placa no exista ya en la base de datos
+    const placaExistente = await Vehiculo.findOne({
+      where: { placa: vehiculoData.placa }
+    });
+
+    if (placaExistente) {
+      return res.status(400).json({
+        success: false,
+        message: `Ya existe un vehículo con la placa ${vehiculoData.placa}`
+      });
+    }
 
     // Validar que se proporcionaron archivos y categorías
     if (!files || !categorias || files.length === 0) {
@@ -158,6 +182,7 @@ const createVehiculo = async (req, res) => {
       "POLIZA_CONTRACTUAL",
       "POLIZA_EXTRACONTRACTUAL",
       "POLIZA_TODO_RIESGO",
+      "CERTIFICADO_GPS"
     ];
 
     // Definir categorías obligatorias
@@ -188,17 +213,17 @@ const createVehiculo = async (req, res) => {
     }
 
     // Validar fechas de vigencia para documentos que las requieren
-    const documentosConVigencia = ["SOAT", "TECNOMECANICA", "TARJETA_DE_OPERACION", "POLIZA_CONTRACTUAL", "POLIZA_EXTRACONTRACTUAL", "POLIZA_TODO_RIESGO"];
-    
+    const documentosConVigencia = ["SOAT", "TECNOMECANICA", "TARJETA_DE_OPERACION", "POLIZA_CONTRACTUAL", "POLIZA_EXTRACONTRACTUAL", "POLIZA_TODO_RIESGO", "CERTIFICADO_GPS"];
+
     // Obtener fecha actual solo con día, mes y año (sin horas)
     const fechaActual = new Date();
     fechaActual.setHours(0, 0, 0, 0);
-    
+
     for (const categoria of categoriasArray) {
       if (documentosConVigencia.includes(categoria)) {
         const fechaVigencia = fechasVigenciaObj[categoria];
 
-        
+
         if (!fechaVigencia) {
           return res.status(400).json({
             success: false,
@@ -208,7 +233,7 @@ const createVehiculo = async (req, res) => {
 
         // Crear objeto Date desde el string de fecha
         const fechaVigenciaDate = new Date(fechaVigencia);
-        
+
         if (isNaN(fechaVigenciaDate.getTime())) {
           return res.status(400).json({
             success: false,
@@ -218,7 +243,7 @@ const createVehiculo = async (req, res) => {
 
         // Comparar solo fechas (sin considerar horas)
         fechaVigenciaDate.setHours(0, 0, 0, 0);
-        
+
         if (fechaVigenciaDate <= fechaActual) {
           return res.status(400).json({
             success: false,
@@ -273,22 +298,71 @@ const createVehiculo = async (req, res) => {
 // Actualizar documentos de un vehículo existente
 const updateVehiculo = async (req, res) => {
   try {
-    const { vehiculoId } = req.params;
-    const { categorias, fechasVigencia } = req.body;
+    const { id } = req.params;
+    const {
+      categorias,
+      fechasVigencia,
+      placa,
+      marca,
+      linea,
+      modelo,
+      color,
+      clase_vehiculo,
+      kilometraje,
+      estado,
+      galeria
+    } = req.body;
     const files = req.files;
 
-    // Validar que se proporcionaron archivos y categorías
-    if (!files || !categorias || files.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Archivos y categorías son requeridos."
-      });
-    }
+    console.log(id, categorias, fechasVigencia);
 
-    if (!vehiculoId) {
+    // Validar que se proporcione el ID del vehículo
+    if (!id) {
       return res.status(400).json({
         success: false,
         message: "ID del vehículo es requerido."
+      });
+    }
+
+    // Preparar los campos básicos para actualizar
+    const camposBasicos = {};
+    if (placa !== undefined) camposBasicos.placa = placa;
+    if (marca !== undefined) camposBasicos.marca = marca;
+    if (linea !== undefined) camposBasicos.linea = linea;
+    if (modelo !== undefined) camposBasicos.modelo = modelo;
+    if (color !== undefined) camposBasicos.color = color;
+    if (clase_vehiculo !== undefined) camposBasicos.clase_vehiculo = clase_vehiculo;
+    if (kilometraje !== undefined) camposBasicos.kilometraje = kilometraje;
+    if (estado !== undefined) camposBasicos.estado = estado;
+    if (galeria !== undefined) camposBasicos.galeria = galeria;
+
+    // Si hay campos básicos para actualizar, actualizarlos primero
+    if (Object.keys(camposBasicos).length > 0) {
+      try {
+        // Aquí deberías llamar a tu función para actualizar los campos básicos del vehículo
+        const [updated] = await Vehiculo.update(camposBasicos, { where: { id } });
+        if (updated === 0) {
+          return res.status(404).json({
+            success: false,
+            message: 'Vehículo no encontrado'
+          });
+        }
+      } catch (error) {
+        console.error('Error al actualizar campos básicos:', error);
+        return res.status(500).json({
+          success: false,
+          message: "Error al actualizar los campos básicos del vehículo"
+        });
+      }
+    }
+
+    // Si no hay archivos ni categorías para documentos, devolver respuesta exitosa
+    if (!files || !categorias || files.length === 0 || categorias.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: Object.keys(camposBasicos).length > 0
+          ? "Vehículo actualizado exitosamente."
+          : "No se proporcionaron datos para actualizar."
       });
     }
 
@@ -300,6 +374,16 @@ const updateVehiculo = async (req, res) => {
       } catch (e) {
         categoriasArray = categorias.split(',').map(cat => cat.trim());
       }
+    }
+
+    // Si las categorías están vacías después de procesar
+    if (!Array.isArray(categoriasArray) || categoriasArray.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: Object.keys(camposBasicos).length > 0
+          ? "Vehículo actualizado exitosamente."
+          : "No se proporcionaron documentos para actualizar."
+      });
     }
 
     // Convertir fechas de vigencia a objeto si llega como string
@@ -317,16 +401,16 @@ const updateVehiculo = async (req, res) => {
     }
 
     // Validar fechas de vigencia para documentos que las requieren
-    const documentosConVigencia = ["SOAT", "TECNOMECANICA", "TARJETA_DE_OPERACION", "POLIZA_CONTRACTUAL", "POLIZA_EXTRACONTRACTUAL", "POLIZA_TODO_RIESGO"];
-    
+    const documentosConVigencia = ["SOAT", "TECNOMECANICA", "TARJETA_DE_OPERACION", "POLIZA_CONTRACTUAL", "POLIZA_EXTRACONTRACTUAL", "POLIZA_TODO_RIESGO", "CERTIFICADO_GPS"];
+
     // Obtener fecha actual solo con día, mes y año (sin horas)
     const fechaActual = new Date();
     fechaActual.setHours(0, 0, 0, 0);
-    
+
     for (const categoria of categoriasArray) {
       if (documentosConVigencia.includes(categoria)) {
         const fechaVigencia = fechasVigenciaObj[categoria];
-        
+
         if (!fechaVigencia) {
           return res.status(400).json({
             success: false,
@@ -336,7 +420,7 @@ const updateVehiculo = async (req, res) => {
 
         // Crear objeto Date desde el string de fecha
         const fechaVigenciaDate = new Date(fechaVigencia);
-        
+
         if (isNaN(fechaVigenciaDate.getTime())) {
           return res.status(400).json({
             success: false,
@@ -346,7 +430,7 @@ const updateVehiculo = async (req, res) => {
 
         // Comparar solo fechas (sin considerar horas)
         fechaVigenciaDate.setHours(0, 0, 0, 0);
-        
+
         if (fechaVigenciaDate <= fechaActual) {
           return res.status(400).json({
             success: false,
@@ -375,12 +459,12 @@ const updateVehiculo = async (req, res) => {
     // Obtener el ID del socket del cliente
     const socketId = req.headers['socket-id'] || req.body.socketId || 'unknown';
 
-    // Iniciar procesamiento asíncrono de actualización
+    // Iniciar procesamiento asíncrono de actualización de documentos
     const sessionId = await actualizarDocumentosVehiculo(
-      adaptedFiles, 
-      categoriasArray, 
+      adaptedFiles,
+      categoriasArray,
       fechasVigenciaNormalizadas,
-      vehiculoId, 
+      id,
       socketId
     );
 
@@ -388,7 +472,7 @@ const updateVehiculo = async (req, res) => {
     return res.status(202).json({
       success: true,
       sessionId,
-      message: "La actualización de documentos ha comenzado. Recibirás actualizaciones en tiempo real."
+      message: "La actualización del vehículo ha comenzado. Recibirás actualizaciones en tiempo real."
     });
   } catch (error) {
     console.error("Error al actualizar el vehículo:", error);
@@ -428,12 +512,6 @@ const createVehiculoBasico = async (req, res) => {
 
     // Crear vehículo en la base de datos
     const nuevoVehiculo = await Vehiculo.create(datosNormalizados);
-
-    // Emitir evento para todos los clientes conectados
-    const emitVehiculoEvent = req.app.get('emitVehiculoEvent');
-    if (emitVehiculoEvent) {
-      emitVehiculoEvent('vehiculo:creado', nuevoVehiculo);
-    }
 
     // Responder con el vehículo creado
     return res.status(201).json({
@@ -483,14 +561,6 @@ const updateVehiculoBasico = async (req, res) => {
         success: false,
         message: 'Vehículo no encontrado'
       });
-    }
-
-    const vehiculoActualizado = await Vehiculo.findByPk(req.params.id);
-
-    // Emitir evento para todos los clientes conectados
-    const emitVehiculoEvent = req.app.get('emitVehiculoEvent');
-    if (emitVehiculoEvent) {
-      emitVehiculoEvent('vehiculo:actualizado', vehiculoActualizado);
     }
 
     res.status(200).json({
@@ -829,40 +899,42 @@ const getVehiculosBasicos = async (req, res) => {
   }
 };
 
+// Controller para obtener progreso
 const getProgressProccess = async (req, res) => {
   try {
     const { sessionId } = req.params;
+    console.log('Consultando progreso para sessionId:', sessionId);
 
     // Obtener información del progreso desde Redis
-    const procesados = await redisClient.hget(`vehiculo:${sessionId}`, 'procesados');
-    const total = await redisClient.hget(`vehiculo:${sessionId}`, 'totalDocumentos');
+    const procesados = await redisClient.hget(`vehiculo:${sessionId}`, 'procesados') || '0';
+    const total = await redisClient.hget(`vehiculo:${sessionId}`, 'totalDocumentos') || '0';
+    const progreso = await redisClient.hget(`vehiculo:${sessionId}`, 'progreso') || '0';
+    const estado = await redisClient.hget(`vehiculo:${sessionId}`, 'estado') || 'pendiente';
+    const mensaje = await redisClient.hget(`vehiculo:${sessionId}`, 'mensaje') || 'Procesando...';
+    const error = await redisClient.hget(`vehiculo:${sessionId}`, 'error');
 
-    if (!procesados || !total) {
-      return res.status(404).json({
-        error: 'No se encontró información para esta sesión'
-      });
-    }
-
-    // Calcular el progreso
-    const progreso = Math.floor((parseInt(procesados) / parseInt(total)) * 100);
-    const completado = parseInt(procesados) === parseInt(total);
-
-    // Devolver la información de progreso
-    return res.json({
+    const response = {
       sessionId,
       procesados: parseInt(procesados),
       total: parseInt(total),
-      progreso,
-      completado
-    });
+      progreso: parseInt(progreso),
+      estado,
+      mensaje,
+      error: error || null,
+      porcentaje: total > 0 ? Math.round((parseInt(procesados) / parseInt(total)) * 100) : 0
+    };
+
+    console.log('Progreso obtenido:', response);
+    res.json(response);
 
   } catch (error) {
-    console.error('Error al consultar el progreso:', error);
-    return res.status(500).json({
-      error: 'Error al consultar el progreso del procesamiento'
+    console.error('Error obteniendo progreso:', error);
+    res.status(500).json({
+      error: 'Error al obtener el progreso',
+      details: error.message
     });
   }
-}
+};
 
 const getVehiculoBasico = async (req, res) => {
   try {

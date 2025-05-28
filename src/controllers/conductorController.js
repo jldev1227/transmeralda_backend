@@ -225,8 +225,6 @@ exports.obtenerConductores = async (req, res) => {
     // Determinación del ordenamiento
     let orderArray = [[sort, sequelizeOrder]];
 
-
-    console.log(sort, sequelizeOrder);
     // Si el ordenamiento es por nombre completo (para mostrar nombre + apellido)
     if (sort === 'conductor') {
       orderArray = [['nombre', sequelizeOrder], ['apellido', sequelizeOrder]];
