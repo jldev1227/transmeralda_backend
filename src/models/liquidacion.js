@@ -213,6 +213,13 @@ module.exports = (sequelize) => {
           return value === null ? null : parseFloat(value);
         },
       },
+      ajuste_salarial_por_dia: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false, // Cambiar de 0 a false para boolean
+        // Remover validate ya que no aplica para boolean
+        // Remover get() ya que no necesitas parsing para boolean
+      },
       valor_incapacidad: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
