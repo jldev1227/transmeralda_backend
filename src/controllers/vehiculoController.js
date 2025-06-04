@@ -127,20 +127,8 @@ const getVehiculoById = async (req, res) => {
 const createVehiculo = async (req, res) => {
   try {
     // Extraer datos del formulario
-    const { categorias, fechasVigencia, ...vehiculoData } = req.body;
+    const { categorias, fechasVigencia } = req.body;
     const files = req.files;
-
-    // Validar que la placa no exista ya en la base de datos
-    const placaExistente = await Vehiculo.findOne({
-      where: { placa: vehiculoData.placa }
-    });
-
-    if (placaExistente) {
-      return res.status(400).json({
-        success: false,
-        message: `Ya existe un vehículo con la placa ${vehiculoData.placa}`
-      });
-    }
 
     // Validar que se proporcionaron archivos y categorías
     if (!files || !categorias || files.length === 0) {
@@ -270,7 +258,6 @@ const createVehiculo = async (req, res) => {
     });
 
     const datosVehiculo = {
-      ...vehiculoData,
       fechasVigencia: fechasVigenciaNormalizadas
     };
 

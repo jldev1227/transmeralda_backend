@@ -35,7 +35,7 @@ const allowedOrigins = [
   'http://nomina.midominio.local:3000',
   'https://auth.transmeralda.com',
   'https://flota.transmeralda.com',
-  'http://flota.midominio.local:3000',
+  'http://nomina.midominio.local:3000',
   'http://auth.midominio.local:3001',
   "http://servicios.midominio.local:3000"
 ];

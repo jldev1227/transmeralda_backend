@@ -342,7 +342,7 @@ async function uploadProcessedDocuments(sessionId, vehiculoId, fechasVigencia, i
         logger.error(`Error al subir documentos procesados: ${error.message}`);
         // Intentar eliminar directorio temporal incluso si hay error
         try {
-            await fs.rm(tempDir, { recursive: true, force: true });
+            // await fs.rm(tempDir, { recursive: true, force: true });
         } catch (cleanupError) {
             logger.error(`Error al limpiar directorio temporal: ${cleanupError.message}`);
         }

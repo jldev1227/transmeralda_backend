@@ -201,6 +201,18 @@ module.exports = (sequelize) => {
           return value === null ? null : parseFloat(value);
         },
       },
+      ajuste_parex: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+        validate: {
+          isDecimal: { msg: "El ajuste salarial debe ser un valor numérico" },
+        },
+        get() {
+          const value = this.getDataValue("ajuste_parex");
+          return value === null ? null : parseFloat(value);
+        },
+      },
       valor_incapacidad: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,

@@ -65,10 +65,24 @@ class TarjetaPropiedadProcessor:
         if marca_idx >= 0:
             line = self.lines[marca_idx]
             parts = line.split("MARCA")
+            
+            
             if len(parts) > 1:
-                self.result["marca"] = parts[1].strip()
-                return True
-        return False
+                marca_candidata = parts[1].strip()
+                
+                # Verificar si la marca no está vacía
+                if marca_candidata:
+                    self.result["marca"] = marca_candidata
+                    return True
+            
+            # Si la marca está vacía o no se encontró en la misma línea,
+            # buscar en la línea siguiente
+            if marca_idx + 1 < len(self.lines):
+                next_line = self.lines[marca_idx + 1].strip()
+                
+                if next_line:
+                    self.result["marca"] = next_line
+                    return True
     
     def extract_linea(self):
         """Extraer la línea del vehículo"""
@@ -82,11 +96,27 @@ class TarjetaPropiedadProcessor:
         if linea_idx >= 0:
             line = self.lines[linea_idx]
             parts = re.split(r'LÍNEA|LINEA', line)
+            
             if len(parts) > 1:
-                self.result["linea"] = parts[1].strip()
-                return True
+                linea_candidata = parts[1].strip()
+                
+                # Verificar si la línea no está vacía
+                if linea_candidata:
+                    self.result["linea"] = linea_candidata
+                    return True
+            
+            
+            # Si la línea está vacía o no se encontró en la misma línea,
+            # buscar en la línea siguiente
+            if linea_idx + 1 < len(self.lines):
+                next_line = self.lines[linea_idx + 1].strip()
+                
+                if next_line:
+                    self.result["linea"] = next_line
+                    return True
+
         return False
-    
+
     def extract_modelo(self):
         """Extraer el modelo (año) del vehículo"""
         modelo_idx = self.find_line_index("MODELO")
@@ -139,8 +169,30 @@ class TarjetaPropiedadProcessor:
     
     def extract_carroceria_combustible(self):
         """Extraer tipo de carrocería y combustible"""
-        # Buscar "TIPO CARROCERÍA" en las palabras individuales
-        tipo_word = self.find_word_by_content("TIPO CARROCERÍA")
+
+         # Buscar con diferentes variantes de la etiqueta
+        tipo_word = None
+        
+        # Intentar diferentes variantes con y sin tildes
+        search_terms = [
+            "TIPO CARROCERÍA",
+            "TIPO CARROCERIA", 
+            "TIPO DE CARROCERÍA",
+            "TIPO DE CARROCERIA",
+            "CARROCERÍA",
+            "CARROCERIA",
+            "CLASE CARROCERÍA",
+            "CLASE CARROCERIA",
+            "BODY TYPE",
+            "TIPO VEHICULO",
+            "TIPO VEHÍCULO"
+        ]
+        
+        for term in search_terms:
+            tipo_word = self.find_word_by_content(term)
+            if tipo_word:
+                print(f"Encontrado '{term}' para tipo carrocería")
+                break
         
         if tipo_word:
             # Buscar la siguiente palabra (que debería ser el valor)
@@ -151,98 +203,245 @@ class TarjetaPropiedadProcessor:
             for word in self.words:
                 word_offset = word.get('spans', [{}])[0].get('offset', 0)
                 if word_offset > tipo_offset + tipo_length and "TIPO" not in word.get('content', ''):
-                    self.result["tipoCarroceria"] = word.get('content', '').strip()
+                    self.result["tipo_carroceria"] = word.get('content', '').strip()
                     
                     # Verificar si contiene "DIESEL"
                     if "DIESEL" in word.get('content', ''):
                         if "DOBLE CABINA CON DIESEL" in word.get('content', ''):
-                            self.result["tipoCarroceria"] = "DOBLE CABINA"
+                            self.result["tipo_carroceria"] = "DOBLE CABINA"
                             self.result["combustible"] = "DIESEL"
                         else:
                             self.result["combustible"] = "DIESEL"
                     break
         
         # Buscar explícitamente "DOBLE CABINA CON DIESEL"
-        if "tipoCarroceria" not in self.result or "combustible" not in self.result:
+        if "tipo_carroceria" not in self.result or "combustible" not in self.result:
             for word in self.words:
                 if "DOBLE CABINA CON DIESEL" in word.get('content', ''):
-                    self.result["tipoCarroceria"] = "DOBLE CABINA"
+                    self.result["tipo_carroceria"] = "DOBLE CABINA"
                     self.result["combustible"] = "DIESEL"
                     break
         
-        # Buscar combustible en palabras
-        if "combustible" not in self.result:
-            combustible_word = self.find_word_by_content("COMBUSTIBLE")
-            if combustible_word:
-                # Similar a la lógica anterior, buscar la siguiente palabra
-                offset = combustible_word.get('spans', [{}])[0].get('offset', 0)
-                length = combustible_word.get('spans', [{}])[0].get('length', 0)
+            # Buscar combustible en palabras
+            if "combustible" not in self.result:
+                combustible_word = self.find_word_by_content("COMBUSTIBLE")
                 
-                for word in self.words:
-                    word_offset = word.get('spans', [{}])[0].get('offset', 0)
-                    if word_offset > offset + length:
-                        self.result["combustible"] = word.get('content', '').strip()
-                        break
+                if combustible_word:
+                    # Obtener información de la palabra encontrada
+                    span_info = combustible_word.get('span', {}) or combustible_word.get('spans', [{}])[0]
+                    offset = span_info.get('offset', 0)
+                    length = span_info.get('length', 0)
+                    
+                    # Lista de combustibles válidos para validar
+                    combustibles_validos = [
+                        'DIESEL', 'DIÉSEL', 'GASOLINA', 'GAS', 'ACPM', 
+                        'GNC', 'GNL', 'GLP', 'BIODIÉSEL', 'ELECTRICO', 'ELÉCTRICO',
+                        'HIBRIDO', 'HÍBRIDO', 'ETANOL', 'BIODIESEL'
+                    ]
+                    
+                    # Buscar las siguientes palabras después de "COMBUSTIBLE"
+                    next_words = []
+                    for word in self.words:
+                        word_span = word.get('span', {}) or word.get('spans', [{}])[0]
+                        word_offset = word_span.get('offset', 0)
+                        
+                        # Si la palabra está después de "COMBUSTIBLE"
+                        if word_offset > offset + length:
+                            content = word.get('content', '').strip().upper()
+                            next_words.append({
+                                'content': content,
+                                'offset': word_offset,
+                                'word': word
+                            })
+                    
+                    # Ordenar por offset para obtener las palabras en orden
+                    next_words.sort(key=lambda x: x['offset'])
+                    
+                    # Buscar combustible válido en las siguientes palabras
+                    for next_word in next_words[:10]:  # Revisar hasta 10 palabras siguientes
+                        content = next_word['content']
+                        
+                        # Verificar si es un combustible válido
+                        for combustible_valido in combustibles_validos:
+                            if combustible_valido in content or content in combustible_valido:
+                                self.result["combustible"] = content
+                                return True
+                        
+                        # También revisar patrones comunes
+                        if any(keyword in content for keyword in ['DIESEL', 'GAS', 'ACPM', 'ELECT']):
+                            self.result["combustible"] = content
+                            return True
+                        
+                        # Si encuentra dos puntos, la siguiente palabra podría ser el combustible
+                        if ':' in content:
+                            continue
+                    
+                    # Si no encuentra combustible específico, tomar la primera palabra alfanumérica
+                    for next_word in next_words[:5]:
+                        content = next_word['content']
+                        if content and len(content) > 2 and content.isalnum():
+                            # Evitar palabras que claramente no son combustibles
+                            if content not in ['TIPO', 'DE', 'LA', 'EL', 'UN', 'UNA', 'CLASE']:
+                                self.result["combustible"] = content
+                                return True
+            
         
         # Búsqueda de respaldo en el contenido completo
-        if not self.result.get("tipoCarroceria") or not self.result.get("combustible"):
+        if not self.result.get("tipo_carroceria") or not self.result.get("combustible"):
             # Buscar en todo el contenido
             if "DOBLE CABINA CON DIESEL" in self.content:
-                self.result["tipoCarroceria"] = "DOBLE CABINA"
+                self.result["tipo_carroceria"] = "DOBLE CABINA"
                 self.result["combustible"] = "DIESEL"
-            elif "DIESEL" in self.content and "tipoCarroceria" in self.result:
+            elif "DIESEL" in self.content and "tipo_carroceria" in self.result:
                 self.result["combustible"] = "DIESEL"
-            elif "GASOLINA" in self.content and "tipoCarroceria" in self.result:
+            elif "GASOLINA" in self.content and "tipo_carroceria" in self.result:
                 self.result["combustible"] = "GASOLINA"
         
-        return "tipoCarroceria" in self.result or "combustible" in self.result
+        return "tipo_carroceria" in self.result or "combustible" in self.result
     
     def extract_motor(self):
         """Extraer número de motor"""
-        motor_idx = self.find_line_index("NUMERO DE MOTOR")
-        if motor_idx >= 0 and motor_idx < len(self.lines) - 1:
-            # Buscar en las siguientes líneas
-            for i in range(motor_idx + 1, min(motor_idx + 5, len(self.lines))):
+        # Buscar con diferentes variantes de la etiqueta
+        motor_idx = -1
+        
+        # Intentar diferentes variantes con y sin tildes
+        search_terms = [
+            "NÚMERO DE MOTOR",
+            "NUMERO DE MOTOR", 
+            "NUM DE MOTOR",
+            "NÚM DE MOTOR",
+            "MOTOR",
+            "ENGINE"
+        ]
+        
+        for term in search_terms:
+            motor_idx = self.find_line_index(term)
+            if motor_idx >= 0:
+                break
+        
+        # Si todavía no se encuentra, buscar parcialmente
+        if motor_idx == -1:
+            for i, line in enumerate(self.lines):
+                line_upper = line.upper()
+                if ("NUMERO" in line_upper or "NÚMERO" in line_upper) and "MOTOR" in line_upper:
+                    motor_idx = i
+                    break
+        
+        if motor_idx >= 0:
+            # Buscar en la misma línea y las siguientes líneas
+            for i in range(motor_idx, min(motor_idx + 6, len(self.lines))):
                 line = self.lines[i].strip().upper()
-                # Reemplazar O por 0 en posibles números de serie
-                line = re.sub(r'O', '0', line)
                 
-                # Patrón alfanumérico para número de motor
-                match = re.search(r'\b[A-Z0-9]{2,}[A-Z0-9\s-]{4,}\b', line)
-                if match and len(line) < 25:
-                    self.result["numero_motor"] = match.group(0)
-                    return True
+                # Reemplazar O por 0 en posibles números de serie
+                line_cleaned = re.sub(r'O', '0', line)
+                
+                # Si estamos en la línea de la etiqueta, buscar después de la etiqueta
+                if i == motor_idx:
+                    # Buscar el número después de la etiqueta en la misma línea
+                    for term in search_terms:
+                        if term in line:
+                            # Extraer la parte después de la etiqueta
+                            parts = line.split(term, 1)
+                            if len(parts) > 1:
+                                remaining_line = parts[1].strip()
+                                if remaining_line:
+                                    # Buscar patrón alfanumérico en la parte restante
+                                    match = re.search(r'\b[A-Z0-9]{2,}[A-Z0-9\s-]{4,}\b', remaining_line)
+                                    if match and len(remaining_line) < 25:
+                                        motor_number = match.group(0).strip()
+                                        self.result["numero_motor"] = motor_number
+                                        return True
+                else:
+                    # Para líneas siguientes, buscar el patrón directamente
+                    # Patrón alfanumérico para número de motor
+                    patterns = [
+                        r'\b[A-Z0-9]{2,}[A-Z0-9\s-]{4,}\b',  # Patrón original
+                        r'\b[A-Z0-9]{6,}\b',                   # Secuencia alfanumérica de al menos 6 caracteres
+                        r'\b[A-Z]{2,}[0-9]{4,}\b',            # Letras seguidas de números
+                        r'\b[0-9]{2,}[A-Z]{2,}[0-9]{2,}\b',   # Números-Letras-Números
+                    ]
+                    
+                    for pattern in patterns:
+                        match = re.search(pattern, line_cleaned)
+                        if match and len(line) < 30:  # Línea no muy larga
+                            motor_number = match.group(0).strip()
+                            
+                            # Validaciones adicionales para evitar falsos positivos
+                            if self.is_valid_motor_number(motor_number):
+                                self.result["numero_motor"] = motor_number
+                                return True
+        
         return False
-    
+
     def extract_vin_chasis(self):
         """Extraer VIN, número de serie y chasis"""
-        # Buscar patrones específicos para VIN/chasis
+        # Patrón para VIN (17 caracteres alfanuméricos)
         vin_pattern = r'\b[A-Z0-9]{17}\b'
         
         # Buscar VIN explícitamente
         vin_idx = self.find_line_index("VIN")
         if vin_idx >= 0:
-            # Extraer VIN de la misma línea
-            line = self.lines[vin_idx]
-            match = re.search(vin_pattern, line)
-            if match:
-                self.result["vin"] = match.group(0)
+            # Buscar en la misma línea y las siguientes
+            for i in range(vin_idx, min(vin_idx + 5, len(self.lines))):
+                line = self.lines[i].strip().upper()
+                # Reemplazar O por 0 en posibles VINs
+                line = re.sub(r'O', '0', line)
+                
+                match = re.search(vin_pattern, line)
+                if match:
+                    self.result["vin"] = match.group(0)
+                    break
         
         # Buscar CHASIS explícitamente
         chasis_idx = self.find_line_index("CHASIS")
         if chasis_idx >= 0:
-            for i in range(chasis_idx, min(chasis_idx + 3, len(self.lines))):
-                match = re.search(vin_pattern, self.lines[i])
+            # Buscar en la misma línea y las siguientes
+            for i in range(chasis_idx, min(chasis_idx + 5, len(self.lines))):
+                line = self.lines[i].strip().upper()
+                # Reemplazar O por 0 en posibles números de chasis
+                line = re.sub(r'O', '0', line)
+                
+                match = re.search(vin_pattern, line)
                 if match:
                     self.result["numero_chasis"] = match.group(0)
+                    break
         
         # Buscar SERIE explícitamente
         serie_idx = self.find_line_index("SERIE")
         if serie_idx >= 0:
-            for i in range(serie_idx, min(serie_idx + 3, len(self.lines))):
-                match = re.search(vin_pattern, self.lines[i])
+            # Buscar en la misma línea y las siguientes
+            for i in range(serie_idx, min(serie_idx + 5, len(self.lines))):
+                line = self.lines[i].strip().upper()
+                # Reemplazar O por 0 en posibles números de serie
+                line = re.sub(r'O', '0', line)
+                
+                match = re.search(vin_pattern, line)
                 if match:
                     self.result["numero_serie"] = match.group(0)
+                    break
+        
+        # Buscar también por "NUMERO DE CHASIS" y "NUMERO DE SERIE" (más específico)
+        numero_chasis_idx = self.find_line_index("NUMERO DE CHASIS")
+        if numero_chasis_idx >= 0 and "numero_chasis" not in self.result:
+            for i in range(numero_chasis_idx, min(numero_chasis_idx + 5, len(self.lines))):
+                line = self.lines[i].strip().upper()
+                line = re.sub(r'O', '0', line)
+                
+                match = re.search(vin_pattern, line)
+                if match:
+                    self.result["numero_chasis"] = match.group(0)
+                    break
+        
+        numero_serie_idx = self.find_line_index("NUMERO DE SERIE")
+        if numero_serie_idx >= 0 and "numero_serie" not in self.result:
+            for i in range(numero_serie_idx, min(numero_serie_idx + 5, len(self.lines))):
+                line = self.lines[i].strip().upper()
+                line = re.sub(r'O', '0', line)
+                
+                match = re.search(vin_pattern, line)
+                if match:
+                    self.result["numero_serie"] = match.group(0)
+                    break
         
         # Si encontramos VIN pero no chasis/serie, usar el mismo valor
         if "vin" in self.result:
@@ -250,11 +449,13 @@ class TarjetaPropiedadProcessor:
                 self.result["numero_chasis"] = self.result["vin"]
             if "numero_serie" not in self.result:
                 self.result["numero_serie"] = self.result["vin"]
-                
-        return "vin" in self.result or "numero_chasis" in self.result
+        
+        return "vin" in self.result or "numero_chasis" in self.result or "numero_serie" in self.result
     
     def extract_propietario(self):
         """Extraer nombre e identificación del propietario"""
+        
+        # Buscar nombre del propietario
         for i, line in enumerate(self.lines):
             # Buscar línea que contenga "PROPIETARIO:"
             if "PROPIETARIO:" in line:
@@ -267,17 +468,120 @@ class TarjetaPropiedadProcessor:
                 if nombre:
                     self.result["propietario_nombre"] = nombre
                     break
+                else:
+                    # Si el nombre está vacío, buscar en la línea siguiente
+                    if i + 1 < len(self.lines):
+                        next_line = self.lines[i + 1].strip()
+                        
+                        # if next_line and not self.is_irrelevant_owner_text(next_line):
+                        #     self.result["propietario_nombre"] = next_line
+                        #     break
         
-        # Buscar línea con IDENTIFICACION
-        for line in self.lines:
-            if "IDENTIFICACION" in line and "NIT" in line:
-                match = re.search(r'NIT\s+(\d+)', line)
-                if match:
-                    self.result["propietarioIdentificacion"] = f"NIT {match.group(1)}"
-                    break
+        """Buscar identificación directamente por NIT o C.C y extraer números"""
+        
+        # Recorrer todas las líneas buscando NIT o C.C directamente
+        for i, line in enumerate(self.lines):
+            
+            # Buscar NIT directamente
+            nit_match = re.search(r'NIT\s+(\d+)', line, re.IGNORECASE)
+            if nit_match:
+                nit = f"NIT {nit_match.group(1)}"
+                self.result["propietario_identificacion"] = nit
+                return True
+            
+            # Buscar C.C directamente
+            cc_match = re.search(r'C\.?C\.?\s+(\d+)', line, re.IGNORECASE)
+            if cc_match:
+                cc = f"CC {cc_match.group(1)}"
+                self.result["propietario_identificacion"] = cc
+                return True
+            
+            # Si encontramos NIT o C.C sin números en la misma línea, buscar en líneas siguientes
+            if re.search(r'\bNIT\b', line, re.IGNORECASE):
+                
+                # Buscar números en las próximas 3 líneas
+                for offset in range(1, 4):
+                    if i + offset < len(self.lines):
+                        next_line = self.lines[i + offset].strip()
+                        
+                        # Buscar números al inicio de la línea o después de espacios
+                        number_match = re.search(r'^(\d{8,12})', next_line)
+                        if number_match:
+                            nit = f"NIT {number_match.group(1)}"
+                            self.result["propietario_identificacion"] = nit
+                            return True
+            
+            # Similar para C.C
+            if re.search(r'\bC\.?C\.?\b', line, re.IGNORECASE):
+                
+                # Buscar números en las próximas 3 líneas
+                for offset in range(1, 4):
+                    if i + offset < len(self.lines):
+                        next_line = self.lines[i + offset].strip()
+                        
+                        # Buscar números al inicio de la línea
+                        number_match = re.search(r'^(\d{7,11})', next_line)
+                        if number_match:
+                            cc = f"CC {number_match.group(1)}"
+                            self.result["propietario_identificacion"] = cc
+                            return True
         
         return "propietario_nombre" in self.result
+    
+    def convert_fecha_format(self, fecha_str):
+        """Convertir diferentes formatos de fecha a YYYY-MM-DD"""
+        try:
+            # Limpiar la fecha de espacios extra
+            fecha_str = re.sub(r'\s+', ' ', fecha_str.strip())
+            
+            # Separadores posibles
+            if '/' in fecha_str:
+                separador = '/'
+            elif '-' in fecha_str:
+                separador = '-'
+            elif '.' in fecha_str:
+                separador = '.'
+            elif ' ' in fecha_str:
+                separador = ' '
+            else:
+                return None
+            
+            partes = fecha_str.split(separador)
+            if len(partes) != 3:
+                return None
+            
+            # Limpiar cada parte
+            partes = [parte.strip() for parte in partes]
+            
+            # Determinar el formato basado en la longitud y valores
+            # Si la primera parte tiene 4 dígitos, probablemente es YYYY-MM-DD
+            if len(partes[0]) == 4 and partes[0].isdigit():
+                year, month, day = partes[0], partes[1], partes[2]
+            # Si la última parte tiene 4 dígitos, probablemente es DD-MM-YYYY
+            elif len(partes[2]) == 4 and partes[2].isdigit():
+                day, month, year = partes[0], partes[1], partes[2]
+            else:
+                return None
+            
+            # Validar los valores
+            year_int = int(year)
+            month_int = int(month)
+            day_int = int(day)
+            
+            if not (1900 <= year_int <= 2030):
+                return None
+            if not (1 <= month_int <= 12):
+                return None
+            if not (1 <= day_int <= 31):
+                return None
+            
+            # Formatear con ceros a la izquierda
+            return f"{year_int}-{month_int:02d}-{day_int:02d}"
+            
+        except (ValueError, IndexError, AttributeError):
+            return None
 
+    
     def extract_fecha_matricula(self):
         """Extraer fecha de matrícula"""
         # Intentar buscar con acento
@@ -296,28 +600,49 @@ class TarjetaPropiedadProcessor:
         
         # Si se encontró la línea con la etiqueta de fecha
         if fecha_idx >= 0:
-            # Verificar si la fecha está en la misma línea
-            line = self.lines[fecha_idx]
-            match = re.search(r'(\d{2}/\d{2}/\d{4})', line)
-            if match:
-                fecha = match.group(1)
-                # Convertir de DD/MM/YYYY a YYYY-MM-DD
-                partes = fecha.split('/')
-                if len(partes) == 3:
-                    self.result["fechaMatricula"] = f"{partes[2]}-{partes[1]}-{partes[0]}"
-                    return True
             
-            # Si la fecha está en la siguiente línea
-            elif fecha_idx + 1 < len(self.lines):
-                next_line = self.lines[fecha_idx + 1].strip()
-                match = re.search(r'(\d{2}/\d{2}/\d{4})', next_line)
-                if match:
-                    fecha = match.group(1)
-                    # Convertir de DD/MM/YYYY a YYYY-MM-DD
-                    partes = fecha.split('/')
-                    if len(partes) == 3:
-                        self.result["fechaMatricula"] = f"{partes[2]}-{partes[1]}-{partes[0]}"
-                        return True
+            # Buscar en la misma línea y las siguientes 10 líneas
+            for i in range(fecha_idx, min(fecha_idx + 11, len(self.lines))):
+                line = self.lines[i].strip()
+                
+                # Patrones de fecha más flexibles
+                fecha_patterns = [
+                    r'(\d{1,2}/\d{1,2}/\d{4})',        # DD/MM/YYYY o D/M/YYYY
+                    r'(\d{1,2}-\d{1,2}-\d{4})',        # DD-MM-YYYY o D-M-YYYY
+                    r'(\d{1,2}\.\d{1,2}\.\d{4})',      # DD.MM.YYYY o D.M.YYYY
+                    r'(\d{4}/\d{1,2}/\d{1,2})',        # YYYY/MM/DD
+                    r'(\d{4}-\d{1,2}-\d{1,2})',        # YYYY-MM-DD
+                    r'(\d{1,2}\s+\d{1,2}\s+\d{4})',    # DD MM YYYY (con espacios)
+                ]
+                
+                for pattern in fecha_patterns:
+                    match = re.search(pattern, line)
+                    if match:
+                        fecha_str = match.group(1)
+                        
+                        # Procesar la fecha según el formato encontrado
+                        fecha_convertida = self.convert_fecha_format(fecha_str)
+                        if fecha_convertida:
+                            self.result["fecha_matricula"] = fecha_convertida
+                            return True
+            
+            # Si no encuentra con patrones exactos, buscar números que parezcan fechas
+            for i in range(fecha_idx, min(fecha_idx + 11, len(self.lines))):
+                line = self.lines[i].strip()
+                
+                # Buscar secuencias de números que podrían ser fechas
+                numbers = re.findall(r'\d+', line)
+                if len(numbers) >= 3:
+                    # Intentar construir fecha con los primeros 3 números
+                    try:
+                        day, month, year = numbers[0], numbers[1], numbers[2]
+                        if len(year) == 4 and 1900 <= int(year) <= 2030:
+                            if 1 <= int(day) <= 31 and 1 <= int(month) <= 12:
+                                fecha_convertida = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                                self.result["fecha_matricula"] = fecha_convertida
+                                return True
+                    except (ValueError, IndexError):
+                        continue
         
         return False
 
