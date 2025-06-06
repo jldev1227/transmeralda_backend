@@ -35,10 +35,21 @@ class TarjetaPropiedadProcessor:
             if keyword_norm in content_norm:
                 return word
         return None
-
+    
     def is_valid_document(self):
         """Verificar si es una tarjeta de propiedad válida"""
-        return "REPÚBLICA DE COLOMBIA" in self.content and "MINISTERIO DE TRANSPORTE" in self.content
+        content_upper = self.content.upper()
+        
+        # Palabras clave a buscar (sin tildes para mayor flexibilidad)
+        keywords = [
+            "REPUBLICA DE COLOMBIA",
+            "REPÚBLICA DE COLOMBIA", 
+            "MINISTERIO DE TRANSPORTE",
+            "LICENCIA DE TRANSITO",
+            "LICENCIA DE TRÁNSITO"
+        ]
+        
+        return any(keyword in content_upper for keyword in keywords)
     
     def find_line_index(self, keyword):
         """Encontrar el índice de la línea que contiene una palabra clave"""
@@ -138,14 +149,24 @@ class TarjetaPropiedadProcessor:
     def extract_color(self):
         """Extraer el color del vehículo"""
         color_idx = self.find_line_index("COLOR")
+
         if color_idx >= 0:
             line = self.lines[color_idx]
             parts = line.split("COLOR")
-            if len(parts) > 1:
+            
+            if len(parts) > 1 and parts[1].strip():
+                # El color está en la misma línea después de "COLOR"
                 self.result["color"] = parts[1].strip()
                 return True
+            elif color_idx + 1 < len(self.lines):
+                # Si no hay contenido después de "COLOR" o está vacío, buscar en la siguiente línea
+                next_line = self.lines[color_idx + 1].strip()
+                if next_line:
+                    self.result["color"] = next_line
+                    return True
+        
         return False
-    
+        
     def extract_clase_vehiculo(self):
         """Extraer la clase del vehículo"""
         clase_idx = self.find_line_index("CLASE DE VEHÍCULO")
@@ -164,141 +185,177 @@ class TarjetaPropiedadProcessor:
                     self.result["clase_vehiculo"] = clase
                     return True
         return False
-
-    
     
     def extract_carroceria_combustible(self):
         """Extraer tipo de carrocería y combustible"""
-
-         # Buscar con diferentes variantes de la etiqueta
-        tipo_word = None
         
-        # Intentar diferentes variantes con y sin tildes
-        search_terms = [
-            "TIPO CARROCERÍA",
-            "TIPO CARROCERIA", 
-            "TIPO DE CARROCERÍA",
-            "TIPO DE CARROCERIA",
-            "CARROCERÍA",
-            "CARROCERIA",
-            "CLASE CARROCERÍA",
-            "CLASE CARROCERIA",
-            "BODY TYPE",
-            "TIPO VEHICULO",
-            "TIPO VEHÍCULO"
-        ]
+        # Establecer DIESEL como combustible por defecto
+        self.result["combustible"] = "DIESEL"
         
-        for term in search_terms:
-            tipo_word = self.find_word_by_content(term)
-            if tipo_word:
-                print(f"Encontrado '{term}' para tipo carrocería")
+        # Buscar tipo de carrocería en el contenido
+        carroceria_tipos = {
+            "CERRADA": "CERRADA",
+            "DOBLE": "DOBLE CABINA",
+            "ESTACAS": "ESTACAS"
+        }
+        
+        # Buscar coincidencias en el contenido completo
+        content_upper = self.content.upper()
+        for keyword, tipo in carroceria_tipos.items():
+            if keyword in content_upper:
+                self.result["tipo_carroceria"] = tipo
                 break
         
-        if tipo_word:
-            # Buscar la siguiente palabra (que debería ser el valor)
-            tipo_offset = tipo_word.get('spans', [{}])[0].get('offset', 0)
-            tipo_length = tipo_word.get('spans', [{}])[0].get('length', 0)
+        # Si no encuentra en el contenido general, buscar con palabras específicas
+        if "tipo_carroceria" not in self.result:
+            # Buscar con diferentes variantes de la etiqueta
+            tipo_word = None
             
-            # Encontrar la palabra que viene después por posición
-            for word in self.words:
-                word_offset = word.get('spans', [{}])[0].get('offset', 0)
-                if word_offset > tipo_offset + tipo_length and "TIPO" not in word.get('content', ''):
-                    self.result["tipo_carroceria"] = word.get('content', '').strip()
-                    
-                    # Verificar si contiene "DIESEL"
-                    if "DIESEL" in word.get('content', ''):
-                        if "DOBLE CABINA CON DIESEL" in word.get('content', ''):
-                            self.result["tipo_carroceria"] = "DOBLE CABINA"
-                            self.result["combustible"] = "DIESEL"
-                        else:
-                            self.result["combustible"] = "DIESEL"
+            # Intentar diferentes variantes con y sin tildes
+            search_terms = [
+                "TIPO CARROCERÍA",
+                "TIPO CARROCERIA", 
+                "TIPO DE CARROCERÍA",
+                "TIPO DE CARROCERIA",
+                "CARROCERÍA",
+                "CARROCERIA",
+                "CLASE CARROCERÍA",
+                "CLASE CARROCERIA",
+                "BODY TYPE",
+                "TIPO VEHICULO",
+                "TIPO VEHÍCULO"
+            ]
+            
+            for term in search_terms:
+                tipo_word = self.find_word_by_content(term)
+                if tipo_word:
                     break
-        
-        # Buscar explícitamente "DOBLE CABINA CON DIESEL"
-        if "tipo_carroceria" not in self.result or "combustible" not in self.result:
-            for word in self.words:
-                if "DOBLE CABINA CON DIESEL" in word.get('content', ''):
-                    self.result["tipo_carroceria"] = "DOBLE CABINA"
-                    self.result["combustible"] = "DIESEL"
-                    break
-        
-            # Buscar combustible en palabras
-            if "combustible" not in self.result:
-                combustible_word = self.find_word_by_content("COMBUSTIBLE")
+            
+            if tipo_word:
+                # Buscar la siguiente palabra (que debería ser el valor)
+                tipo_offset = tipo_word.get('spans', [{}])[0].get('offset', 0)
+                tipo_length = tipo_word.get('spans', [{}])[0].get('length', 0)
                 
-                if combustible_word:
-                    # Obtener información de la palabra encontrada
-                    span_info = combustible_word.get('span', {}) or combustible_word.get('spans', [{}])[0]
-                    offset = span_info.get('offset', 0)
-                    length = span_info.get('length', 0)
-                    
-                    # Lista de combustibles válidos para validar
-                    combustibles_validos = [
-                        'DIESEL', 'DIÉSEL', 'GASOLINA', 'GAS', 'ACPM', 
-                        'GNC', 'GNL', 'GLP', 'BIODIÉSEL', 'ELECTRICO', 'ELÉCTRICO',
-                        'HIBRIDO', 'HÍBRIDO', 'ETANOL', 'BIODIESEL'
-                    ]
-                    
-                    # Buscar las siguientes palabras después de "COMBUSTIBLE"
-                    next_words = []
-                    for word in self.words:
-                        word_span = word.get('span', {}) or word.get('spans', [{}])[0]
-                        word_offset = word_span.get('offset', 0)
+                # Encontrar la palabra que viene después por posición
+                for word in self.words:
+                    word_offset = word.get('spans', [{}])[0].get('offset', 0)
+                    if word_offset > tipo_offset + tipo_length and "TIPO" not in word.get('content', ''):
+                        content = word.get('content', '').strip().upper()
                         
-                        # Si la palabra está después de "COMBUSTIBLE"
-                        if word_offset > offset + length:
-                            content = word.get('content', '').strip().upper()
-                            next_words.append({
-                                'content': content,
-                                'offset': word_offset,
-                                'word': word
-                            })
-                    
-                    # Ordenar por offset para obtener las palabras en orden
-                    next_words.sort(key=lambda x: x['offset'])
-                    
-                    # Buscar combustible válido en las siguientes palabras
-                    for next_word in next_words[:10]:  # Revisar hasta 10 palabras siguientes
-                        content = next_word['content']
+                        # Verificar si contiene alguna de las palabras clave
+                        for keyword, tipo in carroceria_tipos.items():
+                            if keyword in content:
+                                self.result["tipo_carroceria"] = tipo
+                                break
                         
-                        # Verificar si es un combustible válido
-                        for combustible_valido in combustibles_validos:
-                            if combustible_valido in content or content in combustible_valido:
-                                self.result["combustible"] = content
-                                return True
-                        
-                        # También revisar patrones comunes
-                        if any(keyword in content for keyword in ['DIESEL', 'GAS', 'ACPM', 'ELECT']):
-                            self.result["combustible"] = content
-                            return True
-                        
-                        # Si encuentra dos puntos, la siguiente palabra podría ser el combustible
-                        if ':' in content:
-                            continue
-                    
-                    # Si no encuentra combustible específico, tomar la primera palabra alfanumérica
-                    for next_word in next_words[:5]:
-                        content = next_word['content']
-                        if content and len(content) > 2 and content.isalnum():
-                            # Evitar palabras que claramente no son combustibles
-                            if content not in ['TIPO', 'DE', 'LA', 'EL', 'UN', 'UNA', 'CLASE']:
-                                self.result["combustible"] = content
-                                return True
-            
+                        # Si no encuentra palabras clave específicas, usar el contenido original
+                        if "tipo_carroceria" not in self.result:
+                            self.result["tipo_carroceria"] = word.get('content', '').strip()
+                        break
         
-        # Búsqueda de respaldo en el contenido completo
-        if not self.result.get("tipo_carroceria") or not self.result.get("combustible"):
-            # Buscar en todo el contenido
-            if "DOBLE CABINA CON DIESEL" in self.content:
-                self.result["tipo_carroceria"] = "DOBLE CABINA"
-                self.result["combustible"] = "DIESEL"
-            elif "DIESEL" in self.content and "tipo_carroceria" in self.result:
-                self.result["combustible"] = "DIESEL"
-            elif "GASOLINA" in self.content and "tipo_carroceria" in self.result:
-                self.result["combustible"] = "GASOLINA"
+        # Buscar explícitamente patrones específicos en las palabras
+        if "tipo_carroceria" not in self.result:
+            for word in self.words:
+                content = word.get('content', '').upper()
+                
+                # Buscar patrones específicos
+                if "DOBLE CABINA" in content:
+                    self.result["tipo_carroceria"] = "DOBLE CABINA"
+                    break
+                elif "CERRADA" in content:
+                    self.result["tipo_carroceria"] = "CERRADA"
+                    break
+                elif "ESTACAS" in content:
+                    self.result["tipo_carroceria"] = "ESTACAS"
+                    break
+                elif "DOBLE" in content and "CABINA" in content:
+                    self.result["tipo_carroceria"] = "DOBLE CABINA"
+                    break
+        
+        # Buscar combustible específico si hay una etiqueta COMBUSTIBLE
+        combustible_word = self.find_word_by_content("COMBUSTIBLE")
+        if combustible_word:
+            # Obtener información de la palabra encontrada
+            span_info = combustible_word.get('span', {}) or combustible_word.get('spans', [{}])[0]
+            offset = span_info.get('offset', 0)
+            length = span_info.get('length', 0)
+            
+            # Lista de combustibles válidos para validar (más específica)
+            combustibles_validos = {
+                'DIESEL': 'DIESEL',
+                'DIÉSEL': 'DIESEL', 
+                'GASOLINA': 'GASOLINA',
+                'ACPM': 'ACPM',
+                'GAS NATURAL': 'GAS NATURAL',
+                'GNC': 'GAS NATURAL',
+                'GNL': 'GAS NATURAL',
+                'GLP': 'GAS NATURAL',
+                'BIODIÉSEL': 'BIODIESEL',
+                'BIODIESEL': 'BIODIESEL',
+                'ELECTRICO': 'ELECTRICO',
+                'ELÉCTRICO': 'ELECTRICO',
+                'HIBRIDO': 'HIBRIDO',
+                'HÍBRIDO': 'HIBRIDO',
+                'ETANOL': 'ETANOL'
+            }
+            
+            # Buscar las siguientes palabras después de "COMBUSTIBLE"
+            next_words = []
+            for word in self.words:
+                word_span = word.get('span', {}) or word.get('spans', [{}])[0]
+                word_offset = word_span.get('offset', 0)
+                
+                # Si la palabra está después de "COMBUSTIBLE"
+                if word_offset > offset + length:
+                    content = word.get('content', '').strip().upper()
+                    next_words.append({
+                        'content': content,
+                        'offset': word_offset,
+                        'word': word
+                    })
+            
+            # Ordenar por offset para obtener las palabras en orden
+            next_words.sort(key=lambda x: x['offset'])
+            
+            # Buscar combustible válido en las siguientes palabras
+            for next_word in next_words[:5]:  # Revisar hasta 5 palabras siguientes
+                content = next_word['content']
+                
+                # Verificar si es un combustible válido exacto o contiene uno
+                for combustible_key, combustible_value in combustibles_validos.items():
+                    # Buscar coincidencia exacta o que contenga el combustible
+                    if (content == combustible_key or 
+                        (len(combustible_key) > 3 and combustible_key in content) or
+                        (len(content) > 3 and content in combustible_key)):
+                        
+                        self.result["combustible"] = combustible_value
+                        return True
+                
+                # Evitar palabras de una sola letra o muy cortas que puedan ser ruido
+                if len(content) <= 2:
+                    continue
+                    
+                # Si encuentra "DIESEL" explícitamente en el texto
+                if "DIESEL" in content:
+                    self.result["combustible"] = "DIESEL"
+                    return True
+        
+        # Verificar si hay indicios de otros combustibles en el contenido completo y cambiar si es necesario
+        content_upper = self.content.upper()
+        
+        # Solo cambiar el combustible si hay evidencia clara de otro tipo
+        if "GASOLINA" in content_upper and "DIESEL" not in content_upper:
+            self.result["combustible"] = "GASOLINA"
+        elif "GAS NATURAL" in content_upper or "GNC" in content_upper:
+            self.result["combustible"] = "GAS NATURAL"
+        elif "ELECTRICO" in content_upper or "ELÉCTRICO" in content_upper:
+            self.result["combustible"] = "ELECTRICO"
+        elif "HIBRIDO" in content_upper or "HÍBRIDO" in content_upper:
+            self.result["combustible"] = "HIBRIDO"
         
         return "tipo_carroceria" in self.result or "combustible" in self.result
-    
+            
+
     def extract_motor(self):
         """Extraer número de motor"""
         # Buscar con diferentes variantes de la etiqueta
@@ -365,13 +422,45 @@ class TarjetaPropiedadProcessor:
                         match = re.search(pattern, line_cleaned)
                         if match and len(line) < 30:  # Línea no muy larga
                             motor_number = match.group(0).strip()
-                            
-                            # Validaciones adicionales para evitar falsos positivos
-                            if self.is_valid_motor_number(motor_number):
+
+                            if self.validate_motor_number(motor_number):
                                 self.result["numero_motor"] = motor_number
                                 return True
         
         return False
+    
+    def validate_motor_number(self, motor_number):
+        """Validar si un número de motor es válido"""
+        # Evitar strings demasiado cortos o largos
+        if not motor_number or len(motor_number) < 4 or len(motor_number) > 20:
+            return False
+        
+        # Debe contener al menos un número y una letra
+        has_letter = any(c.isalpha() for c in motor_number)
+        has_number = any(c.isdigit() for c in motor_number)
+        
+        if not (has_letter and has_number):
+            return False
+        
+        # Evitar palabras comunes que no son números de motor
+        invalid_words = [
+            'NUMERO', 'MOTOR', 'ENGINE', 'SERIAL', 'TIPO', 'MODELO',
+            'MARCA', 'YEAR', 'COMBUSTIBLE', 'DIESEL', 'GASOLINA'
+        ]
+        
+        motor_upper = motor_number.upper()
+        for invalid in invalid_words:
+            if invalid in motor_upper:
+                return False
+        
+        # Evitar secuencias de solo números o solo letras muy largas
+        if motor_number.isdigit() and len(motor_number) > 10:
+            return False
+        
+        if motor_number.isalpha() and len(motor_number) > 8:
+            return False
+        
+        return True
 
     def extract_vin_chasis(self):
         """Extraer VIN, número de serie y chasis"""
@@ -455,7 +544,9 @@ class TarjetaPropiedadProcessor:
     def extract_propietario(self):
         """Extraer nombre e identificación del propietario"""
         
-        # Buscar nombre del propietario
+        propietario_index = -1
+        
+        # Buscar nombre del propietario y guardar el índice
         for i, line in enumerate(self.lines):
             # Buscar línea que contenga "PROPIETARIO:"
             if "PROPIETARIO:" in line:
@@ -467,67 +558,114 @@ class TarjetaPropiedadProcessor:
                 
                 if nombre:
                     self.result["propietario_nombre"] = nombre
+                    propietario_index = i  # Guardar el índice donde se encontró el propietario
                     break
                 else:
                     # Si el nombre está vacío, buscar en la línea siguiente
                     if i + 1 < len(self.lines):
                         next_line = self.lines[i + 1].strip()
-                        
-                        # if next_line and not self.is_irrelevant_owner_text(next_line):
-                        #     self.result["propietario_nombre"] = next_line
-                        #     break
+                        if next_line:
+                            self.result["propietario_nombre"] = next_line
+                            propietario_index = i + 1  # Guardar el índice de la línea siguiente
+                            break
         
-        """Buscar identificación directamente por NIT o C.C y extraer números"""
+        # Si encontramos el propietario, buscar identificación desde ese punto hacia adelante
+        if propietario_index >= 0:
+            # Buscar identificación solo después del índice del propietario
+            for i in range(propietario_index + 1, len(self.lines)):
+                line = self.lines[i]
+                
+                # Buscar NIT directamente
+                nit_match = re.search(r'NIT\s+(\d+)', line, re.IGNORECASE)
+                if nit_match:
+                    nit = f"NIT {nit_match.group(1)}"
+                    self.result["propietario_identificacion"] = nit
+                    return True
+                
+                # Buscar C.C directamente
+                cc_match = re.search(r'C\.?C\.?\s+(\d+)', line, re.IGNORECASE)
+                if cc_match:
+                    cc = f"CC {cc_match.group(1)}"
+                    self.result["propietario_identificacion"] = cc
+                    return True
+                
+                # Si encontramos NIT o C.C sin números en la misma línea, buscar en líneas siguientes
+                if re.search(r'\bNIT\b', line, re.IGNORECASE):
+                    # Buscar números en las próximas 3 líneas
+                    for offset in range(1, 4):
+                        if i + offset < len(self.lines):
+                            next_line = self.lines[i + offset].strip()
+                            
+                            # Buscar números al inicio de la línea o después de espacios
+                            number_match = re.search(r'^(\d{8,12})', next_line)
+                            if number_match:
+                                nit = f"NIT {number_match.group(1)}"
+                                self.result["propietario_identificacion"] = nit
+                                return True
+                
+                # Similar para C.C
+                if re.search(r'\bC\.?C\.?\b', line, re.IGNORECASE):
+                    # Buscar números en las próximas 3 líneas
+                    for offset in range(1, 4):
+                        if i + offset < len(self.lines):
+                            next_line = self.lines[i + offset].strip()
+                            
+                            # Buscar números al inicio de la línea
+                            number_match = re.search(r'^(\d{7,11})', next_line)
+                            if number_match:
+                                cc = f"CC {number_match.group(1)}"
+                                self.result["propietario_identificacion"] = cc
+                                return True
         
-        # Recorrer todas las líneas buscando NIT o C.C directamente
-        for i, line in enumerate(self.lines):
-            
-            # Buscar NIT directamente
-            nit_match = re.search(r'NIT\s+(\d+)', line, re.IGNORECASE)
-            if nit_match:
-                nit = f"NIT {nit_match.group(1)}"
-                self.result["propietario_identificacion"] = nit
-                return True
-            
-            # Buscar C.C directamente
-            cc_match = re.search(r'C\.?C\.?\s+(\d+)', line, re.IGNORECASE)
-            if cc_match:
-                cc = f"CC {cc_match.group(1)}"
-                self.result["propietario_identificacion"] = cc
-                return True
-            
-            # Si encontramos NIT o C.C sin números en la misma línea, buscar en líneas siguientes
-            if re.search(r'\bNIT\b', line, re.IGNORECASE):
+        # Si no se encontró el propietario, hacer búsqueda general como fallback
+        else:
+            # Recorrer todas las líneas buscando NIT o C.C directamente
+            for i, line in enumerate(self.lines):
                 
-                # Buscar números en las próximas 3 líneas
-                for offset in range(1, 4):
-                    if i + offset < len(self.lines):
-                        next_line = self.lines[i + offset].strip()
-                        
-                        # Buscar números al inicio de la línea o después de espacios
-                        number_match = re.search(r'^(\d{8,12})', next_line)
-                        if number_match:
-                            nit = f"NIT {number_match.group(1)}"
-                            self.result["propietario_identificacion"] = nit
-                            return True
-            
-            # Similar para C.C
-            if re.search(r'\bC\.?C\.?\b', line, re.IGNORECASE):
+                # Buscar NIT directamente
+                nit_match = re.search(r'NIT\s+(\d+)', line, re.IGNORECASE)
+                if nit_match:
+                    nit = f"NIT {nit_match.group(1)}"
+                    self.result["propietario_identificacion"] = nit
+                    return True
                 
-                # Buscar números en las próximas 3 líneas
-                for offset in range(1, 4):
-                    if i + offset < len(self.lines):
-                        next_line = self.lines[i + offset].strip()
-                        
-                        # Buscar números al inicio de la línea
-                        number_match = re.search(r'^(\d{7,11})', next_line)
-                        if number_match:
-                            cc = f"CC {number_match.group(1)}"
-                            self.result["propietario_identificacion"] = cc
-                            return True
+                # Buscar C.C directamente
+                cc_match = re.search(r'C\.?C\.?\s+(\d+)', line, re.IGNORECASE)
+                if cc_match:
+                    cc = f"CC {cc_match.group(1)}"
+                    self.result["propietario_identificacion"] = cc
+                    return True
+                
+                # Si encontramos NIT o C.C sin números en la misma línea, buscar en líneas siguientes
+                if re.search(r'\bNIT\b', line, re.IGNORECASE):
+                    # Buscar números en las próximas 3 líneas
+                    for offset in range(1, 4):
+                        if i + offset < len(self.lines):
+                            next_line = self.lines[i + offset].strip()
+                            
+                            # Buscar números al inicio de la línea o después de espacios
+                            number_match = re.search(r'^(\d{8,12})', next_line)
+                            if number_match:
+                                nit = f"NIT {number_match.group(1)}"
+                                self.result["propietario_identificacion"] = nit
+                                return True
+                
+                # Similar para C.C
+                if re.search(r'\bC\.?C\.?\b', line, re.IGNORECASE):
+                    # Buscar números en las próximas 3 líneas
+                    for offset in range(1, 4):
+                        if i + offset < len(self.lines):
+                            next_line = self.lines[i + offset].strip()
+                            
+                            # Buscar números al inicio de la línea
+                            number_match = re.search(r'^(\d{7,11})', next_line)
+                            if number_match:
+                                cc = f"CC {number_match.group(1)}"
+                                self.result["propietario_identificacion"] = cc
+                                return True
         
         return "propietario_nombre" in self.result
-    
+
     def convert_fecha_format(self, fecha_str):
         """Convertir diferentes formatos de fecha a YYYY-MM-DD"""
         try:
