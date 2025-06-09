@@ -64,10 +64,22 @@ class TarjetaPropiedadProcessor:
         if placa_idx >= 0:
             # Buscar en esta línea y las siguientes
             for i in range(placa_idx, min(placa_idx + 3, len(self.lines))):
-                match = re.search(r'[A-Z]{3}\d{3}', self.lines[i])
+                # Buscar patrón de placa que incluya la palabra PLACA y el valor
+                match = re.search(r'PLACA\s*[:\-]?\s*([A-Z]{3}\d{3,4})', self.lines[i], re.IGNORECASE)
+                if match:
+                    self.result["placa"] = match.group(1)
+                    return True
+                # Si no está junto a la palabra, buscar solo el patrón clásico
+                match = re.search(r'[A-Z]{3}\d{3,4}', self.lines[i])
                 if match:
                     self.result["placa"] = match.group(0)
                     return True
+        else:
+            # Si no se encuentra la palabra PLACA, buscar el patrón clásico en todo el contenido
+            match = re.search(r'[A-Z]{3}\d{3,4}', self.content)
+            if match:
+                self.result["placa"] = match.group(0)
+                return True
         return False
     
     def extract_marca(self):
@@ -148,25 +160,29 @@ class TarjetaPropiedadProcessor:
     
     def extract_color(self):
         """Extraer el color del vehículo"""
-        color_idx = self.find_line_index("COLOR")
+        
+        # Buscar una línea que contenga "COLOR" como palabra completa
+        color_idx = -1
+        for i, line in enumerate(self.lines):
+            if re.search(r'\bCOLOR\b', line):
+                color_idx = i
+                break
 
         if color_idx >= 0:
-            line = self.lines[color_idx]
-            parts = line.split("COLOR")
-            
+            line = self.lines[color_idx].strip()
+            parts = re.split(r'\bCOLOR\b', line)
+
             if len(parts) > 1 and parts[1].strip():
-                # El color está en la misma línea después de "COLOR"
                 self.result["color"] = parts[1].strip()
                 return True
             elif color_idx + 1 < len(self.lines):
-                # Si no hay contenido después de "COLOR" o está vacío, buscar en la siguiente línea
                 next_line = self.lines[color_idx + 1].strip()
                 if next_line:
                     self.result["color"] = next_line
                     return True
-        
+
         return False
-        
+
     def extract_clase_vehiculo(self):
         """Extraer la clase del vehículo"""
         clase_idx = self.find_line_index("CLASE DE VEHÍCULO")
@@ -196,7 +212,8 @@ class TarjetaPropiedadProcessor:
         carroceria_tipos = {
             "CERRADA": "CERRADA",
             "DOBLE": "DOBLE CABINA",
-            "ESTACAS": "ESTACAS"
+            "ESTACAS": "ESTACAS",
+            "WAGON": "WAGON",
         }
         
         # Buscar coincidencias en el contenido completo
@@ -544,33 +561,69 @@ class TarjetaPropiedadProcessor:
     def extract_propietario(self):
         """Extraer nombre e identificación del propietario"""
         
+        # Lista simple de palabras que NO son nombres
+        palabras_prohibidas = [
+            'IDENTIFICACIÓN', 'IDENTIFICACION', 'PROPIETARIO', 'CEDULA', 'CÉDULA', 
+            'CC', 'TI', 'DOCUMENTO', 'NUMERO', 'NÚMERO', 'APELLIDO(S)', 'NOMBRE(S)',
+            'APELLIDO(S) Y NOMBRE(S)', 'PLACA', 'MARCA', 'MODELO', 'COLOR'
+        ]
+        
+        def es_nombre_valido(texto):
+            """Verifica si el texto es un nombre válido"""
+            if not texto or len(texto.strip()) < 3:
+                return False
+            
+            texto_upper = texto.strip().upper()
+            
+            # Verificar si es una palabra prohibida
+            if texto_upper in palabras_prohibidas:
+                return False
+            
+            # Verificar si solo son números
+            if texto_upper.replace(' ', '').isdigit():
+                return False
+
+            return True
+        
         propietario_index = -1
         
         # Buscar nombre del propietario y guardar el índice
         for i, line in enumerate(self.lines):
+            
             # Buscar línea que contenga "PROPIETARIO:"
             if "PROPIETARIO:" in line:
+
                 # Extraer todo después de "PROPIETARIO:"
                 texto = line.split("PROPIETARIO:")[1].strip()
                 
                 # Quitar el texto de formato "APELLIDO(S) Y NOMBRE(S)"
                 nombre = texto.replace("APELLIDO(S) Y NOMBRE(S)", "").strip()
                 
-                if nombre:
+                if nombre and es_nombre_valido(nombre):
                     self.result["propietario_nombre"] = nombre
-                    propietario_index = i  # Guardar el índice donde se encontró el propietario
+                    propietario_index = i
                     break
                 else:
-                    # Si el nombre está vacío, buscar en la línea siguiente
-                    if i + 1 < len(self.lines):
-                        next_line = self.lines[i + 1].strip()
-                        if next_line:
-                            self.result["propietario_nombre"] = next_line
-                            propietario_index = i + 1  # Guardar el índice de la línea siguiente
-                            break
+                    # ✅ CORRECCIÓN: Buscar en las próximas 3 líneas, no solo la siguiente
+                    
+                    for offset in range(1, 4):  # Buscar en las próximas 3 líneas
+                        next_index = i + offset
+                        if next_index < len(self.lines):
+                            next_line = self.lines[next_index].strip()
+                            
+                            if next_line and es_nombre_valido(next_line):
+                                self.result["propietario_nombre"] = next_line
+                                propietario_index = next_index
+                                break  # Salir del bucle offset
+                    
+                    # Si encontramos un nombre válido, salir del bucle principal
+                    if propietario_index >= 0:
+                        break
         
+        # ✅ RESTO DEL CÓDIGO PARA IDENTIFICACIÓN (sin cambios)
         # Si encontramos el propietario, buscar identificación desde ese punto hacia adelante
         if propietario_index >= 0:
+            
             # Buscar identificación solo después del índice del propietario
             for i in range(propietario_index + 1, len(self.lines)):
                 line = self.lines[i]
@@ -617,55 +670,10 @@ class TarjetaPropiedadProcessor:
                                 self.result["propietario_identificacion"] = cc
                                 return True
         
-        # Si no se encontró el propietario, hacer búsqueda general como fallback
-        else:
-            # Recorrer todas las líneas buscando NIT o C.C directamente
-            for i, line in enumerate(self.lines):
-                
-                # Buscar NIT directamente
-                nit_match = re.search(r'NIT\s+(\d+)', line, re.IGNORECASE)
-                if nit_match:
-                    nit = f"NIT {nit_match.group(1)}"
-                    self.result["propietario_identificacion"] = nit
-                    return True
-                
-                # Buscar C.C directamente
-                cc_match = re.search(r'C\.?C\.?\s+(\d+)', line, re.IGNORECASE)
-                if cc_match:
-                    cc = f"CC {cc_match.group(1)}"
-                    self.result["propietario_identificacion"] = cc
-                    return True
-                
-                # Si encontramos NIT o C.C sin números en la misma línea, buscar en líneas siguientes
-                if re.search(r'\bNIT\b', line, re.IGNORECASE):
-                    # Buscar números en las próximas 3 líneas
-                    for offset in range(1, 4):
-                        if i + offset < len(self.lines):
-                            next_line = self.lines[i + offset].strip()
-                            
-                            # Buscar números al inicio de la línea o después de espacios
-                            number_match = re.search(r'^(\d{8,12})', next_line)
-                            if number_match:
-                                nit = f"NIT {number_match.group(1)}"
-                                self.result["propietario_identificacion"] = nit
-                                return True
-                
-                # Similar para C.C
-                if re.search(r'\bC\.?C\.?\b', line, re.IGNORECASE):
-                    # Buscar números en las próximas 3 líneas
-                    for offset in range(1, 4):
-                        if i + offset < len(self.lines):
-                            next_line = self.lines[i + offset].strip()
-                            
-                            # Buscar números al inicio de la línea
-                            number_match = re.search(r'^(\d{7,11})', next_line)
-                            if number_match:
-                                cc = f"CC {number_match.group(1)}"
-                                self.result["propietario_identificacion"] = cc
-                                return True
-        
-        return "propietario_nombre" in self.result
-
+        resultado = "propietario_nombre" in self.result
+   
+        return resultado
+    
     def convert_fecha_format(self, fecha_str):
         """Convertir diferentes formatos de fecha a YYYY-MM-DD"""
         try:

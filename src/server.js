@@ -11,6 +11,9 @@ const { setupBullQueues, setupBullBoard } = require('./config/bull');
 const documentController = require('./controllers/documentoController.js');
 const { scheduleRecurringCheck, runCheckNow } = require('./queues/serviceStatusQueue');
 const { inicializarProcesadores } = require('./queues/vehiculo.js');
+const logger = require('./utils/logger');
+const { redisClient } = require('./config/redisClient.js');
+const eventEmitter = require('./utils/eventEmitter.js');
 
 // Inicializar app
 const app = express();
@@ -35,7 +38,7 @@ const allowedOrigins = [
   'http://nomina.midominio.local:3000',
   'https://auth.transmeralda.com',
   'https://flota.transmeralda.com',
-  'http://nomina.midominio.local:3000',
+  'http://flota.midominio.local:3000',
   'http://auth.midominio.local:3001',
   "http://servicios.midominio.local:3000"
 ];
@@ -82,7 +85,7 @@ const userSockets = new Map();
 io.on('connection', (socket) => {
   console.log('Nuevo cliente conectado:', socket.id);
   
-  // Obtener userId de la consulta
+  // Obtener userId de la consultaf
   const userId = socket.handshake.query.userId;
   if (userId) {
     // Guardar referencia del socket del usuario
@@ -93,10 +96,275 @@ io.on('connection', (socket) => {
     
     console.log(`Usuario ${userId} conectado con socket ${socket.id}`);
   }
+
+  // ====== MANEJADORES DE CONFIRMACIÓN DE VEHÍCULOS ======
+  
+  // Escuchar respuestas de confirmación
+  socket.on('vehiculo:confirmacion:respuesta', async (data) => {
+    try {
+      const { sessionId, accion, datosModificados } = data;
+      
+      logger.info(`Recibida respuesta de confirmación para sesión ${sessionId}:`, data);
+      
+      // Validar datos básicos
+      if (!sessionId || !accion) {
+        logger.error('SessionId y acción son requeridos');
+        socket.emit('vehiculo:confirmacion:error', { 
+          mensaje: 'SessionId y acción son requeridos' 
+        });
+        return;
+      }
+      
+      // Verificar que efectivamente estamos esperando confirmación
+      const esperandoConfirmacion = await redisClient.hget(`vehiculo:${sessionId}`, 'esperando_confirmacion');
+      if (esperandoConfirmacion !== 'true') {
+        logger.warn(`No se esperaba confirmación para la sesión ${sessionId}`);
+        socket.emit('vehiculo:confirmacion:error', { 
+          sessionId,
+          mensaje: 'No se esperaba confirmación para esta sesión' 
+        });
+        return;
+      }
+      
+      // Validar acción
+      const accionesValidas = ['confirmar', 'editar', 'cancelar'];
+      if (!accionesValidas.includes(accion)) {
+        logger.error(`Acción inválida recibida: ${accion}`);
+        socket.emit('vehiculo:confirmacion:error', { 
+          sessionId,
+          mensaje: 'Acción inválida' 
+        });
+        return;
+      }
+
+      // Validar datos según la acción
+      if (accion === 'editar') {
+        if (!datosModificados || typeof datosModificados !== 'object') {
+          logger.error('Acción editar requiere datosModificados válidos');
+          socket.emit('vehiculo:confirmacion:error', { 
+            sessionId,
+            mensaje: 'Datos modificados requeridos para editar' 
+          });
+          return;
+        }
+        
+        // Validar campos obligatorios
+        if (datosModificados.propietario_nombre !== undefined && 
+            (!datosModificados.propietario_nombre || datosModificados.propietario_nombre.trim() === '')) {
+          socket.emit('vehiculo:confirmacion:error', { 
+            sessionId,
+            mensaje: 'El nombre del propietario no puede estar vacío' 
+          });
+          return;
+        }
+      }
+      
+      // Almacenar la respuesta en Redis
+      await redisClient.hmset(`vehiculo:${sessionId}:confirmacion:respuesta`, 
+        'accion', accion,
+        'datosModificados', datosModificados ? JSON.stringify(datosModificados) : '',
+        'timestamp', Date.now().toString(),
+        'socketId', socket.id,
+        'userId', userId || '',
+        'procesado', 'false'
+      );
+      
+      // Marcar que ya no estamos esperando confirmación
+      await redisClient.hset(`vehiculo:${sessionId}`, 'esperando_confirmacion', 'false');
+    
+      const eventName = `vehiculo:confirmacion:respuesta:${sessionId}`;
+      
+      // 🔥 DEBUG: Verificar estado antes de emit
+      logger.info(`📡 A punto de emitir evento: ${eventName}`);
+      eventEmitter.debug(eventName);
+      
+      // ✅ EMITIR EVENTO INTERNO
+      eventEmitter.emit(eventName, {
+        sessionId,
+        socketId: socket.id,
+        accion,
+        datosModificados,
+        timestamp: Date.now(),
+        userId
+      });
+      
+      logger.info(`🔥 Evento emitido exitosamente: ${eventName}`);
+      
+      
+      // Confirmar recepción al cliente
+      socket.emit('vehiculo:confirmacion:recibida', { 
+        sessionId,
+        accion,
+        mensaje: `Confirmación ${accion} recibida correctamente` 
+      });
+      
+      logger.info(`Respuesta de confirmación procesada para sesión ${sessionId}: ${accion}`);
+      
+    } catch (error) {
+      logger.error(`Error procesando respuesta de confirmación:`, error);
+      socket.emit('vehiculo:confirmacion:error', { 
+        mensaje: 'Error procesando confirmación',
+        error: error.message 
+      });
+    }
+  });
+
+  // Solicitar estado de confirmación
+  socket.on('vehiculo:confirmacion:estado', async (data) => {
+    try {
+      const { sessionId } = data;
+      
+      if (!sessionId) {
+        socket.emit('vehiculo:confirmacion:estado:respuesta', {
+          error: 'SessionId requerido'
+        });
+        return;
+      }
+      
+      const estado = await verificarEstadoConfirmacion(sessionId);
+      const progreso = await redisClient.hget(`vehiculo:${sessionId}`, 'progreso');
+      const mensaje = await redisClient.hget(`vehiculo:${sessionId}`, 'mensaje');
+      
+      socket.emit('vehiculo:confirmacion:estado:respuesta', {
+        sessionId,
+        estado,
+        progreso: progreso ? parseInt(progreso) : 0,
+        mensaje: mensaje || 'Sin información'
+      });
+      
+    } catch (error) {
+      logger.error('Error obteniendo estado de confirmación:', error);
+      socket.emit('vehiculo:confirmacion:estado:respuesta', {
+        error: 'Error obteniendo estado'
+      });
+    }
+  });
+
+  // Cancelar proceso de confirmación
+  socket.on('vehiculo:confirmacion:cancelar', async (data) => {
+    try {
+      const { sessionId } = data;
+      
+      if (!sessionId) {
+        socket.emit('vehiculo:confirmacion:error', {
+          mensaje: 'SessionId requerido para cancelar'
+        });
+        return;
+      }
+      
+      const esperandoConfirmacion = await redisClient.hget(`vehiculo:${sessionId}`, 'esperando_confirmacion');
+      
+      if (esperandoConfirmacion === 'true') {
+        // Emitir evento de cancelación
+        socket.emit(`vehiculo:confirmacion:respuesta:${sessionId}`, {
+          sessionId,
+          socketId: socket.id,
+          accion: 'cancelar',
+          timestamp: Date.now(),
+          userId
+        });
+        
+        await redisClient.hset(`vehiculo:${sessionId}`, 'esperando_confirmacion', 'false');
+        
+        socket.emit('vehiculo:confirmacion:cancelada', {
+          sessionId,
+          mensaje: 'Proceso cancelado exitosamente'
+        });
+        
+        logger.info(`Proceso de confirmación cancelado por usuario para sesión ${sessionId}`);
+      } else {
+        socket.emit('vehiculo:confirmacion:error', {
+          sessionId,
+          mensaje: 'No hay proceso de confirmación activo'
+        });
+      }
+      
+    } catch (error) {
+      logger.error('Error cancelando confirmación:', error);
+      socket.emit('vehiculo:confirmacion:error', {
+        mensaje: 'Error cancelando proceso'
+      });
+    }
+  });
+
+  // ====== OTROS EVENTOS DE VEHÍCULOS ======
+  
+  // Obtener progreso de procesamiento
+  socket.on('vehiculo:progreso:consultar', async (data) => {
+    try {
+      const { sessionId } = data;
+      
+      if (!sessionId) {
+        socket.emit('vehiculo:progreso:respuesta', {
+          error: 'SessionId requerido'
+        });
+        return;
+      }
+      
+      const datosProgreso = await redisClient.hmget(`vehiculo:${sessionId}`,
+        'progreso', 'mensaje', 'estado', 'documento_actual', 'procesados', 'totalDocumentos'
+      );
+      
+      socket.emit('vehiculo:progreso:respuesta', {
+        sessionId,
+        progreso: datosProgreso[0] ? parseInt(datosProgreso[0]) : 0,
+        mensaje: datosProgreso[1] || 'Sin información',
+        estado: datosProgreso[2] || 'unknown',
+        documentoActual: datosProgreso[3] || '',
+        procesados: datosProgreso[4] ? parseInt(datosProgreso[4]) : 0,
+        totalDocumentos: datosProgreso[5] ? parseInt(datosProgreso[5]) : 0
+      });
+      
+    } catch (error) {
+      logger.error('Error consultando progreso:', error);
+      socket.emit('vehiculo:progreso:respuesta', {
+        error: 'Error consultando progreso'
+      });
+    }
+  });
   
   // Manejar desconexión
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     console.log('Cliente desconectado:', socket.id);
+    
+    try {
+      // Verificar si hay procesos de confirmación activos para este socket
+      const keys = await redisClient.keys('vehiculo:*');
+      const sessionKeys = keys.filter(key => key.match(/^vehiculo:[^:]+$/));
+      
+      for (const key of sessionKeys) {
+        const sessionId = key.split(':')[1];
+        const confirmacionData = await redisClient.hmget(`vehiculo:${sessionId}`, 
+          'esperando_confirmacion', 'socketId'
+        );
+        
+        if (confirmacionData[0] === 'true') {
+          // Verificar si este socket estaba asociado con la sesión
+          const socketIdEnSesion = confirmacionData[1];
+          
+          if (socketIdEnSesion === socket.id) {
+            logger.warn(`Cliente desconectado durante confirmación de sesión ${sessionId}`);
+            
+            // Marcar timeout por desconexión
+            await redisClient.hmset(`vehiculo:${sessionId}`, 
+              'esperando_confirmacion', 'false',
+              'desconexion_confirmacion', 'true'
+            );
+            
+            // Emitir evento de timeout por desconexión
+            socket.emit(`vehiculo:confirmacion:respuesta:${sessionId}`, {
+              sessionId,
+              socketId: socket.id,
+              accion: 'timeout_desconexion',
+              mensaje: 'Cliente desconectado durante confirmación',
+              timestamp: Date.now()
+            });
+          }
+        }
+      }
+    } catch (error) {
+      logger.error('Error manejando desconexión durante confirmación:', error);
+    }
     
     // Eliminar socket del registro de usuarios
     if (userId && userSockets.has(userId)) {
@@ -109,6 +377,49 @@ io.on('connection', (socket) => {
     }
   });
 });
+
+// Función para verificar estado de confirmación
+async function verificarEstadoConfirmacion(sessionId) {
+  try {
+    const estado = await redisClient.hmget(`vehiculo:${sessionId}`, 
+      'esperando_confirmacion', 
+      'timeout_confirmacion',
+      'desconexion_confirmacion',
+      'estado'
+    );
+    
+    return {
+      esperandoConfirmacion: estado[0] === 'true',
+      timeoutConfirmacion: estado[1] === 'true',
+      desconexionConfirmacion: estado[2] === 'true',
+      estadoProceso: estado[3] || 'unknown'
+    };
+  } catch (error) {
+    logger.error(`Error verificando estado de confirmación para sesión ${sessionId}:`, error);
+    return { 
+      esperandoConfirmacion: false, 
+      timeoutConfirmacion: false,
+      desconexionConfirmacion: false,
+      estadoProceso: 'error'
+    };
+  }
+}
+
+// Función para limpiar datos de confirmación
+async function limpiarDatosConfirmacion(sessionId) {
+  try {
+    await redisClient.del(`vehiculo:${sessionId}:confirmacion:respuesta`);
+    await redisClient.del(`vehiculo:${sessionId}:confirmacion`);
+    await redisClient.hdel(`vehiculo:${sessionId}`, 
+      'esperando_confirmacion', 
+      'timeout_confirmacion',
+      'desconexion_confirmacion'
+    );
+    logger.info(`Datos de confirmación limpiados para sesión ${sessionId}`);
+  } catch (error) {
+    logger.error(`Error limpiando datos de confirmación para sesión ${sessionId}:`, error);
+  }
+}
 
 // Función para enviar actualizaciones a un usuario específico
 const notifyUser = (userId, event, data) => {
