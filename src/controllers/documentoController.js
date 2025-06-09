@@ -93,10 +93,11 @@ async function saveTemporaryDocument(file, sessionId, categoria) {
  * Esta función puede usarse tanto para creación como para actualización de documentos
  * @param {string} sessionId - ID de la sesión
  * @param {string} vehiculoId - ID del vehículo
+ * @param {Date} fechaVigencia - Indica si es una actualización (true) o creación (false)
  * @param {boolean} isUpdate - Indica si es una actualización (true) o creación (false)
  * @returns {Promise<Array>} - Array de documentos creados
  */
-async function uploadProcessedDocuments(sessionId, vehiculoId, isUpdate = false) {
+async function uploadProcessedDocuments(sessionId, vehiculoId, fechasVigencia, isUpdate = false, categorias = []) {
     const documentosCreados = [];
     const tempDir = path.join(__dirname, '..', '..', 'temp', sessionId);
 
@@ -108,13 +109,20 @@ async function uploadProcessedDocuments(sessionId, vehiculoId, isUpdate = false)
             return documentosCreados;
         }
 
-        // Si es una actualización, eliminar documentos antiguos de S3 y base de datos
-        if (isUpdate) {
+        // Si es una actualización, eliminar SOLO los documentos de las categorías que se están actualizando
+        if (isUpdate && categorias && categorias.length > 0) {
             try {
-                logger.info(`Eliminando documentos antiguos para vehículo ${vehiculoId}`);
+                logger.info(`Eliminando documentos antiguos para vehículo ${vehiculoId} en categorías: ${categorias.join(', ')}`);
+                
+                // Buscar solo documentos de las categorías específicas
                 const documentosAntiguos = await Documento.findAll({
-                    where: { vehiculo_id: vehiculoId }
+                    where: { 
+                        vehiculo_id: vehiculoId,
+                        categoria: categorias // Solo documentos de las categorías que se van a actualizar
+                    }
                 });
+
+                logger.info(`Encontrados ${documentosAntiguos.length} documentos antiguos para eliminar`);
 
                 // Eliminar archivos de S3
                 for (const doc of documentosAntiguos) {
@@ -127,7 +135,7 @@ async function uploadProcessedDocuments(sessionId, vehiculoId, isUpdate = false)
                             };
 
                             await s3Client.send(new DeleteObjectCommand(deleteCommand));
-                            logger.info(`Documento eliminado de S3: ${doc.s3_key}`);
+                            logger.info(`Documento eliminado de S3: ${doc.s3_key} (categoría: ${doc.categoria})`);
                         }
                     } catch (s3Error) {
                         logger.warn(`Error al eliminar documento de S3 (${doc.s3_key}): ${s3Error.message}`);
@@ -135,12 +143,15 @@ async function uploadProcessedDocuments(sessionId, vehiculoId, isUpdate = false)
                     }
                 }
 
-                // Eliminar registros de la base de datos
+                // Eliminar registros de la base de datos solo de las categorías específicas
                 if (documentosAntiguos.length > 0) {
                     await Documento.destroy({
-                        where: { vehiculo_id: vehiculoId }
+                        where: { 
+                            vehiculo_id: vehiculoId,
+                            categoria: categorias
+                        }
                     });
-                    logger.info(`Se eliminaron ${documentosAntiguos.length} documentos antiguos de la base de datos para vehículo ${vehiculoId}`);
+                    logger.info(`Se eliminaron ${documentosAntiguos.length} documentos antiguos de categorías ${categorias.join(', ')} para vehículo ${vehiculoId}`);
                 }
             } catch (deleteError) {
                 logger.error(`Error al eliminar documentos antiguos: ${deleteError.message}`);
@@ -236,18 +247,77 @@ async function uploadProcessedDocuments(sessionId, vehiculoId, isUpdate = false)
                         throw s3Error;
                     }
 
+                    console.log('Fechas vigencia:', fechasVigencia);
+                    console.log('Categoria actual:', categoria);
+
+                    // ✅ CORREGIDO: Buscar fecha de vigencia por categoría o usar null
+                    let fechaVigencia = null;
+                    if (fechasVigencia) {
+                        // Buscar coincidencia exacta primero
+                        if (fechasVigencia[categoria]) {
+                            fechaVigencia = fechasVigencia[categoria];
+                        } else {
+                            // Buscar coincidencias parciales o mapear categorías
+                            const categoriaMapping = {
+                                'TARJETA_DE_PROPIEDAD': ['TARJETA_PROPIEDAD', 'PROPIEDAD'],
+                                'SOAT': ['SOAT'],
+                                'REVISION_TECNICO_MECANICA': ['RTM', 'TECNICOMECANICA', 'REVISION_TECNICA'],
+                                'LICENCIA_TRANSITO': ['LICENCIA', 'TRANSITO']
+                            };
+
+                            // Buscar en el mapping
+                            for (const [key, aliases] of Object.entries(categoriaMapping)) {
+                                if (aliases.includes(categoria) && fechasVigencia[key]) {
+                                    fechaVigencia = fechasVigencia[key];
+                                    break;
+                                }
+                            }
+
+                            // Si no encuentra por mapping, buscar por clave que contenga la categoría
+                            if (!fechaVigencia) {
+                                const fechaKey = Object.keys(fechasVigencia).find(key => 
+                                    key.toLowerCase().includes(categoria.toLowerCase()) || 
+                                    categoria.toLowerCase().includes(key.toLowerCase())
+                                );
+                                if (fechaKey) {
+                                    fechaVigencia = fechasVigencia[fechaKey];
+                                }
+                            }
+                        }
+                    }
+
+                    console.log('Fecha vigencia encontrada:', fechaVigencia);
+
                     // Crear registro en la base de datos
                     const documento = await Documento.create({
                         id: documentId,
                         vehiculo_id: vehiculoId,
-                        document_type: categoria,       // Nombre correcto según el modelo
-                        s3_key: s3Key,                  // Nombre correcto según el modelo
-                        filename: fileInfo.originalname || `${categoria}.pdf`,
+
+                        // ✅ Campos obligatorios del modelo
+                        categoria: categoria,
+                        nombre_original: fileInfo.originalname || `${categoria}.pdf`,
+                        nombre_archivo: `${documentId}${path.extname(fileInfo.originalname || '.pdf')}`,
+                        ruta_archivo: s3Key, // En este caso, la "ruta" es la key de S3
+                        tamaño: fileInfo.size || 0,
+                        estado: 'vigente', // Asignar estado por defecto, puede ser actualizado después
                         mimetype: fileInfo.mimetype || 'application/octet-stream',
-                        upload_date: new Date(),        // Nombre correcto según el modelo
+
+                        // ✅ Campos opcionales
+                        s3_key: s3Key,
+                        filename: fileInfo.originalname || `${categoria}.pdf`,
+                        fecha_vigencia: fechaVigencia ? new Date(fechaVigencia) : null,
+                        upload_date: new Date(),
+
+                        // ✅ Metadata con información adicional
                         metadata: {
                             size: fileInfo.size || 0,
-                            bucket: BUCKET_NAME
+                            bucket: BUCKET_NAME,
+                            originalPath: fileInfo.path,
+                            uploadSession: sessionId,
+                            fileExtension: path.extname(fileInfo.originalname || '.pdf'),
+                            processedAt: new Date(),
+                            s3Location: `s3://${BUCKET_NAME}/${s3Key}`,
+                            fechaVigenciaOriginal: fechaVigencia // Guardar la fecha original para debugging
                         }
                     });
 
@@ -272,7 +342,7 @@ async function uploadProcessedDocuments(sessionId, vehiculoId, isUpdate = false)
         logger.error(`Error al subir documentos procesados: ${error.message}`);
         // Intentar eliminar directorio temporal incluso si hay error
         try {
-            await fs.rm(tempDir, { recursive: true, force: true });
+            // await fs.rm(tempDir, { recursive: true, force: true });
         } catch (cleanupError) {
             logger.error(`Error al limpiar directorio temporal: ${cleanupError.message}`);
         }
@@ -342,10 +412,43 @@ async function getDocumentoById(documentoId) {
     }
 }
 
+/**
+ * Descarga directa del archivo desde S3 y lo sirve al cliente
+ * @param {string} s3Key - Clave del archivo en S3
+ * @param {string} filename - Nombre del archivo
+ * @param {Object} res - Objeto response de Express
+ */
+async function downloadFileFromS3(s3Key, filename, res) {
+    try {
+        const command = new GetObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: s3Key,
+        });
+
+        const response = await s3Client.send(command);
+        
+        // Configurar headers para descarga
+        res.setHeader('Content-Type', response.ContentType || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Length', response.ContentLength);
+        res.setHeader('Cache-Control', 'no-cache');
+
+        // Stream del archivo
+        response.Body.pipe(res);
+        
+        logger.info(`Archivo ${filename} descargado exitosamente desde ${s3Key}`);
+        
+    } catch (error) {
+        logger.error(`Error al descargar archivo ${s3Key}: ${error.message}`);
+        throw error;
+    }
+}
+
 module.exports = {
     saveTemporaryDocument,
     uploadProcessedDocuments,
     getDocumentosByVehiculoId,
     generateSignedUrl,
+    downloadFileFromS3,
     getDocumentoById
 };

@@ -1,4 +1,3 @@
-// src/models/Documento.js
 const { Model, DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
@@ -18,23 +17,47 @@ module.exports = (sequelize) => {
         key: 'id'
       }
     },
-    document_type: {
+    categoria: {
       type: DataTypes.STRING,
       allowNull: false,
-      // Por ejemplo: 'tarjeta_circulacion', 'seguro', 'verificacion', etc.
+      // TARJETA_DE_PROPIEDAD, SEGURO, etc.
+    },
+    nombre_original: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    nombre_archivo: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    ruta_archivo: {
+      type: DataTypes.STRING,
+      allowNull: false
     },
     s3_key: {
       type: DataTypes.STRING,
-      allowNull: false,
-      // Ruta del objeto en S3
+      allowNull: true,
     },
     filename: {
       type: DataTypes.STRING,
-      allowNull: false
+      allowNull: true,
     },
     mimetype: {
       type: DataTypes.STRING,
       allowNull: false
+    },
+    tamaño: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
+    fecha_vigencia: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    estado: {
+      type: DataTypes.ENUM('vigente', 'proximo_a_vencer', 'vencido'),
+      allowNull: false,
+      defaultValue: 'vigente'
     },
     upload_date: {
       type: DataTypes.DATE,
@@ -44,7 +67,6 @@ module.exports = (sequelize) => {
     metadata: {
       type: DataTypes.JSONB,
       defaultValue: {}
-      // Puedes almacenar información adicional como tamaño, usuario que subió, bucket, etc.
     }
   }, {
     sequelize,

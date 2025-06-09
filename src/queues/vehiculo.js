@@ -4,7 +4,13 @@ const logger = require('../utils/logger');
 const { Vehiculo, Documento } = require('../models');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
+const { uploadProcessedDocuments, saveTemporaryDocument } = require('../controllers/documentoController');
 const fs = require('fs').promises;
+const { redisClient } = require('../config/redisClient');
+const { spawn } = require('child_process');
+const axios = require('axios');
+const FormData = require('form-data');
+const eventEmitter = require('../utils/eventEmitter');
 
 /**
  * Notifica a todos los clientes conectados
@@ -60,43 +66,186 @@ const vehiculoActualizacionQueue = new Queue('vehiculo-actualizacion', {
   },
 });
 
+async function waitForOcrResult(operationLocation, subscriptionKey) {
+  let status = 'running';
+  let result;
+  let retries = 0;
+  const maxRetries = 60; // Máximo de intentos (60 segundos)
+
+  while ((status === 'running' || status === 'notStarted') && retries < maxRetries) {
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await axios.get(operationLocation, {
+        headers: {
+          'Ocp-Apim-Subscription-Key': subscriptionKey
+        }
+      });
+
+      status = response.data.status;
+      if (status === 'succeeded') {
+        result = response.data;
+        break;
+      }
+      retries++;
+    } catch (error) {
+      logger.error(`Error al consultar estado OCR: ${error.message}`);
+      retries++;
+      if (retries >= maxRetries) {
+        throw new Error(`Tiempo de espera agotado para OCR después de ${maxRetries} intentos`);
+      }
+    }
+  }
+
+  if (!result) {
+    logger.error(`OCR no completado exitosamente. Estado final: ${status}`);
+    throw new Error(`OCR no completado exitosamente. Estado final: ${status}`);
+  }
+
+  return result;
+}
+
+/**
+ * Ejecuta un script Python para procesar datos OCR
+
+ * @param {string|null} placa - Placa del vehículo (opcional)
+ * @returns {Promise<object>} - Resultado del procesamiento
+ */
+async function runOcrScript(filePath, placa = null) {
+  return new Promise((resolve, reject) => {
+    // Registrar inicio de ejecución
+    logger.info(`Ejecutando script ${"ocrTARJETA_DE_PROPIEDAD.py"} para categoría ${"TARJETA_DE_PROPIEDAD"}${placa ? ` con placa ${placa}` : ''}`);
+
+    // Configurar argumentos del script
+    // Pasamos el path del archivo como argumento explícito
+    const args = [`./src/scripts/ocrTARJETA_DE_PROPIEDAD.py`, `--file=${filePath}`];
+
+    // Si hay placa, la añadimos como argumento adicional
+    if (placa) {
+      args.push(`--placa=${placa}`);
+    }
+
+    logger.debug(`Ejecutando script con argumentos: ${args.join(' ')}`);
+
+    const pythonProcess = spawn('python', args);
+
+    let stdoutData = '';
+    let stderrData = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+      stdoutData += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+      stderrData += data.toString();
+      logger.error(`Error en script Python (${"TARJETA_DE_PROPIEDAD"}): ${data.toString()}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+      if (code === 0) {
+        try {
+          const parsedResult = JSON.parse(stdoutData);
+          console.log(parsedResult, "Resultado del script OCR");
+          logger.info(`Script ${"ocrTARJETA_DE_PROPIEDAD.py"} ejecutado exitosamente`);
+          resolve(parsedResult);
+        } catch (error) {
+          logger.error(`Error al parsear resultado del script ${"ocrTARJETA_DE_PROPIEDAD.py"}: ${error.message}`);
+          reject(new Error(`Error al parsear resultado de script (${"TARJETA_DE_PROPIEDAD"}): ${error.message}. Datos: ${stdoutData.substring(0, 200)}...`));
+        }
+      } else {
+        logger.error(`Script ${"ocrTARJETA_DE_PROPIEDAD.py"} falló con código ${code}. Error: ${stderrData}`);
+        reject(new Error(`Script falló con código ${code} (${"TARJETA_DE_PROPIEDAD"}). Error: ${stderrData}`));
+      }
+    });
+
+    // Manejar errores del proceso
+    pythonProcess.on('error', (error) => {
+      logger.error(`Error al iniciar script ${"ocrTARJETA_DE_PROPIEDAD.py"}: ${error.message}`);
+      reject(new Error(`Error al iniciar script: ${error.message}`));
+    });
+  });
+}
+
+/**
+ * Procesa datos OCR con archivo temporal
+ * @param {object} ocrData - Datos del OCR
+ * @param {string|null} placa - Placa del vehículo (opcional)
+ * @returns {Promise<object>} - Resultado del procesamiento
+ */
+async function procesarConArchivoTemporal(ocrData, placa = null) {
+  const uniqueId = uuidv4().substring(0, 8); // Identificador único para evitar colisiones
+  const dirPath = path.join(__dirname, '..', '..', 'temp');
+  const filePath = path.join(dirPath, `tempOcrData_${"TARJETA_DE_PROPIEDAD"}_${uniqueId}.json`);
+
+  try {
+    // Crear directorio si no existe
+    await fs.mkdir(dirPath, { recursive: true });
+
+    // Guardar datos OCR en formato JSON
+    await fs.writeFile(filePath, JSON.stringify(ocrData, null, 2), 'utf8');
+    logger.debug(`Archivo temporal creado: ${filePath}`);
+
+    // Ejecutar script Python
+    const resultado = await runOcrScript(filePath, placa);
+
+    // Eliminar archivo temporal después de usarlo
+    try {
+      await fs.unlink(filePath);
+      logger.debug(`Archivo temporal eliminado: ${filePath}`);
+    } catch (unlinkError) {
+      logger.warn(`No se pudo eliminar el archivo temporal ${filePath}: ${unlinkError.message}`);
+    }
+
+    return resultado;
+
+  } catch (error) {
+    // Intentar eliminar el archivo temporal incluso si ocurrió un error
+    try {
+      const fileExists = await fs.access(filePath).then(() => true).catch(() => false);
+      if (fileExists) {
+        await fs.unlink(filePath);
+        logger.debug(`Archivo temporal eliminado después de error: ${filePath}`);
+      }
+    } catch (unlinkError) {
+      logger.warn(`No se pudo eliminar el archivo temporal en manejo de error: ${unlinkError.message}`);
+    }
+
+    logger.error(`Error al procesar archivo temporal para TARJETA_DE_PROPIEDAD: ${error.message}`);
+    throw error;
+  }
+}
+
 // Función para inicializar los procesadores (debe ser llamada al iniciar la app)
 function inicializarProcesadores() {
   logger.info('Inicializando procesadores de colas de vehículos...');
 
   // Procesador para creación de vehículos
+  // Procesador para creación de vehículos
+  // Procesador para creación de vehículos - RESTRUCTURADO
   vehiculoCreacionQueue.process('crear-vehiculo', async (job) => {
-    const { sessionId, adaptedFiles, categorias, datosVehiculo, socketId } = job.data;
+    const { sessionId, adaptedFiles, datosVehiculo, categorias, socketId } = job.data;
+
+    console.log(job.data, "Datos del vehículo en el procesador");
 
     try {
+      // ====== PASO 1: RECIBO LOS DOCUMENTOS ======
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'procesados', '0',
+        'totalDocumentos', adaptedFiles.length.toString(),
+        'progreso', '0',
+        'estado', 'recibiendo_documentos',
+        'mensaje', 'Recibiendo documentos...'
+      );
+
       logger.info(`Iniciando procesamiento de creación de vehículo: ${sessionId}`);
 
-      // Notificar inicio del procesamiento
       notificarGlobal('vehiculo:procesamiento:inicio', {
         sessionId,
         socketId,
         tipo: 'creacion',
-        mensaje: 'Iniciando procesamiento de documentos...',
+        estado: 'recibiendo_documentos',
+        mensaje: 'Recibiendo documentos...',
         progreso: 0
       });
-
-      // Paso 1: Validar datos del vehículo
-      job.progress(10);
-      notificarGlobal('vehiculo:procesamiento:progreso', {
-        sessionId,
-        socketId,
-        mensaje: 'Validando datos del vehículo...',
-        progreso: 10
-      });
-
-      // Verificar si la placa ya existe (Sequelize syntax)
-      const vehiculoExistente = await Vehiculo.findOne({
-        where: { placa: datosVehiculo.placa }
-      });
-
-      if (vehiculoExistente) {
-        throw new Error(`Ya existe un vehículo con la placa ${datosVehiculo.placa}`);
-      }
 
       // Validar documentos obligatorios
       const categoriasObligatorias = ["TARJETA_DE_PROPIEDAD"];
@@ -105,132 +254,603 @@ function inicializarProcesadores() {
       );
 
       if (categoriasFaltantes.length > 0) {
-        throw new Error(`Falta la tarjeta de propiedad, que es obligatoria.`);
+        const errorMsg = `Falta la tarjeta de propiedad, que es obligatoria.`;
+        await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_documentos_faltantes');
+        throw new Error(errorMsg);
       }
 
-      // Validar que el número de archivos coincida con las categorías
       if (adaptedFiles.length !== categorias.length) {
-        throw new Error(`El número de archivos (${adaptedFiles.length}) no coincide con el número de categorías (${categorias.length})`);
+        const errorMsg = `El número de archivos (${adaptedFiles.length}) no coincide con el número de categorías (${categorias.length})`;
+        await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_cantidad_archivos');
+        throw new Error(errorMsg);
       }
 
-      // Paso 2: Crear el vehículo
+      // ====== PASO 2: PROCESO LOS DOCUMENTOS ======
       job.progress(20);
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'progreso', '20',
+        'estado', 'procesando_documentos',
+        'mensaje', 'Procesando documentos...'
+      );
+
       notificarGlobal('vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
-        mensaje: 'Creando registro del vehículo...',
+        mensaje: 'Procesando documentos...',
         progreso: 20
       });
 
-      const nuevoVehiculo = await Vehiculo.create({
-        ...datosVehiculo,
-        estado: 'DISPONIBLE'
-      });
-
-      logger.info(`Vehículo creado con ID: ${nuevoVehiculo.id}`);
-
-      // Paso 3: Procesar documentos
-      job.progress(30);
-      const documentosCreados = [];
       const totalArchivos = adaptedFiles.length;
+      let datosExtraidos = null;
 
+      // Procesar cada documento y guardar temporalmente
       for (let i = 0; i < adaptedFiles.length; i++) {
         const archivo = adaptedFiles[i];
-        const progreso = 30 + ((i + 1) / totalArchivos) * 60; // De 30% a 90%
 
-        job.progress(progreso);
+        await redisClient.hmset(`vehiculo:${sessionId}`,
+          'procesados', (i + 1).toString(),
+          'progreso', '30',
+          'mensaje', `Procesando documento ${archivo.categoria} (${i + 1}/${totalArchivos})...`,
+          'documento_actual', archivo.categoria
+        );
+
         notificarGlobal('vehiculo:procesamiento:progreso', {
           sessionId,
           socketId,
           mensaje: `Procesando documento ${archivo.categoria} (${i + 1}/${totalArchivos})...`,
-          progreso: Math.round(progreso)
+          progreso: 30
         });
 
         try {
-          // Validar que el archivo tenga buffer
-          if (!archivo.buffer || !Buffer.isBuffer(archivo.buffer)) {
-            throw new Error(`Buffer inválido para documento ${archivo.categoria}`);
+          // Guardar documento temporalmente
+          const fileInfo = await saveTemporaryDocument(archivo, sessionId, archivo.categoria);
+
+          await redisClient.set(
+            `vehiculo:${sessionId}:files:${archivo.categoria}`,
+            JSON.stringify(fileInfo),
+            'EX', 3600
+          );
+
+          await redisClient.hset(`vehiculo:${sessionId}`, `documento_${archivo.categoria}_procesado`, 'true');
+          await redisClient.hset(`vehiculo:${sessionId}`, `documento_${archivo.categoria}_size`, fileInfo.size.toString());
+
+          logger.info(`Documento ${archivo.categoria} procesado y guardado temporalmente`);
+
+          // Procesar OCR solo para tarjeta de propiedad
+          if (archivo.categoria === 'TARJETA_DE_PROPIEDAD') {
+            job.progress(50);
+            await redisClient.hmset(`vehiculo:${sessionId}`,
+              'progreso', '50',
+              'mensaje', 'Extrayendo datos de la tarjeta de propiedad...',
+              'documento_actual', 'OCR_TARJETA_DE_PROPIEDAD'
+            );
+
+            notificarGlobal('vehiculo:procesamiento:progreso', {
+              sessionId,
+              socketId,
+              mensaje: 'Extrayendo datos de la tarjeta de propiedad...',
+              progreso: 50
+            });
+
+            // Ejecutar OCR
+            datosExtraidos = await ejecutarOCRTarjetaPropiedad(archivo, sessionId, socketId);
+
+            // Almacenar datos extraídos en Redis
+            await redisClient.set(
+              `vehiculo:${sessionId}:ocr:TARJETA_DE_PROPIEDAD`,
+              JSON.stringify(datosExtraidos),
+              'EX', 3600
+            );
+
+            logger.info(`OCR completado para tarjeta de propiedad. Datos extraídos:`, datosExtraidos);
           }
 
-          // Generar nombre único para el archivo
-          const extension = path.extname(archivo.filename);
-          const nombreArchivo = `${nuevoVehiculo.id}_${archivo.categoria}_${Date.now()}${extension}`;
-          const rutaArchivo = path.join(process.env.UPLOAD_PATH || './uploads', nombreArchivo);
-
-          // Crear directorio si no existe
-          const directorioUploads = path.dirname(rutaArchivo);
-          await fs.mkdir(directorioUploads, { recursive: true });
-
-          // Guardar archivo físico
-          await fs.writeFile(rutaArchivo, archivo.buffer);
-
-          // Crear registro de documento
-          const nuevoDocumento = await Documento.create({
-            vehiculoId: nuevoVehiculo.id,
-            categoria: archivo.categoria,
-            nombreOriginal: archivo.filename,
-            nombreArchivo,
-            rutaArchivo,
-            mimetype: archivo.mimetype,
-            tamaño: archivo.buffer.length,
-            fechaVigencia: datosVehiculo.fechasVigencia?.[archivo.categoria] || null,
-            estado: 'ACTIVO',
-            fechaSubida: new Date()
-          });
-
-          documentosCreados.push(nuevoDocumento);
-
-          logger.info(`Documento ${archivo.categoria} procesado para vehículo ${nuevoVehiculo.id}`);
         } catch (error) {
           logger.error(`Error procesando documento ${archivo.categoria}: ${error.message}`);
-          // Si falla un documento, eliminar el vehículo creado
-          await Vehiculo.destroy({ where: { id: nuevoVehiculo.id } });
-          throw new Error(`Error al procesar documento ${archivo.categoria}: ${error.message}`);
+          await handleDocumentError(sessionId, socketId, archivo.categoria, error.message);
+          throw new Error(error.message);
         }
       }
 
-      // Paso 4: Finalizar
+      // ====== PASO 3: VALIDO LOS VALORES EXTRAÍDOS ======
+      if (!datosExtraidos) {
+        const errorMsg = 'No se pudieron extraer datos de la tarjeta de propiedad';
+        await handleProcessingError(sessionId, socketId, errorMsg, 'ocr_sin_datos');
+        throw new Error(errorMsg);
+      }
+
+      job.progress(60);
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'progreso', '60',
+        'estado', 'validando_datos',
+        'mensaje', 'Validando datos extraídos...'
+      );
+
+      notificarGlobal('vehiculo:procesamiento:progreso', {
+        sessionId,
+        socketId,
+        mensaje: 'Validando datos extraídos...',
+        progreso: 60
+      });
+
+      // Validar campos obligatorios
+      const camposObligatorios = ['placa', 'marca'];
+      const camposFaltantes = camposObligatorios.filter(campo => !datosExtraidos[campo] || datosExtraidos[campo].trim() === '');
+
+      if (camposFaltantes.length > 0) {
+        const errorMsg = `Faltan los siguientes campos obligatorios: ${camposFaltantes.join(', ')}`;
+        await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_campos_obligatorios');
+        throw new Error(errorMsg);
+      }
+
+      // ====== PASO 4: CONFIRMO EXISTENCIAS DE DUPLICIDAD ======
+      job.progress(70);
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'progreso', '70',
+        'estado', 'verificando_duplicados',
+        'mensaje', 'Verificando duplicados...'
+      );
+
+      notificarGlobal('vehiculo:procesamiento:progreso', {
+        sessionId,
+        socketId,
+        mensaje: 'Verificando duplicados...',
+        progreso: 70
+      });
+
+      const vehiculoExistente = await Vehiculo.findOne({
+        where: { placa: datosExtraidos.placa }
+      });
+
+      if (vehiculoExistente) {
+        const errorMsg = `Ya existe un vehículo con la placa ${datosExtraidos.placa}`;
+        logger.error(errorMsg);
+        await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_placa_existente', vehiculoExistente);
+        throw new Error(errorMsg);
+      }
+
+      // ====== PASO 5: ENVÍO DATOS AL CLIENTE Y ESPERO CONFIRMACIÓN ======
+      job.progress(80);
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'progreso', '80',
+        'estado', 'esperando_confirmacion',
+        'mensaje', 'OCR completado. Esperando confirmación del usuario...',
+        'esperando_confirmacion', 'true'
+      );
+
+      // Enviar ÚNICAMENTE los datos de la tarjeta de propiedad
+      notificarGlobal('vehiculo:confirmacion:requerida', {
+        sessionId,
+        socketId,
+        mensaje: 'Datos extraídos de la tarjeta de propiedad. Por favor confirme la información',
+        progreso: 80,
+        datosVehiculo: datosExtraidos,
+        camposEditables: [
+          'propietario_nombre',
+          'propietario_identificacion',
+          'modelo',
+          'linea',
+          'fecha_matricula'
+        ],
+        opciones: {
+          confirmar: true,
+          editar: true,
+          cancelar: true
+        }
+      });
+
+      logger.info(`Esperando confirmación del usuario para el vehículo con placa: ${datosExtraidos.placa}`);
+
+
+      // Esperar respuesta del usuario
+      const confirmacion = await esperarConfirmacionUsuario(sessionId, socketId);
+
+      // ====== PASO 6: PROCESAR RESPUESTA DEL USUARIO ======
+      let datosFinales = { ...datosExtraidos, ...confirmacion.datosModificados };
+
+      if (confirmacion.accion === 'cancelar') {
+        logger.info(`Usuario canceló el registro del vehículo con placa: ${datosExtraidos.placa}`);
+
+        await redisClient.del(`vehiculo:${sessionId}:ocr:TARJETA_DE_PROPIEDAD`);
+
+        notificarGlobal('vehiculo:procesamiento:cancelado', {
+          sessionId,
+          socketId,
+          mensaje: 'Registro de vehículo cancelado por el usuario'
+        });
+
+        throw new Error('Registro cancelado por el usuario');
+      }
+
+      if (confirmacion.accion === 'editar') {
+        logger.info(`Usuario solicitó editar los datos del vehículo con placa: ${datosExtraidos.placa}`);
+
+        // Validar campos obligatorios después de edición
+        const camposObligatoriosEditados = ['propietario_nombre', 'propietario_identificacion', 'modelo', 'linea', 'fecha_matricula'];
+        const camposFaltantesEditados = camposObligatoriosEditados.filter(
+          campo => !datosFinales[campo] || datosFinales[campo].trim() === ''
+        );
+
+        if (camposFaltantesEditados.length > 0) {
+          const errorMsg = `Los siguientes campos obligatorios no pueden estar vacíos: ${camposFaltantesEditados.join(', ')}`;
+          await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_campos_editados_obligatorios');
+          throw new Error(errorMsg);
+        }
+
+        logger.info(`Datos actualizados por el usuario:`, datosFinales);
+      }
+
+      // ====== PASO 7: CREAR VEHÍCULO Y SUBIR DOCUMENTOS ======
+      job.progress(90);
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'progreso', '90',
+        'estado', 'creando_vehiculo',
+        'mensaje', 'Creando vehículo en la base de datos...',
+        'esperando_confirmacion', 'false'
+      );
+
+      notificarGlobal('vehiculo:procesamiento:progreso', {
+        sessionId,
+        socketId,
+        mensaje: 'Creando vehículo en la base de datos...',
+        progreso: 90
+      });
+
+      // Crear el vehículo en la base de datos
+      const nuevoVehiculo = await Vehiculo.create({
+        ...datosFinales,
+        estado: 'DISPONIBLE'
+      });
+
+      logger.info(`Vehículo creado con ID: ${nuevoVehiculo.id} y placa: ${nuevoVehiculo.placa}`);
+
+      // Actualizar datos en Redis
+      await redisClient.hset(`vehiculo:${sessionId}`, 'vehiculo_id', nuevoVehiculo.id.toString());
+      await redisClient.hset(`vehiculo:${sessionId}`, 'ocr_tarjeta_completado', 'true');
+      await redisClient.hset(`vehiculo:${sessionId}`, 'ocr_tarjeta_data', JSON.stringify(nuevoVehiculo));
+
+      // Subir documentos a S3 y crear registros
+      job.progress(95);
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'progreso', '95',
+        'mensaje', 'Subiendo documentos al almacenamiento...'
+      );
+
+      notificarGlobal('vehiculo:procesamiento:progreso', {
+        sessionId,
+        socketId,
+        mensaje: 'Subiendo documentos al almacenamiento...',
+        progreso: 95
+      });
+
+      const documentosCreados = await uploadProcessedDocuments(
+        sessionId,
+        nuevoVehiculo.id,
+        datosVehiculo.fechasVigencia,
+        false // isUpdate = false porque es creación
+      );
+
+      logger.info(`${documentosCreados.length} documentos subidos exitosamente a S3`);
+
+      // ====== FINALIZACIÓN ======
       job.progress(100);
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'progreso', '100',
+        'estado', 'completado',
+        'mensaje', 'Vehículo registrado exitosamente',
+        'documentos_creados', documentosCreados.length.toString(),
+        'fecha_completado', new Date().toISOString()
+      );
+
+      // Almacenar información de documentos creados
+      for (const doc of documentosCreados) {
+        await redisClient.hset(`vehiculo:${sessionId}`, `documento_${doc.document_type}_s3_key`, doc.s3_key);
+        await redisClient.hset(`vehiculo:${sessionId}`, `documento_${doc.document_type}_id`, doc.id);
+      }
+
       notificarGlobal('vehiculo:procesamiento:completado', {
         sessionId,
         socketId,
         tipo: 'creacion',
         vehiculo: nuevoVehiculo,
         documentos: documentosCreados,
-        mensaje: 'Vehículo creado exitosamente',
+        mensaje: 'Vehículo registrado exitosamente',
         progreso: 100
       });
 
-      // Notificar globalmente la creación del nuevo vehículo
       notificarGlobal('vehiculo:creado', {
         vehiculo: nuevoVehiculo,
         documentos: documentosCreados
       });
 
-      logger.info(`Creación de vehículo completada: ${sessionId}`);
+      logger.info(`Creación de vehículo completada exitosamente: ${sessionId}`);
       return { vehiculo: nuevoVehiculo, documentos: documentosCreados };
 
     } catch (error) {
       logger.error(`Error en procesamiento de creación ${sessionId}: ${error.message}`);
 
+      if (!error.message.includes('DISCREPANCIA DE PLACA DETECTADA') &&
+        !error.message.includes('Registro cancelado por el usuario')) {
+        await handleProcessingError(sessionId, socketId, error.message, 'general');
+      }
+
+      // Limpiar archivos temporales
+      try {
+        const tempDir = path.join(__dirname, '..', '..', 'temp', sessionId);
+        await fs.rm(tempDir, { recursive: true, force: true });
+        logger.info(`Directorio temporal limpiado para sesión ${sessionId}`);
+      } catch (cleanupError) {
+        logger.warn(`Error al limpiar directorio temporal: ${cleanupError.message}`);
+      }
+
+      throw error;
+    } finally {
+      await redisClient.expire(`vehiculo:${sessionId}`, 86400); // Expira en 24 horas
+    }
+  });
+
+  // ====== FUNCIONES AUXILIARES ======
+
+  // Función para ejecutar OCR de tarjeta de propiedad
+  async function ejecutarOCRTarjetaPropiedad(archivo, sessionId, socketId) {
+    try {
+      // Configuración para OCR
+      const documentIntelligenceEndpoint = process.env.DOC_INTELLIGENCE;
+      const subscriptionKey = process.env.DOC_INTELLIGENCE_KEY;
+
+      if (!documentIntelligenceEndpoint || !subscriptionKey) {
+        throw new Error('Variables de entorno para OCR no configuradas correctamente');
+      }
+
+      const form = new FormData();
+      form.append(archivo.categoria, Buffer.from(archivo.buffer), {
+        filename: archivo.filename,
+        contentType: archivo.mimetype,
+      });
+
+      // Enviar a OCR
+      const response = await axios.post(documentIntelligenceEndpoint, form, {
+        headers: {
+          'Ocp-Apim-Subscription-Key': subscriptionKey,
+          ...form.getHeaders(),
+        },
+        timeout: 30000
+      });
+
+      const operationLocation = response.headers['operation-location'];
+      if (!operationLocation) {
+        throw new Error('No se recibió operation-location en la respuesta de OCR');
+      }
+
+      // Esperar resultado
+      const ocrData = await waitForOcrResult(operationLocation, subscriptionKey);
+
+      // Procesar datos OCR
+      const datosExtraidos = await procesarConArchivoTemporal(ocrData);
+
+      return datosExtraidos;
+
+    } catch (error) {
+      logger.error(`Error en OCR de tarjeta de propiedad: ${error.message}`);
+      await handleProcessingError(sessionId, socketId, `Error en OCR: ${error.message}`, 'ocr_general');
+      throw error;
+    }
+  }
+
+  // Función para esperar confirmación del usuario
+  // ========== CORRECCIÓN EN EL PROCESADOR ==========
+
+  // OPCIÓN 1: Cambiar la validación para NO verificar socketId específico
+  async function esperarConfirmacionUsuario(sessionId, socketId, timeoutMs = 300000) {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(async () => {
+        await redisClient.hmset(`vehiculo:${sessionId}`,
+          'esperando_confirmacion', 'false',
+          'timeout_confirmacion', 'true'
+        );
+
+        notificarGlobal('vehiculo:confirmacion:timeout', {
+          sessionId,
+          socketId,
+          mensaje: 'Tiempo de espera agotado para confirmación'
+        });
+
+        reject(new Error('Timeout: No se recibió confirmación del usuario'));
+      }, timeoutMs);
+
+      const eventName = `vehiculo:confirmacion:respuesta:${sessionId}`;
+
+      logger.info(`👂 Registrando listener para evento: ${eventName}`);
+      eventEmitter.debug(eventName);
+
+      const handleConfirmacion = async (data) => {
+        logger.info(`🎯 Evento recibido: ${eventName}`, data);
+
+        clearTimeout(timeoutId);
+
+        // ✅ SOLO VALIDAR sessionId, NO socketId
+        if (data.sessionId === sessionId) {
+          logger.info(`✅ Confirmación válida recibida para sesión ${sessionId}: ${data.accion}`);
+          logger.info(`🔄 SocketId del evento: ${data.socketId}, SocketId esperado: ${socketId}`);
+          resolve(data);
+        } else {
+          logger.warn(`⚠️ SessionId no coincide - esperado: ${sessionId}, recibido: ${data.sessionId}`);
+        }
+      };
+
+      eventEmitter.once(eventName, handleConfirmacion);
+
+      const listenersCount = eventEmitter.listenerCount(eventName);
+      logger.info(`✅ Listener registrado. Total listeners para ${eventName}: ${listenersCount}`);
+
+      redisClient.hmset(`vehiculo:${sessionId}:confirmacion`,
+        'esperando', 'true',
+        'timestamp', Date.now().toString(),
+        'callback', eventName
+      );
+    });
+  }
+
+  // ========== OPCIÓN 2: Obtener socketId real desde Redis ==========
+
+  // Si necesitas validar el socketId específico, obtenlo desde Redis:
+  async function esperarConfirmacionUsuarioConSocketValidation(sessionId, socketIdOriginal, timeoutMs = 300000) {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(async () => {
+        await redisClient.hmset(`vehiculo:${sessionId}`,
+          'esperando_confirmacion', 'false',
+          'timeout_confirmacion', 'true'
+        );
+
+        notificarGlobal('vehiculo:confirmacion:timeout', {
+          sessionId,
+          socketId: socketIdOriginal,
+          mensaje: 'Tiempo de espera agotado para confirmación'
+        });
+
+        reject(new Error('Timeout: No se recibió confirmación del usuario'));
+      }, timeoutMs);
+
+      const eventName = `vehiculo:confirmacion:respuesta:${sessionId}`;
+
+      logger.info(`👂 Registrando listener para evento: ${eventName}`);
+
+      const handleConfirmacion = async (data) => {
+        logger.info(`🎯 Evento recibido: ${eventName}`, data);
+
+        clearTimeout(timeoutId);
+
+        if (data.sessionId === sessionId) {
+          // Obtener socketId autorizado desde Redis
+          const socketIdAutorizado = await redisClient.hget(`vehiculo:${sessionId}`, 'socket_id_autorizado');
+
+          if (!socketIdAutorizado || data.socketId === socketIdAutorizado) {
+            logger.info(`✅ Confirmación válida recibida para sesión ${sessionId}: ${data.accion}`);
+            resolve(data);
+          } else {
+            logger.warn(`⚠️ SocketId no autorizado - autorizado: ${socketIdAutorizado}, recibido: ${data.socketId}`);
+            // Aún así resolver porque es la misma sesión
+            resolve(data);
+          }
+        } else {
+          logger.warn(`⚠️ SessionId no coincide - esperado: ${sessionId}, recibido: ${data.sessionId}`);
+        }
+      };
+
+      eventEmitter.once(eventName, handleConfirmacion);
+
+      const listenersCount = eventEmitter.listenerCount(eventName);
+      logger.info(`✅ Listener registrado. Total listeners para ${eventName}: ${listenersCount}`);
+    });
+  }
+
+  // ✅ Clase de error personalizada para evitar múltiples notificaciones
+  class ProcessingError extends Error {
+    constructor(message, type, alreadyHandled = false) {
+      super(message);
+      this.name = 'ProcessingError';
+      this.type = type;
+      this.alreadyHandled = alreadyHandled;
+    }
+  }
+
+  // ✅ Función auxiliar para manejo centralizado de errores de procesamiento
+  async function handleProcessingError(sessionId, socketId, errorMessage, errorType, vehiculo = null) {
+    try {
+      // Actualizar Redis con información detallada del error
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'estado', 'error',
+        'error', errorMessage,
+        'error_tipo', errorType,
+        'mensaje', 'Error al crear el vehículo',
+        'fecha_error', new Date().toISOString()
+      );
+
+      // Notificar globalmente sobre el error
       notificarGlobal('vehiculo:procesamiento:error', {
         sessionId,
         socketId,
         tipo: 'creacion',
-        error: error.message,
-        mensaje: 'Error al crear el vehículo'
+        error: errorMessage,
+        errorTipo: errorType,
+        mensaje: 'Error al crear el vehículo',
+        critico: true,
+        ...(errorType.includes('validacion_placa_existente') && { vehiculo: vehiculo })
       });
 
-      throw error;
-    }
-  });
+      // Si hay un vehículo creado, eliminarlo
+      if (vehiculo.id && !errorType.includes('validacion_placa_existente')) {
+        try {
+          await Vehiculo.destroy({ where: { id: vehiculo.id } });
+          logger.info(`Vehículo con ID ${vehiculo.id} eliminado debido a error: ${errorType}`);
+        } catch (deleteError) {
+          logger.error(`Error al eliminar vehículo ${vehiculo.id}: ${deleteError.message}`);
+        }
+      }
 
-  // Procesador para actualización de documentos - MOVER DENTRO DE inicializarProcesadores
-  vehiculoActualizacionQueue.process('actualizar-documentos-vehiculo', async (job) => {
-    const { sessionId, adaptedFiles, categorias, fechasVigencia, vehiculoId, socketId } = job.data;
+      // Retornar un error marcado como ya manejado
+      return new ProcessingError(errorMessage, errorType, true);
+    } catch (redisError) {
+      logger.error(`Error al actualizar Redis con información de error: ${redisError.message}`);
+      return new ProcessingError(errorMessage, errorType, true);
+    }
+  }
+
+  // ✅ Función auxiliar para manejo específico de errores de documentos
+  async function handleDocumentError(sessionId, socketId, categoria, errorMessage, vehiculoId = null) {
+    try {
+      // ✅ Actualizar Redis con error específico del documento
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'estado', 'error',
+        'error', `Error al procesar documento ${categoria}: ${errorMessage}`
+      );
+      await redisClient.hset(`vehiculo:${sessionId}`, `documento_${categoria}_error`, errorMessage);
+
+      // Notificar error específico del documento
+      notificarGlobal('vehiculo:procesamiento:error', {
+        sessionId,
+        socketId,
+        tipo: 'creacion',
+        error: `Error al procesar documento ${categoria}: ${errorMessage}`,
+        errorTipo: 'documento_procesamiento',
+        documento: categoria,
+        mensaje: `Error al procesar documento ${categoria}`,
+        critico: true
+      });
+
+      // Eliminar el vehículo creado si existe
+      if (vehiculoId) {
+        try {
+          await Vehiculo.destroy({ where: { id: vehiculoId } });
+          logger.info(`Vehículo con ID ${vehiculoId} eliminado por error en documento ${categoria}`);
+        } catch (deleteError) {
+          logger.error(`Error al eliminar vehículo: ${deleteError.message}`);
+        }
+      }
+
+      // Retornar un error marcado como ya manejado
+      return new ProcessingError(`Error al procesar documento ${categoria}: ${errorMessage}`, 'documento_procesamiento', true);
+    } catch (redisError) {
+      logger.error(`Error al actualizar Redis con error de documento: ${redisError.message}`);
+      return new ProcessingError(`Error al procesar documento ${categoria}: ${errorMessage}`, 'documento_procesamiento', true);
+    }
+  }
+
+  // Procesador para actualización de vehículos - REESTRUCTURADO
+  vehiculoActualizacionQueue.process('actualizar-vehiculo', async (job) => {
+    const { sessionId, adaptedFiles, categorias, fechasVigencia, vehiculoId, socketId, camposBasicos } = job.data;
 
     try {
-      logger.info(`Iniciando actualización de documentos: ${sessionId} para vehículo ${vehiculoId}`);
+      // ✅ Usar hmset para compatibilidad total
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'procesados', '0',
+        'totalDocumentos', (adaptedFiles?.length || 0).toString(),
+        'progreso', '0',
+        'estado', 'procesando',
+        'mensaje', 'Iniciando actualización del vehículo...'
+      );
+
+      logger.info(`Iniciando procesamiento de actualización de vehículo: ${sessionId}`);
 
       // Notificar inicio del procesamiento
       notificarGlobal('vehiculo:procesamiento:inicio', {
@@ -238,12 +858,17 @@ function inicializarProcesadores() {
         socketId,
         tipo: 'actualizacion',
         vehiculoId,
-        mensaje: 'Iniciando actualización de documentos...',
+        mensaje: 'Iniciando actualización del vehículo...',
         progreso: 0
       });
 
       // Paso 1: Verificar que el vehículo existe
       job.progress(10);
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'progreso', '10',
+        'mensaje', 'Verificando vehículo...'
+      );
+
       notificarGlobal('vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
@@ -253,16 +878,127 @@ function inicializarProcesadores() {
 
       const vehiculo = await Vehiculo.findByPk(vehiculoId);
       if (!vehiculo) {
-        throw new Error(`No se encontró el vehículo con ID: ${vehiculoId}`);
+        const errorMsg = `No se encontró el vehículo con ID: ${vehiculoId}`;
+        await redisClient.hmset(`vehiculo:${sessionId}`,
+          'estado', 'error',
+          'error', errorMsg
+        );
+        throw new Error(errorMsg);
       }
 
-      // Paso 2: Desactivar documentos anteriores de las categorías que se van a actualizar
-      job.progress(20);
+      // ✅ Almacenar ID del vehículo en Redis
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'vehiculo_id', vehiculo.id
+      );
+
+      // Paso 2: Actualizar campos básicos si se proporcionaron
+      if (camposBasicos && Object.keys(camposBasicos).length > 0) {
+        job.progress(20);
+        await redisClient.hmset(`vehiculo:${sessionId}`,
+          'progreso', '20',
+          'mensaje', 'Actualizando información básica del vehículo...'
+        );
+
+        notificarGlobal('vehiculo:procesamiento:progreso', {
+          sessionId,
+          socketId,
+          mensaje: 'Actualizando información básica del vehículo...',
+          progreso: 20
+        });
+
+        // Verificar si la placa cambió y ya existe otra con la nueva placa
+        if (camposBasicos.placa && camposBasicos.placa !== vehiculo.placa) {
+          const vehiculoExistente = await Vehiculo.findOne({
+            where: {
+              placa: camposBasicos.placa,
+              id: { [Op.ne]: vehiculoId } // Excluir el vehículo actual
+            }
+          });
+
+          if (vehiculoExistente) {
+            const errorMsg = `Ya existe otro vehículo con la placa ${camposBasicos.placa}`;
+            await redisClient.hmset(`vehiculo:${sessionId}`,
+              'estado', 'error',
+              'error', errorMsg
+            );
+            throw new Error(errorMsg);
+          }
+        }
+
+        // Actualizar campos básicos
+        await vehiculo.update(camposBasicos);
+        logger.info(`Campos básicos actualizados para vehículo ${vehiculoId}:`, camposBasicos);
+      }
+
+      // Si no hay documentos para actualizar, terminar aquí
+      if (!adaptedFiles || adaptedFiles.length === 0 || !categorias || categorias.length === 0) {
+        job.progress(100);
+        await redisClient.hmset(`vehiculo:${sessionId}`,
+          'progreso', '100',
+          'estado', 'completado',
+          'mensaje', 'Vehículo actualizado exitosamente (sin cambios en documentos)',
+          'fecha_completado', new Date().toISOString()
+        );
+
+        const vehiculoActualizado = await Vehiculo.findByPk(vehiculoId);
+
+        notificarGlobal('vehiculo:procesamiento:completado', {
+          sessionId,
+          socketId,
+          tipo: 'actualizacion',
+          vehiculo: vehiculoActualizado,
+          documentos: [],
+          mensaje: 'Vehículo actualizado exitosamente',
+          progreso: 100
+        });
+
+        // Notificar globalmente la actualización del vehículo
+        notificarGlobal('vehiculo:actualizado', {
+          vehiculo: vehiculoActualizado,
+          documentosActualizados: [],
+          categoriasActualizadas: []
+        });
+
+        logger.info(`Actualización de vehículo completada (solo campos básicos): ${sessionId}`);
+        return { vehiculo: vehiculoActualizado, documentos: [] };
+      }
+
+      // Paso 3: Validar documentos para actualización
+      job.progress(30);
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'progreso', '30',
+        'mensaje', 'Validando documentos para actualización...'
+      );
+
       notificarGlobal('vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
-        mensaje: 'Actualizando documentos anteriores...',
-        progreso: 20
+        mensaje: 'Validando documentos para actualización...',
+        progreso: 30
+      });
+
+      // Validar que el número de archivos coincida con las categorías
+      if (adaptedFiles.length !== categorias.length) {
+        const errorMsg = `El número de archivos (${adaptedFiles.length}) no coincide con el número de categorías (${categorias.length})`;
+        await redisClient.hmset(`vehiculo:${sessionId}`,
+          'estado', 'error',
+          'error', errorMsg
+        );
+        throw new Error(errorMsg);
+      }
+
+      // Paso 4: Desactivar documentos anteriores de las categorías que se van a actualizar
+      job.progress(40);
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'progreso', '40',
+        'mensaje', 'Desactivando documentos anteriores...'
+      );
+
+      notificarGlobal('vehiculo:procesamiento:progreso', {
+        sessionId,
+        socketId,
+        mensaje: 'Desactivando documentos anteriores...',
+        progreso: 40
       });
 
       await Documento.update(
@@ -272,117 +1008,333 @@ function inicializarProcesadores() {
         },
         {
           where: {
-            vehiculoId: vehiculoId,
+            vehiculo_id: vehiculoId,
             categoria: categorias,
-            estado: 'ACTIVO'
+            estado: 'vigente'
           }
         }
       );
 
-      // Paso 3: Procesar nuevos documentos
-      job.progress(30);
-      const documentosActualizados = [];
+      logger.info(`Documentos anteriores desactivados para categorías: ${categorias.join(', ')}`);
+
+      // Paso 5: Guardar documentos temporalmente y almacenar en Redis
+      job.progress(50);
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'progreso', '50',
+        'mensaje', 'Procesando nuevos documentos...'
+      );
+
       const totalArchivos = adaptedFiles.length;
 
+      // ✅ Código principal mejorado para evitar errores en cascada
       for (let i = 0; i < adaptedFiles.length; i++) {
         const archivo = adaptedFiles[i];
-        const progreso = 30 + ((i + 1) / totalArchivos) * 60; // De 30% a 90%
+        const progreso = 30 + ((i + 1) / totalArchivos) * 50; // De 30% a 80%
 
         job.progress(progreso);
+
+        // ✅ Actualizar progreso detallado en Redis
+        await redisClient.hmset(`vehiculo:${sessionId}`,
+          'procesados', (i + 1).toString(),
+          'progreso', Math.round(progreso).toString(),
+          'mensaje', `Procesando documento ${archivo.categoria} (${i + 1}/${totalArchivos})...`,
+          'documento_actual', archivo.categoria
+        );
+
         notificarGlobal('vehiculo:procesamiento:progreso', {
           sessionId,
           socketId,
-          mensaje: `Actualizando documento ${archivo.categoria} (${i + 1}/${totalArchivos})...`,
+          mensaje: `Procesando documento ${archivo.categoria} (${i + 1}/${totalArchivos})...`,
           progreso: Math.round(progreso)
         });
 
+        let processingError = null;
+
         try {
-          // Validar que el archivo tenga buffer
-          if (!archivo.buffer || !Buffer.isBuffer(archivo.buffer)) {
-            throw new Error(`Buffer inválido para documento ${archivo.categoria}`);
-          }
+          // ✅ Usar la función existente para guardar temporalmente
+          const fileInfo = await saveTemporaryDocument(archivo, sessionId, archivo.categoria);
 
-          // Generar nombre único para el archivo
-          const extension = path.extname(archivo.filename);
-          const nombreArchivo = `${vehiculoId}_${archivo.categoria}_${Date.now()}${extension}`;
-          const rutaArchivo = path.join(process.env.UPLOAD_PATH || './uploads', nombreArchivo);
-
-          // Crear directorio si no existe
-          const directorioUploads = path.dirname(rutaArchivo);
-          await fs.mkdir(directorioUploads, { recursive: true });
-
-          // Guardar archivo físico
-          await fs.writeFile(rutaArchivo, archivo.buffer);
-
-          // Crear nuevo registro de documento
-          const documentoActualizado = await Documento.create({
-            vehiculoId: vehiculoId,
-            categoria: archivo.categoria,
-            nombreOriginal: archivo.filename,
-            nombreArchivo,
-            rutaArchivo,
-            mimetype: archivo.mimetype,
-            tamaño: archivo.buffer.length,
-            fechaVigencia: fechasVigencia?.[archivo.categoria] || null,
-            estado: 'ACTIVO',
-            fechaSubida: new Date()
+          logger.info(`Documento temporal guardado: ${archivo.categoria}`, {
+            path: fileInfo.path,
+            size: fileInfo.size,
+            originalname: fileInfo.originalname
           });
 
-          documentosActualizados.push(documentoActualizado);
+          // ✅ Almacenar información en Redis para procesamiento posterior
+          await redisClient.set(
+            `vehiculo:${sessionId}:files:${archivo.categoria}`,
+            JSON.stringify(fileInfo),
+            'EX', 3600 // Expira en 1 hora
+          );
 
-          logger.info(`Documento ${archivo.categoria} actualizado para vehículo ${vehiculoId}`);
+          // ✅ Marcar documento como procesado
+          await redisClient.hset(`vehiculo:${sessionId}`, `documento_${archivo.categoria}_procesado`, 'true');
+          await redisClient.hset(`vehiculo:${sessionId}`, `documento_${archivo.categoria}_size`, fileInfo.size.toString());
+
+          logger.info(`Información del documento ${archivo.categoria} almacenada en Redis`);
+          logger.info(`Procesando documento ${archivo.categoria} (${i + 1}/${totalArchivos})...`);
+
+          if (archivo.categoria === 'TARJETA_DE_PROPIEDAD') {
+            logger.info(`Se iniciará el proceso de OCR para la tarjeta de propiedad`);
+
+            try {
+              // Configuración para OCR
+              const documentIntelligenceEndpoint = process.env.DOC_INTELLIGENCE;
+              const subscriptionKey = process.env.DOC_INTELLIGENCE_KEY;
+
+              // Asegurar que las variables de entorno estén definidas
+              if (!documentIntelligenceEndpoint || !subscriptionKey) {
+                const errorMsg = 'Variables de entorno para OCR no configuradas correctamente';
+                logger.error(errorMsg);
+                processingError = await handleProcessingError(sessionId, socketId, errorMsg, 'configuracion_ocr');
+                throw processingError;
+              }
+
+              const form = new FormData();
+              form.append(archivo.categoria, Buffer.from(archivo.buffer), {
+                filename: archivo.filename,
+                contentType: archivo.mimetype,
+              });
+
+              let response;
+              try {
+                response = await axios.post(documentIntelligenceEndpoint, form, {
+                  headers: {
+                    'Ocp-Apim-Subscription-Key': subscriptionKey,
+                    ...form.getHeaders(),
+                  },
+                  timeout: 30000 // 30 segundos de timeout
+                });
+              } catch (error) {
+                const errorMsg = `Error al enviar documento a OCR: ${error.response?.data?.error || error.message}`;
+                logger.error(`Error al enviar a OCR ${archivo.categoria}: ${error.message}`);
+                processingError = await handleProcessingError(sessionId, socketId, errorMsg, 'ocr_envio');
+                throw processingError;
+              }
+
+              const operationLocation = response.headers['operation-location'];
+              if (!operationLocation) {
+                const errorMsg = 'No se recibió operation-location en la respuesta de OCR';
+                logger.error(errorMsg);
+                processingError = await handleProcessingError(sessionId, socketId, errorMsg, 'ocr_operation_location');
+                throw processingError;
+              }
+
+              // Esperar resultado del OCR
+              logger.info(`Esperando resultado OCR para ${archivo.categoria}. Sesión: ${sessionId}`);
+              let ocrData;
+              try {
+                ocrData = await waitForOcrResult(operationLocation, subscriptionKey);
+              } catch (error) {
+                const errorMsg = `Error en proceso OCR: ${error.message}`;
+                logger.error(`Error al esperar resultado OCR para ${archivo.categoria}: ${error.message}`);
+                processingError = await handleProcessingError(sessionId, socketId, errorMsg, 'ocr_procesamiento');
+                throw processingError;
+              }
+
+              // Actualizar progreso para OCR
+              job.progress(progreso + 5);
+              await redisClient.hmset(`vehiculo:${sessionId}`,
+                'mensaje', `Procesando OCR de tarjeta de propiedad...`,
+                'documento_actual', 'OCR_TARJETA_DE_PROPIEDAD'
+              );
+
+              notificarGlobal('vehiculo:procesamiento:progreso', {
+                sessionId,
+                socketId,
+                mensaje: 'Procesando OCR de tarjeta de propiedad...',
+                progreso: Math.round(progreso + 5)
+              });
+
+              // Ejecutar el script OCR
+              nuevoVehiculo = await procesarConArchivoTemporal(ocrData, datosVehiculo.placa);
+
+              // Almacenar datos OCR en Redis
+              await redisClient.set(
+                `vehiculo:${sessionId}:ocr:TARJETA_DE_PROPIEDAD`,
+                JSON.stringify(nuevoVehiculo),
+                'EX', 3600
+              );
+
+              // ✅ PUNTO CRÍTICO: Verificar placa duplicada ANTES de crear
+              try {
+                const vehiculoExistente = await Vehiculo.findOne({
+                  where: { placa: nuevoVehiculo.placa }
+                });
+
+                if (vehiculoExistente) {
+                  const errorMsg = `Ya existe un vehículo con la placa ${nuevoVehiculo.placa}`;
+                  logger.error(errorMsg);
+                  processingError = await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_placa_existente', vehiculoExistente);
+                  throw processingError;
+                }
+
+                // Crear el vehículo solo si no existe
+                nuevoVehiculo = await Vehiculo.create({
+                  ...nuevoVehiculo,
+                  estado: 'DISPONIBLE'
+                });
+
+                logger.info(`Vehículo creado exitosamente con ID: ${nuevoVehiculo.id}`);
+
+                // Marcar OCR como completado
+                await redisClient.hset(`vehiculo:${sessionId}`, 'ocr_tarjeta_completado', 'true');
+                await redisClient.hset(`vehiculo:${sessionId}`, 'ocr_tarjeta_data', JSON.stringify(nuevoVehiculo));
+
+              } catch (dbError) {
+                // ✅ Manejo específico de errores de base de datos
+                if (dbError instanceof ProcessingError && dbError.alreadyHandled) {
+                  throw dbError; // Re-lanzar si ya fue manejado
+                }
+
+                const errorMsg = `Error de validación en base de datos: ${dbError.message}`;
+                logger.error(errorMsg);
+                processingError = await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_bd');
+                throw processingError;
+              }
+
+            } catch (ocrError) {
+              // ✅ Solo manejar si no ha sido manejado previamente
+              if (ocrError instanceof ProcessingError && ocrError.alreadyHandled) {
+                throw ocrError; // Re-lanzar sin procesar de nuevo
+              }
+
+              logger.error(`Error en OCR de tarjeta de propiedad: ${ocrError.message}`);
+              processingError = await handleProcessingError(sessionId, socketId,
+                `Error en OCR: ${ocrError.message}`, 'ocr_general', nuevoVehiculo?.id);
+              throw processingError;
+            }
+          } else {
+            logger.info(`No se requiere OCR para el documento ${archivo.categoria}`);
+          }
+
         } catch (error) {
-          logger.error(`Error actualizando documento ${archivo.categoria}: ${error.message}`);
-          throw new Error(`Error al actualizar documento ${archivo.categoria}: ${error.message}`);
+          // ✅ Solo manejar errores que no han sido manejados previamente
+          if (error instanceof ProcessingError && error.alreadyHandled) {
+            throw error; // Re-lanzar sin procesar
+          }
+
+          logger.error(`Error procesando documento ${archivo.categoria}: ${error.message}`);
+          processingError = await handleDocumentError(sessionId, socketId, archivo.categoria, error.message, nuevoVehiculo?.id);
+          throw processingError;
         }
       }
 
-      // Paso 4: Actualizar fechas de vigencia en el vehículo
-      job.progress(95);
+      // Paso 6: Subir documentos finales a S3 y crear registros en BD
+      job.progress(80);
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'progreso', '80',
+        'mensaje', 'Subiendo documentos al almacenamiento en la nube...'
+      );
+
       notificarGlobal('vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
-        mensaje: 'Finalizando actualización...',
-        progreso: 95
+        mensaje: 'Subiendo documentos al almacenamiento en la nube...',
+        progreso: 80
       });
 
-      if (fechasVigencia && Object.keys(fechasVigencia).length > 0) {
-        // Actualizar campos específicos de fechas de vigencia en Sequelize
-        const updateFields = {};
-        Object.keys(fechasVigencia).forEach(categoria => {
-          const campo = `${categoria.toLowerCase()}_vencimiento`;
-          updateFields[campo] = new Date(fechasVigencia[categoria]);
+      try {
+        // ✅ Usar la función existente para subir a S3 y crear registros
+        const documentosCreados = await uploadProcessedDocuments(
+          sessionId,
+          vehiculoId,
+          fechasVigencia,
+          true, // isUpdate = true porque es actualización,
+          categorias
+        );
+
+        logger.info(`${documentosCreados.length} documentos subidos exitosamente a S3`);
+
+        // Paso 7: Actualizar fechas de vigencia en el vehículo
+        job.progress(95);
+        await redisClient.hmset(`vehiculo:${sessionId}`,
+          'progreso', '95',
+          'mensaje', 'Actualizando fechas de vigencia...'
+        );
+
+        notificarGlobal('vehiculo:procesamiento:progreso', {
+          sessionId,
+          socketId,
+          mensaje: 'Actualizando fechas de vigencia...',
+          progreso: 95
         });
 
-        await vehiculo.update(updateFields);
+        if (fechasVigencia && Object.keys(fechasVigencia).length > 0) {
+          // Actualizar campos específicos de fechas de vigencia
+          const updateFields = {};
+          Object.keys(fechasVigencia).forEach(categoria => {
+            const campo = `${categoria.toLowerCase()}_vencimiento`;
+            updateFields[campo] = new Date(fechasVigencia[categoria]);
+          });
+
+          await vehiculo.update(updateFields);
+          logger.info(`Fechas de vigencia actualizadas para vehículo ${vehiculoId}:`, updateFields);
+        }
+
+        // Paso 8: Finalizar
+        job.progress(100);
+
+        // ✅ Actualizar Redis con resultado final
+        await redisClient.hmset(`vehiculo:${sessionId}`,
+          'progreso', '100',
+          'estado', 'completado',
+          'mensaje', 'Vehículo actualizado exitosamente',
+          'documentos_creados', documentosCreados.length.toString(),
+          'fecha_completado', new Date().toISOString()
+        );
+
+        // ✅ Almacenar información de documentos creados usando comandos separados
+        for (const doc of documentosCreados) {
+          await redisClient.hset(`vehiculo:${sessionId}`, `documento_${doc.document_type}_s3_key`, doc.s3_key);
+          await redisClient.hset(`vehiculo:${sessionId}`, `documento_${doc.document_type}_id`, doc.id);
+        }
+
+        const vehiculoActualizado = await Vehiculo.findByPk(vehiculoId);
+
+        notificarGlobal('vehiculo:procesamiento:completado', {
+          sessionId,
+          socketId,
+          tipo: 'actualizacion',
+          vehiculo: vehiculoActualizado,
+          documentos: documentosCreados,
+          mensaje: 'Vehículo actualizado exitosamente',
+          progreso: 100
+        });
+
+        // Notificar globalmente la actualización del vehículo
+        notificarGlobal('vehiculo:actualizado', {
+          vehiculo: vehiculoActualizado,
+          documentosActualizados: documentosCreados,
+          categoriasActualizadas: categorias
+        });
+
+        logger.info(`Actualización de vehículo completada: ${sessionId}`);
+        return { vehiculo: vehiculoActualizado, documentos: documentosCreados };
+
+      } catch (uploadError) {
+        logger.error(`Error subiendo documentos a S3: ${uploadError.message}`);
+
+        // ✅ Actualizar Redis con error de subida
+        await redisClient.hmset(`vehiculo:${sessionId}`,
+          'estado', 'error',
+          'error', `Error al subir documentos: ${uploadError.message}`,
+          'error_tipo', 'upload_s3'
+        );
+
+        throw new Error(`Error al subir documentos: ${uploadError.message}`);
       }
 
-      // Paso 5: Finalizar
-      job.progress(100);
-      const vehiculoActualizado = await Vehiculo.findByPk(vehiculoId);
-
-      notificarGlobal('vehiculo:procesamiento:completado', {
-        sessionId,
-        socketId,
-        tipo: 'actualizacion',
-        vehiculo: vehiculoActualizado,
-        documentos: documentosActualizados,
-        mensaje: 'Documentos actualizados exitosamente',
-        progreso: 100
-      });
-
-      // Notificar globalmente la actualización del vehículo
-      notificarGlobal('vehiculo:actualizado', {
-        vehiculo: vehiculoActualizado,
-        documentosActualizados,
-        categoriasActualizadas: categorias
-      });
-
-      logger.info(`Actualización de documentos completada: ${sessionId}`);
-      return { vehiculo: vehiculoActualizado, documentos: documentosActualizados };
-
     } catch (error) {
-      logger.error(`Error en actualización ${sessionId}: ${error.message}`);
+      logger.error(`Error en procesamiento de actualización ${sessionId}: ${error.message}`);
+
+      // ✅ Actualizar Redis con error general
+      await redisClient.hmset(`vehiculo:${sessionId}`,
+        'estado', 'error',
+        'error', error.message,
+        'mensaje', 'Error al actualizar el vehículo',
+        'fecha_error', new Date().toISOString()
+      );
 
       notificarGlobal('vehiculo:procesamiento:error', {
         sessionId,
@@ -390,12 +1342,24 @@ function inicializarProcesadores() {
         tipo: 'actualizacion',
         vehiculoId,
         error: error.message,
-        mensaje: 'Error al actualizar los documentos'
+        mensaje: 'Error al actualizar el vehículo'
       });
 
+      // Limpiar archivos temporales en caso de error
+      try {
+        // const tempDir = path.join(__dirname, '..', '..', 'temp', sessionId);
+        // await fs.rm(tempDir, { recursive: true, force: true });
+        logger.info(`Directorio temporal limpiado: ${tempDir}`);
+      } catch (cleanupError) {
+        logger.warn(`Error al limpiar directorio temporal: ${cleanupError.message}`);
+      }
+
       throw error;
+    } finally {
+      // ✅ Configurar expiración de datos en Redis (opcional)
+      await redisClient.expire(`vehiculo:${sessionId}`, 86400); // Expira en 2
     }
-  });
+  })
 
   // Eventos de monitoreo para creación
   vehiculoCreacionQueue.on('completed', (job, result) => {
@@ -468,7 +1432,7 @@ async function actualizarDocumentosVehiculo(adaptedFiles, categorias, fechasVige
   };
 
   try {
-    await vehiculoActualizacionQueue.add('actualizar-documentos-vehiculo', jobData, {
+    await vehiculoActualizacionQueue.add('actualizar-vehiculo', jobData, {
       jobId: sessionId,
       priority: 10
     });

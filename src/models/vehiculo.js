@@ -164,14 +164,6 @@ module.exports = (sequelize) => {
       defaultValue: 'DISPONIBLE',
       allowNull: true
     },
-    latitud: {
-      type: DataTypes.FLOAT,
-      allowNull: true
-    },
-    longitud: {
-      type: DataTypes.FLOAT,
-      allowNull: true
-    },
     galeria: {
       type: DataTypes.TEXT,
       allowNull: true,
@@ -206,72 +198,6 @@ module.exports = (sequelize) => {
         }
       }
     },
-    soat_vencimiento: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      validate: {
-        notEmptyIfPresent(value) {
-          if (value !== null && value !== undefined && value.trim() === '') {
-            throw new Error('La fecha de vencimiento del SOAT no puede estar vacía si se proporciona');
-          }
-        }
-      }
-    },
-    tecnomecanica_vencimiento: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      validate: {
-        notEmptyIfPresent(value) {
-          if (value !== null && value !== undefined && value.trim() === '') {
-            throw new Error('La fecha de vencimiento de la tecnomecánica no puede estar vacía si se proporciona');
-          }
-        }
-      }
-    },
-    tarjeta_de_operacion_vencimiento: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      validate: {
-        notEmptyIfPresent(value) {
-          if (value !== null && value !== undefined && value.trim() === '') {
-            throw new Error('La fecha de vencimiento de la tarjeta de operación no puede estar vacía si se proporciona');
-          }
-        }
-      }
-    },
-    poliza_contractual_vencimiento: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      validate: {
-        notEmptyIfPresent(value) {
-          if (value !== null && value !== undefined && value.trim() === '') {
-            throw new Error('La fecha de vencimiento de la póliza contractual no puede estar vacía si se proporciona');
-          }
-        }
-      }
-    },
-    poliza_extra_contractual_vencimiento: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      validate: {
-        notEmptyIfPresent(value) {
-          if (value !== null && value !== undefined && value.trim() === '') {
-            throw new Error('La fecha de vencimiento de la póliza extracontractual no puede estar vacía si se proporciona');
-          }
-        }
-      }
-    },
-    poliza_todo_riesgo_vencimiento: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      validate: {
-        notEmptyIfPresent(value) {
-          if (value !== null && value !== undefined && value.trim() === '') {
-            throw new Error('La fecha de vencimiento de la póliza todo riesgo no puede estar vacía si se proporciona');
-          }
-        }
-      }
-    }
   }, {
     sequelize,
     modelName: 'Vehiculo',
@@ -295,9 +221,8 @@ module.exports = (sequelize) => {
 
     if (models.Documento) {
       Vehiculo.hasMany(models.Documento, {
-        foreignKey: 'modelo_id',
-        constraints: false,
-        scope: { modelo_tipo: 'Vehiculo' }
+        foreignKey: 'vehiculo_id',
+        as: 'documentos'
       });
     }
 
