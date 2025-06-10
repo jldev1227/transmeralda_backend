@@ -46,7 +46,7 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: false
     },
-    tamaño: {
+    size: {
       type: DataTypes.INTEGER,
       allowNull: false
     },

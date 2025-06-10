@@ -298,7 +298,7 @@ async function uploadProcessedDocuments(sessionId, vehiculoId, fechasVigencia, i
                         nombre_original: fileInfo.originalname || `${categoria}.pdf`,
                         nombre_archivo: `${documentId}${path.extname(fileInfo.originalname || '.pdf')}`,
                         ruta_archivo: s3Key, // En este caso, la "ruta" es la key de S3
-                        tamaño: fileInfo.size || 0,
+                        size: fileInfo.size || 0,
                         estado: 'vigente', // Asignar estado por defecto, puede ser actualizado después
                         mimetype: fileInfo.mimetype || 'application/octet-stream',
 
