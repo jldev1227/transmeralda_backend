@@ -13,65 +13,224 @@ const upload = multer({
 
 const uploadDocumentos = upload.array('documentos', 10); // Espera un campo llamado 'documentos'
 
-// Obtener todos los vehículos
+// Obtener todos los vehículos con filtros de documentos
 const getVehiculos = async (req, res) => {
   try {
     const {
       page = 1,
-      limit = 10,
+      limit = 5,
       search,
       sort = 'placa',
-      order = 'ASC'
+      order = 'ASC',
+      // ====== NUEVOS PARÁMETROS DE FILTROS DE DOCUMENTOS ======
+      categoriasDocumentos,
+      estadosDocumentos,
+      fechaVencimientoDesde,
+      fechaVencimientoHasta,
+      diasAlerta
     } = req.query;
 
+    console.log('Query completa recibida:', req.query);
+
     const sequelizeOrder = order === 'ascending' ? 'ASC' : 'DESC';
-
     const whereClause = {};
+    const includeOptions = [];
 
-    // Procesamiento de búsqueda general (busca en varios campos)
+    // ====== PROCESAMIENTO DE BÚSQUEDA GENERAL ======
     if (search) {
       whereClause[Op.or] = [
         { placa: { [Op.iLike]: `%${search}%` } },
         { marca: { [Op.iLike]: `%${search}%` } },
         { modelo: { [Op.iLike]: `%${search}%` } },
         { linea: { [Op.iLike]: `%${search}%` } },
+        { propietario_nombre: { [Op.iLike]: `%${search}%` } },
+        { propietario_identificacion: { [Op.iLike]: `%${search}%` } },
       ];
     }
 
-    // Procesamiento de filtro por estado (puede ser múltiple)
+    // ====== FILTROS BÁSICOS DE VEHÍCULOS ======
     if (req.query.estado) {
       const estados = req.query.estado.split(',');
       whereClause.estado = { [Op.in]: estados };
     }
 
-    // Procesamiento de filtro por clase (puede ser múltiple)
     if (req.query.clase) {
       const clases = req.query.clase.split(',');
       whereClause.clase_vehiculo = { [Op.in]: clases };
     }
 
-    // Si había filtros simples, intégralos también
-    if (req.query.placa) whereClause.placa = { [Op.iLike]: `%${req.query.placa}%` };
+    // ====== CONFIGURACIÓN DE INCLUDE PARA DOCUMENTOS ======
+    let documentosInclude = {
+      model: Documento,
+      as: 'documentos',
+      required: false, // LEFT JOIN por defecto
+      where: {}
+    };
 
+    let hayFiltrosDocumentos = false;
+
+    // ====== FILTROS POR CATEGORÍAS DE DOCUMENTOS ======
+    if (categoriasDocumentos) {
+      const categorias = categoriasDocumentos.split(',');
+      documentosInclude.where.categoria = { [Op.in]: categorias };
+      hayFiltrosDocumentos = true;
+      console.log('Filtro por categorías de documentos:', categorias);
+    }
+
+    // ====== FILTROS POR ESTADOS DE DOCUMENTOS ======
+    if (estadosDocumentos) {
+      const estados = estadosDocumentos.split(',');
+      const documentosWhere = [];
+      const hoy = new Date();
+
+      estados.forEach(estado => {
+        switch (estado) {
+          case 'VIGENTE':
+            documentosWhere.push({
+              fecha_vigencia: { [Op.gte]: hoy },
+              estado: 'vigente'
+            });
+            break;
+          case 'VENCIDO':
+            documentosWhere.push({
+              fecha_vigencia: { [Op.lt]: hoy },
+              estado: 'vigente'
+            });
+            break;
+          case 'POR_VENCER_30':
+            const en30Dias = new Date();
+            en30Dias.setDate(hoy.getDate() + 30);
+            documentosWhere.push({
+              fecha_vigencia: { 
+                [Op.between]: [hoy, en30Dias] 
+              },
+              estado: 'vigente'
+            });
+            break;
+          case 'POR_VENCER_15':
+            const en15Dias = new Date();
+            en15Dias.setDate(hoy.getDate() + 15);
+            documentosWhere.push({
+              fecha_vigencia: { 
+                [Op.between]: [hoy, en15Dias] 
+              },
+              estado: 'vigente'
+            });
+            break;
+          case 'POR_VENCER_7':
+            const en7Dias = new Date();
+            en7Dias.setDate(hoy.getDate() + 7);
+            documentosWhere.push({
+              fecha_vigencia: { 
+                [Op.between]: [hoy, en7Dias] 
+              },
+              estado: 'vigente'
+            });
+            break;
+          case 'SIN_DOCUMENTO':
+            // Este caso requiere lógica especial - vehículos sin ciertos documentos
+            break;
+        }
+      });
+
+      if (documentosWhere.length > 0) {
+        documentosInclude.where[Op.or] = documentosWhere;
+        hayFiltrosDocumentos = true;
+        console.log('Filtro por estados de documentos:', estados);
+      }
+    }
+
+    // ====== FILTROS POR FECHAS DE VENCIMIENTO ======
+    if (fechaVencimientoDesde || fechaVencimientoHasta) {
+      const fechaWhere = {};
+      
+      if (fechaVencimientoDesde) {
+        fechaWhere[Op.gte] = new Date(fechaVencimientoDesde);
+      }
+      
+      if (fechaVencimientoHasta) {
+        fechaWhere[Op.lte] = new Date(fechaVencimientoHasta);
+      }
+      
+      documentosInclude.where.fecha_vigencia = fechaWhere;
+      hayFiltrosDocumentos = true;
+      console.log('Filtro por fechas de vencimiento:', { fechaVencimientoDesde, fechaVencimientoHasta });
+    }
+
+    // ====== FILTRO POR DÍAS DE ALERTA ======
+    if (diasAlerta) {
+      const fechaAlerta = new Date();
+      fechaAlerta.setDate(fechaAlerta.getDate() + parseInt(diasAlerta));
+      
+      documentosInclude.where.fecha_vigencia = {
+        [Op.between]: [new Date(), fechaAlerta]
+      };
+      hayFiltrosDocumentos = true;
+      console.log('Filtro por días de alerta:', diasAlerta);
+    }
+
+    // ====== CONFIGURAR INCLUDE FINAL ======
+    if (hayFiltrosDocumentos) {
+      // Si hay filtros de documentos, hacer INNER JOIN
+      documentosInclude.required = true;
+      includeOptions.push(documentosInclude);
+    } else {
+      // Si no hay filtros de documentos, incluir todos los documentos
+      includeOptions.push({
+        model: Documento,
+        as: 'documentos',
+        required: false
+      });
+    }
+
+    // ====== PAGINACIÓN ======
     const offset = (page - 1) * limit;
 
-    // Determinación del ordenamiento
+    // ====== ORDENAMIENTO ======
     let orderArray = [[sort, sequelizeOrder]];
 
-    // Si el ordenamiento es por placa completo (para mostrar placa + apellido)
-    if (sort === 'vehiculo') {
-      orderArray = [['placa', sequelizeOrder], ['marca', sequelizeOrder], ['modelo', sequelizeOrder], ['linea', sequelizeOrder]];
+    // Ordenamientos especiales
+    switch (sort) {
+      case 'vehiculo':
+        orderArray = [['placa', sequelizeOrder], ['marca', sequelizeOrder], ['modelo', sequelizeOrder]];
+        break;
+      case 'fecha_vencimiento_proxima':
+        // Ordenar por la fecha de vencimiento más próxima de todos los documentos
+        orderArray = [
+          [{ model: Documento, as: 'documentos' }, 'fecha_vigencia', sequelizeOrder]
+        ];
+        break;
     }
 
     const { count, rows } = await Vehiculo.findAndCountAll({
       where: whereClause,
-      include: [
-        { model: Documento, as: 'documentos' }
-      ],
+      include: includeOptions,
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: orderArray,
-      distinct: true  // Importante para contar correctamente con includes
+      distinct: true, // Importante para contar correctamente con includes
+      subQuery: false // Para mejorar performance con includes complejos
+    });
+
+    // ====== POST-PROCESAMIENTO DE DATOS ======
+    const vehiculosConEstadoDocumentos = rows.map(vehiculo => {
+      const vehiculoData = vehiculo.toJSON();
+      
+      // Calcular estado de documentos para cada vehículo
+      if (vehiculoData.documentos) {
+        vehiculoData.estadoDocumentos = calcularEstadoDocumentos(vehiculoData.documentos);
+        vehiculoData.documentosVencidos = vehiculoData.documentos.filter(doc => 
+          new Date(doc.fecha_vigencia) < new Date()
+        ).length;
+        vehiculoData.documentosPorVencer = vehiculoData.documentos.filter(doc => {
+          const hoy = new Date();
+          const vencimiento = new Date(doc.fecha_vigencia);
+          const diasRestantes = Math.ceil((vencimiento - hoy) / (1000 * 60 * 60 * 24));
+          return diasRestantes <= 30 && diasRestantes > 0;
+        }).length;
+      }
+      
+      return vehiculoData;
     });
 
     res.status(200).json({
@@ -79,8 +238,16 @@ const getVehiculos = async (req, res) => {
       count,
       totalPages: Math.ceil(count / limit),
       currentPage: parseInt(page),
-      data: rows
+      data: vehiculosConEstadoDocumentos,
+      filtrosAplicados: {
+        categoriasDocumentos: categoriasDocumentos ? categoriasDocumentos.split(',') : [],
+        estadosDocumentos: estadosDocumentos ? estadosDocumentos.split(',') : [],
+        fechaVencimientoDesde,
+        fechaVencimientoHasta,
+        diasAlerta
+      }
     });
+
   } catch (error) {
     console.error('Error al obtener vehículos:', error);
     res.status(500).json({
@@ -89,6 +256,32 @@ const getVehiculos = async (req, res) => {
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
+};
+
+// ====== FUNCIÓN AUXILIAR PARA CALCULAR ESTADO DE DOCUMENTOS ======
+const calcularEstadoDocumentos = (documentos) => {
+  if (!documentos || documentos.length === 0) {
+    return 'SIN_DOCUMENTOS';
+  }
+
+  const hoy = new Date();
+  let tieneVencidos = false;
+  let tienePorVencer = false;
+
+  documentos.forEach(doc => {
+    const fechaVencimiento = new Date(doc.fecha_vigencia);
+    const diasRestantes = Math.ceil((fechaVencimiento - hoy) / (1000 * 60 * 60 * 24));
+
+    if (diasRestantes < 0) {
+      tieneVencidos = true;
+    } else if (diasRestantes <= 30) {
+      tienePorVencer = true;
+    }
+  });
+
+  if (tieneVencidos) return 'CON_VENCIDOS';
+  if (tienePorVencer) return 'POR_VENCER';
+  return 'VIGENTE';
 };
 
 // Obtener un vehículo por ID
