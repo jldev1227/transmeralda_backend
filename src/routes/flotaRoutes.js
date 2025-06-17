@@ -14,8 +14,8 @@ const {
   asignarConductor,
   buscarVehiculosPorPlaca,
   getVehiculosBasicos,
-  uploadGaleriaImages,
   uploadDocumentos,
+  getReportVigenciasCompressed,
   getProgressProccess,
   getVehiculoBasico,
   createVehiculoBasico,
@@ -44,8 +44,11 @@ router.patch('/:id/kilometraje', updateKilometrajeVehiculo);
 router.delete('/:id/galeria', protect, hasRole(['admin', 'gestor_flota']), deleteGaleriaImage);
 router.patch('/:id/conductor', protect, hasRole(['admin', 'gestor_flota']), asignarConductor);
 
-
 // Obtener progreso drouter.get('/progreso/:sessionId', async (req, res) => {
 router.get('/progreso/:sessionId', protect, hasRole(['admin', 'gestor_flota']), getProgressProccess)
+
+// Obtener reporte de vigencia de vehículos en formato PDF
+router.post('/reporte-vigencias', protect, hasRole(['admin', 'gestor_flota']), getReportVigenciasCompressed);
+
 
 module.exports = router;

@@ -4,6 +4,10 @@ const { Op } = require('sequelize');
 const multer = require('multer');
 const { procesarDocumentos, actualizarDocumentosVehiculo } = require('../queues/vehiculo');
 const { redisClient } = require('../config/redisClient');
+const PDFDocument = require('pdfkit');
+const archiver = require('archiver');
+const fs = require('fs');
+const path = require('path');
 
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -13,16 +17,15 @@ const upload = multer({
 
 const uploadDocumentos = upload.array('documentos', 10); // Espera un campo llamado 'documentos'
 
-// Obtener todos los vehículos con filtros de documentos
+/**
+ * Obtener todos los vehículos con filtros de documentos (sin paginación/limit)
+ */
 const getVehiculos = async (req, res) => {
   try {
     const {
-      page = 1,
-      limit = 5,
       search,
       sort = 'placa',
       order = 'ASC',
-      // ====== NUEVOS PARÁMETROS DE FILTROS DE DOCUMENTOS ======
       categoriasDocumentos,
       estadosDocumentos,
       fechaVencimientoDesde,
@@ -63,7 +66,7 @@ const getVehiculos = async (req, res) => {
     let documentosInclude = {
       model: Documento,
       as: 'documentos',
-      required: false, // LEFT JOIN por defecto
+      required: false,
       where: {}
     };
 
@@ -101,8 +104,8 @@ const getVehiculos = async (req, res) => {
             const en30Dias = new Date();
             en30Dias.setDate(hoy.getDate() + 30);
             documentosWhere.push({
-              fecha_vigencia: { 
-                [Op.between]: [hoy, en30Dias] 
+              fecha_vigencia: {
+                [Op.between]: [hoy, en30Dias]
               },
               estado: 'vigente'
             });
@@ -111,8 +114,8 @@ const getVehiculos = async (req, res) => {
             const en15Dias = new Date();
             en15Dias.setDate(hoy.getDate() + 15);
             documentosWhere.push({
-              fecha_vigencia: { 
-                [Op.between]: [hoy, en15Dias] 
+              fecha_vigencia: {
+                [Op.between]: [hoy, en15Dias]
               },
               estado: 'vigente'
             });
@@ -121,8 +124,8 @@ const getVehiculos = async (req, res) => {
             const en7Dias = new Date();
             en7Dias.setDate(hoy.getDate() + 7);
             documentosWhere.push({
-              fecha_vigencia: { 
-                [Op.between]: [hoy, en7Dias] 
+              fecha_vigencia: {
+                [Op.between]: [hoy, en7Dias]
               },
               estado: 'vigente'
             });
@@ -143,15 +146,15 @@ const getVehiculos = async (req, res) => {
     // ====== FILTROS POR FECHAS DE VENCIMIENTO ======
     if (fechaVencimientoDesde || fechaVencimientoHasta) {
       const fechaWhere = {};
-      
+
       if (fechaVencimientoDesde) {
         fechaWhere[Op.gte] = new Date(fechaVencimientoDesde);
       }
-      
+
       if (fechaVencimientoHasta) {
         fechaWhere[Op.lte] = new Date(fechaVencimientoHasta);
       }
-      
+
       documentosInclude.where.fecha_vigencia = fechaWhere;
       hayFiltrosDocumentos = true;
       console.log('Filtro por fechas de vencimiento:', { fechaVencimientoDesde, fechaVencimientoHasta });
@@ -161,7 +164,7 @@ const getVehiculos = async (req, res) => {
     if (diasAlerta) {
       const fechaAlerta = new Date();
       fechaAlerta.setDate(fechaAlerta.getDate() + parseInt(diasAlerta));
-      
+
       documentosInclude.where.fecha_vigencia = {
         [Op.between]: [new Date(), fechaAlerta]
       };
@@ -171,11 +174,9 @@ const getVehiculos = async (req, res) => {
 
     // ====== CONFIGURAR INCLUDE FINAL ======
     if (hayFiltrosDocumentos) {
-      // Si hay filtros de documentos, hacer INNER JOIN
       documentosInclude.required = true;
       includeOptions.push(documentosInclude);
     } else {
-      // Si no hay filtros de documentos, incluir todos los documentos
       includeOptions.push({
         model: Documento,
         as: 'documentos',
@@ -183,43 +184,35 @@ const getVehiculos = async (req, res) => {
       });
     }
 
-    // ====== PAGINACIÓN ======
-    const offset = (page - 1) * limit;
-
     // ====== ORDENAMIENTO ======
     let orderArray = [[sort, sequelizeOrder]];
 
-    // Ordenamientos especiales
     switch (sort) {
       case 'vehiculo':
         orderArray = [['placa', sequelizeOrder], ['marca', sequelizeOrder], ['modelo', sequelizeOrder]];
         break;
       case 'fecha_vencimiento_proxima':
-        // Ordenar por la fecha de vencimiento más próxima de todos los documentos
         orderArray = [
           [{ model: Documento, as: 'documentos' }, 'fecha_vigencia', sequelizeOrder]
         ];
         break;
     }
 
-    const { count, rows } = await Vehiculo.findAndCountAll({
+    // ====== CONSULTA SIN LIMIT ======
+    const vehiculos = await Vehiculo.findAll({
       where: whereClause,
       include: includeOptions,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
       order: orderArray,
-      distinct: true, // Importante para contar correctamente con includes
-      subQuery: false // Para mejorar performance con includes complejos
+      distinct: true,
+      subQuery: false
     });
 
     // ====== POST-PROCESAMIENTO DE DATOS ======
-    const vehiculosConEstadoDocumentos = rows.map(vehiculo => {
+    const vehiculosConEstadoDocumentos = vehiculos.map(vehiculo => {
       const vehiculoData = vehiculo.toJSON();
-      
-      // Calcular estado de documentos para cada vehículo
       if (vehiculoData.documentos) {
         vehiculoData.estadoDocumentos = calcularEstadoDocumentos(vehiculoData.documentos);
-        vehiculoData.documentosVencidos = vehiculoData.documentos.filter(doc => 
+        vehiculoData.documentosVencidos = vehiculoData.documentos.filter(doc =>
           new Date(doc.fecha_vigencia) < new Date()
         ).length;
         vehiculoData.documentosPorVencer = vehiculoData.documentos.filter(doc => {
@@ -229,15 +222,12 @@ const getVehiculos = async (req, res) => {
           return diasRestantes <= 30 && diasRestantes > 0;
         }).length;
       }
-      
       return vehiculoData;
     });
 
     res.status(200).json({
       success: true,
-      count,
-      totalPages: Math.ceil(count / limit),
-      currentPage: parseInt(page),
+      count: vehiculosConEstadoDocumentos.length,
       data: vehiculosConEstadoDocumentos,
       filtrosAplicados: {
         categoriasDocumentos: categoriasDocumentos ? categoriasDocumentos.split(',') : [],
@@ -493,8 +483,6 @@ const updateVehiculo = async (req, res) => {
       galeria
     } = req.body;
     const files = req.files;
-
-    console.log(id, categorias, fechasVigencia);
 
     // Validar que se proporcione el ID del vehículo
     if (!id) {
@@ -1220,6 +1208,489 @@ async function getVehicleDocument(documentId) {
   }
 }
 
+async function getReportVigenciasCompressed(req, res) {
+  try {
+    const { vehiculoIds } = req.body;
+
+    if (!vehiculoIds || !Array.isArray(vehiculoIds) || vehiculoIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Se requiere un array de IDs de vehículos'
+      });
+    }
+
+    // Array para almacenar los buffers de PDFs generados
+    const pdfBuffers = [];
+
+    // Generar PDF para cada vehículo
+    for (const vehiculoId of vehiculoIds) {
+      try {
+        // Consultar información del vehículo con Sequelize
+        const vehiculo = await Vehiculo.findByPk(vehiculoId, {
+          include: [
+            {
+              model: Documento,
+              as: 'documentos', // Ajusta según tu asociación
+              order: [['tipo_documento', 'ASC'], ['created_at', 'DESC']]
+            }
+          ]
+        });
+
+        if (!vehiculo) {
+          console.log(`Vehículo con ID ${vehiculoId} no encontrado`);
+          continue;
+        }
+
+        // Obtener documentos (pueden venir del include o consulta separada)
+        let documentos = vehiculo.documentos;
+
+        // Si no vienen del include, hacer consulta separada
+        if (!documentos) {
+          documentos = await Documento.findAll({
+            where: {
+              vehiculo_id: vehiculoId
+            },
+            order: [['tipo_documento', 'ASC'], ['created_at', 'DESC']]
+          });
+        }
+
+        // Generar PDF para este vehículo
+        const pdfBuffer = await generateVehiculoPDF(vehiculo, documentos);
+
+        pdfBuffers.push({
+          filename: `vehiculo_${vehiculo.placa || vehiculo.id}_reporte.pdf`,
+          buffer: pdfBuffer
+        });
+
+      } catch (vehiculoError) {
+        console.error(`Error procesando vehículo ${vehiculoId}:`, vehiculoError);
+        continue;
+      }
+    }
+
+    if (pdfBuffers.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No se pudieron generar PDFs para los vehículos solicitados'
+      });
+    }
+
+    // Comprimir todos los PDFs
+    const zipBuffer = await compressPDFs(pdfBuffers);
+
+    // Configurar headers para descarga
+    const filename = `reportes_vehiculos_${Date.now()}.zip`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', zipBuffer.length);
+
+    // Enviar el archivo comprimido
+    res.send(zipBuffer);
+
+  } catch (error) {
+    console.error('Error en getReportVigenciasCompressed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor',
+      error: error.message
+    });
+  }
+}
+
+async function generateVehiculoPDF(vehiculo, documentos) {
+  return new Promise((resolve, reject) => {
+    try {
+      // Crear nuevo documento PDF
+      const doc = new PDFDocument({
+        size: 'A4',
+        margins: { top: 25, bottom: 25, left: 40, right: 40 },
+      });
+
+      // Array para almacenar los chunks del PDF
+      const chunks = [];
+
+      const imagePath = path.join(
+        __dirname,
+        "..",
+        "..",
+        "public",
+        "assets",
+        "codi.png"
+      );
+
+      // Capturar el stream del PDF
+      doc.on('data', chunk => chunks.push(chunk));
+      doc.on('end', () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        resolve(pdfBuffer);
+      });
+      doc.on('error', reject);
+
+      // === HEADER ===
+      doc
+        .fontSize(13)
+        .fillColor("#2E8B57")
+        .font("Helvetica-Bold")
+        .text("TRANSPORTES Y SERVICIOS ESMERALDA S.A.S ZOMAC", 40, 30, {
+          width: 300,
+        });
+
+      doc
+        .fontSize(10)
+        .fillColor("#000000")
+        .font("Helvetica")
+        .text("NIT: 901528440-3", 40, 65);
+
+      doc.fontSize(11)
+        .font('Helvetica-Bold')
+        .fillColor('#2E8B57')
+        .text('REPORTE DE DOCUMENTACIÓN VEHICULAR', 40, 100);
+
+      // Logo
+      const imageX = 420;
+      const imageY = 25;
+      doc.image(imagePath, imageX, imageY, {
+        fit: [175, 100],
+        align: "right",
+        valign: "top",
+      });
+
+      // === INFORMACIÓN DEL VEHÍCULO ===
+      let yPos = 135;
+
+      doc.fontSize(13)
+        .font('Helvetica-Bold')
+        .fillColor('#2c3e50')
+        .text('INFORMACIÓN DEL VEHÍCULO', 40, yPos);
+
+      yPos += 20;
+      doc.strokeColor('#2E8B57')
+        .lineWidth(2)
+        .moveTo(40, yPos)
+        .lineTo(555, yPos)
+        .stroke();
+
+      yPos += 25;
+
+      // Datos del vehículo en grid 2x3 con más espacio
+      const formatDate = (date) => {
+        if (!date) return 'No especificado';
+        const d = new Date(date);
+        if (isNaN(d.getTime())) return 'No especificado';
+        // Sumar un día
+        d.setDate(d.getDate() + 1);
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
+      };
+
+      const vehiculoData = [
+        { label: 'Placa', value: vehiculo.placa || 'No especificada' },
+        { label: 'Marca', value: vehiculo.marca || 'No especificada' },
+        { label: 'Modelo', value: vehiculo.modelo || 'No especificado' },
+        { label: 'Línea', value: vehiculo.linea || 'No especificado' },
+        { label: 'Color', value: vehiculo.color || 'No especificado' },
+        { label: 'Fecha Matrícula', value: formatDate(vehiculo.fecha_matricula) },
+      ];
+
+      const colWidth = 240;
+      const rowHeight = 45;
+
+      for (let i = 0; i < vehiculoData.length; i++) {
+        const isLeftColumn = i % 2 === 0;
+        const row = Math.floor(i / 2);
+        const x = isLeftColumn ? 45 : 45 + colWidth + 25;
+        const y = yPos + (row * rowHeight);
+
+        // Fondo sutil alternado por filas
+        if (row % 2 === 0) {
+          doc.rect(x - 5, y - 5, colWidth + 10, rowHeight)
+            .fillColor('#f8f9fa')
+            .fill();
+        }
+
+        // Label
+        doc.fontSize(11)
+          .font('Helvetica-Bold')
+          .fillColor('#7f8c8d')
+          .text(vehiculoData[i].label.toUpperCase(), x, y + 4);
+
+        // Value con mayor tamaño
+        doc.fontSize(13)
+          .font('Helvetica')
+          .fillColor('#2c3e50')
+          .text(vehiculoData[i].value, x, y + 20, { width: colWidth - 10 });
+      }
+
+      yPos += (Math.ceil(vehiculoData.length / 2) * rowHeight) + 35;
+
+      // === DOCUMENTOS ===
+      doc.fontSize(13)
+        .font('Helvetica-Bold')
+        .fillColor('#2c3e50')
+        .text('ESTADO DE DOCUMENTOS', 40, yPos);
+
+      yPos += 20;
+      doc.strokeColor('#2E8B57')
+        .lineWidth(2)
+        .moveTo(40, yPos)
+        .lineTo(555, yPos)
+        .stroke();
+
+      yPos += 25;
+
+      if (!documentos || documentos.length === 0) {
+        // Estado vacío con mejor presentación
+        doc.rect(40, yPos, 515, 60)
+          .fillColor('#f8f9fa')
+          .fill();
+
+        doc.fontSize(12)
+          .font('Helvetica')
+          .fillColor('#95a5a6')
+          .text('No hay documentos registrados para este vehículo', 40, yPos + 25, {
+            align: 'center',
+            width: 515
+          });
+        yPos += 80;
+      } else {
+        // Headers de tabla más grandes
+        const tableHeaders = ['DOCUMENTO', 'FECHA VIGENCIA', 'ESTADO', 'DÍAS RESTANTES POR VENCER'];
+        const colWidths = [180, 120, 100, 205];
+        const colPositions = [40, 190, 300, 360];
+
+        // Header con mejor diseño
+        doc.rect(40, yPos, 515, 25)
+          .fillColor('#ecf0f1')
+          .fill();
+
+        doc.strokeColor('#bdc3c7')
+          .lineWidth(1)
+          .rect(40, yPos, 515, 25)
+          .stroke();
+
+        doc.fontSize(11)
+          .font('Helvetica-Bold')
+          .fillColor('#2c3e50');
+
+        tableHeaders.forEach((header, i) => {
+          doc.text(header, colPositions[i] + 8, yPos + 8, { width: colWidths[i] - 15 });
+        });
+
+        yPos += 30;
+
+        // Filas de documentos más espaciadas
+        // Ordenar documentos según prioridad especificada
+        // Filtrar la tarjeta de propiedad antes de ordenar
+        const documentosFiltrados = documentos.filter(
+          doc => (doc.categoria || '').toUpperCase() !== 'TARJETA_DE_PROPIEDAD'
+        );
+
+        const documentosOrdenados = [...documentosFiltrados].sort((a, b) => {
+          const catA = (a.categoria || '').toUpperCase();
+          const catB = (b.categoria || '').toUpperCase();
+
+          // Función para determinar prioridad de grupo
+          const getPrioridad = (categoria) => {
+            if (categoria.startsWith('T')) return 2; // Otras T
+            if (categoria === 'SOAT') return 3; // SOAT después de T
+            if (categoria.startsWith('P')) return 4; // P después de SOAT
+            return 5; // Resto al final
+          };
+
+          const prioridadA = getPrioridad(catA);
+          const prioridadB = getPrioridad(catB);
+
+          // Si tienen diferente prioridad de grupo, ordenar por prioridad
+          if (prioridadA !== prioridadB) {
+            return prioridadA - prioridadB;
+          }
+
+          // Si están en el mismo grupo, aplicar regla específica
+          if (prioridadA === 2) {
+            // Grupo T: ordenar A-Z
+            return catA.localeCompare(catB);
+          } else if (prioridadA === 4) {
+            // Grupo P: ordenar A-Z
+            return catA.localeCompare(catB);
+          } else if (prioridadA === 5) {
+            // Resto: ordenar Z-A
+            return catB.localeCompare(catA);
+          }
+
+          return 0;
+        });
+
+        documentosOrdenados.forEach((documento, index) => {
+          const rowHeight = 35;
+
+          // Fondo alternado
+          if (index % 2 === 0) {
+            doc.rect(40, yPos, 515, rowHeight)
+              .fillColor('#fafafa')
+              .fill();
+          }
+
+          // Borde de la fila
+          doc.strokeColor('#e8e8e8')
+            .lineWidth(0.5)
+            .rect(40, yPos, 515, rowHeight)
+            .stroke();
+
+          // Calcular estado y datos
+          const categoria = (documento.categoria || '').toUpperCase();
+          let estado = 'Sin especificar';
+          let fechaVigencia = 'No especificada';
+          let diasRestantes = 'N/A';
+          let colorEstado = '#95a5a6';
+
+          if (categoria === 'TARJETA_DE_PROPIEDAD') {
+            estado = 'Permanente';
+            fechaVigencia = 'No aplica';
+            diasRestantes = 'Permanente';
+            colorEstado = '#3498db';
+          } else {
+            const fechaVigenciaRaw = documento.fecha_vigencia || documento.fechaVigencia;
+            if (fechaVigenciaRaw) {
+              const hoy = new Date();
+              hoy.setHours(0, 0, 0, 0);
+              const fechaVigenciaDate = new Date(fechaVigenciaRaw);
+              fechaVigenciaDate.setHours(0, 0, 0, 0);
+              const diffDias = Math.ceil((fechaVigenciaDate - hoy) / (1000 * 60 * 60 * 24));
+
+              fechaVigencia = fechaVigenciaDate.toLocaleDateString('es-CO', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+              });
+
+              if (diffDias <= 0) {
+                estado = 'Vencido';
+                diasRestantes = `${Math.abs(diffDias)} días vencido`;
+                colorEstado = '#e74c3c';
+              } else if (diffDias <= 30) {
+                estado = 'Por vencer';
+                diasRestantes = `${diffDias} días restantes`;
+                colorEstado = '#f39c12';
+              } else {
+                estado = 'Vigente';
+                diasRestantes = `${diffDias} días restantes`;
+                colorEstado = '#27ae60';
+              }
+            }
+          }
+
+          // Barra de color lateral más prominente
+          doc.rect(40, yPos, 6, rowHeight)
+            .fillColor(colorEstado)
+            .fill();
+
+          // Contenido de la fila con fuentes más grandes
+          doc.fontSize(10)
+            .font('Helvetica')
+            .fillColor('#2c3e50');
+
+          // Documento
+          const nombreDoc = (documento.categoria || '').replace(/_/g, ' ');
+          doc.text(nombreDoc, colPositions[0] + 12, yPos + 14, { width: colWidths[0] - 20 });
+
+          // Vigencia
+          doc.text(fechaVigencia, colPositions[1] + 8, yPos + 14, {
+            width: colWidths[1] - 15,
+            align: 'center'
+          });
+
+          // Estado con color y negrita
+          doc.fillColor(colorEstado)
+            .font('Helvetica-Bold')
+            .text(estado, colPositions[2] + 8, yPos + 14, { width: colWidths[2] - 15 });
+
+          // Días restantes centrado horizontalmente
+          doc.fillColor('#2c3e50')
+            .font('Helvetica')
+            .text(diasRestantes, colPositions[3] + 8, yPos + 14, {
+              width: colWidths[3] - 15,
+              align: 'center'
+            });
+
+          yPos += rowHeight;
+        });
+      }
+
+      // === FOOTER ===
+      const footerY = 750;
+
+      doc.strokeColor('#2E8B57')
+        .lineWidth(1)
+        .moveTo(40, footerY)
+        .lineTo(555, footerY)
+        .stroke();
+
+      doc.fontSize(9)
+        .font('Helvetica')
+        .fillColor('#7f8c8d')
+        .text('Sistema de Gestión Vehicular - Transportes y Servicios Esmeralda S.A.S', 40, footerY + 10, {
+          align: 'center',
+          width: 515
+        });
+
+      const fechaActual = new Date().toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      doc.fontSize(8)
+        .fillColor('#95a5a6')
+        .text(`Generado el ${fechaActual}`, 40, footerY + 25, {
+          align: 'center',
+          width: 515
+        });
+
+      // Finalizar el documento
+      doc.end();
+
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+async function compressPDFs(pdfBuffers) {
+  return new Promise((resolve, reject) => {
+    try {
+      // Crear archiver para ZIP
+      const archive = archiver('zip', {
+        zlib: { level: 9 } // Máxima compresión
+      });
+
+      const chunks = [];
+
+      // Capturar los chunks del ZIP
+      archive.on('data', chunk => chunks.push(chunk));
+      archive.on('end', () => {
+        const zipBuffer = Buffer.concat(chunks);
+        resolve(zipBuffer);
+      });
+      archive.on('error', reject);
+
+      // Agregar cada PDF al archivo ZIP
+      pdfBuffers.forEach(({ filename, buffer }) => {
+        archive.append(buffer, { name: filename });
+      });
+
+      // Finalizar el archivo
+      archive.finalize();
+
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
 // Middleware para manejar carga de archivos
 const uploadGaleriaImages = upload.array('galeria', 10); // Máximo 10 imágenes
 
@@ -1243,5 +1714,6 @@ module.exports = {
   uploadDocumentos,
   getProgressProccess,
   uploadVehicleDocument,
-  getVehicleDocument
+  getVehicleDocument,
+  getReportVigenciasCompressed
 };

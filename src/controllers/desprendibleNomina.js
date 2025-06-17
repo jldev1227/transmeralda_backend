@@ -1,4 +1,4 @@
-// controllers/pdfController.js
+// controllers/desprendibleNomina.js
 const Queue = require("bull");
 const { v4: uuidv4 } = require("uuid");
 const {
@@ -943,7 +943,7 @@ async function generatePDF(liquidacion) {
 
       doc.moveDown(2);
 
-      // PERIOD
+      // PERIODO
       doc
         .fontSize(13)
         .fillColor("#2E8B57")
