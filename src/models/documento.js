@@ -73,7 +73,23 @@ module.exports = (sequelize) => {
     modelName: 'Documento',
     tableName: 'documento',
     underscored: true,
-    timestamps: true
+    timestamps: true,
+    hooks: {
+      beforeCreate: (documento) => {
+        if (documento.fecha_vigencia) {
+          const fecha = new Date(documento.fecha_vigencia);
+          fecha.setDate(fecha.getDate() + 1);
+          documento.fecha_vigencia = fecha;
+        }
+      },
+      beforeUpdate: (documento) => {
+        if (documento.fecha_vigencia) {
+          const fecha = new Date(documento.fecha_vigencia);
+          fecha.setDate(fecha.getDate() + 1);
+          documento.fecha_vigencia = fecha;
+        }
+      }
+    }
   });
 
   Documento.associate = (models) => {

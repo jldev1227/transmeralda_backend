@@ -1,7 +1,7 @@
 const Queue = require('bull');
 const { redisOptions } = require('../config/redisClient');
 const logger = require('../utils/logger');
-const { Vehiculo, Documento } = require('../models');
+const { User, Vehiculo, Documento } = require('../models');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const { uploadProcessedDocuments, saveTemporaryDocument } = require('../controllers/documentoController');
@@ -28,6 +28,23 @@ function notificarGlobal(evento, datos) {
     logger.debug(`Evento ${evento} emitido globalmente a todos los clientes conectados`);
   } catch (error) {
     logger.error(`Error al emitir evento global ${evento}: ${error.message}`);
+  }
+}
+
+function notifyUser(userId, event, data) {
+  try {
+    // Obtener la función notifyUser de la aplicación global
+    const notifyFn = global.app?.get("notifyUser");
+
+    if (notifyFn) {
+      notifyFn(userId, event, data);
+    } else {
+      console.log(
+        `No se pudo notificar al usuario ${userId} (evento: ${event}) - Socket.IO no está disponible`
+      );
+    }
+  } catch (error) {
+    console.error("Error al notificar al usuario:", error);
   }
 }
 
@@ -221,6 +238,7 @@ function inicializarProcesadores() {
   // Procesador para creación de vehículos
   vehiculoCreacionQueue.process('crear-vehiculo', async (job) => {
     const { sessionId, adaptedFiles, datosVehiculo, categorias, socketId } = job.data;
+    const userId = job.opts.userId;
 
     try {
       // ====== PASO 1: RECIBO LOS DOCUMENTOS ======
@@ -234,7 +252,7 @@ function inicializarProcesadores() {
 
       logger.info(`Iniciando procesamiento de creación de vehículo: ${sessionId}`);
 
-      notificarGlobal('vehiculo:procesamiento:inicio', {
+      notifyUser(userId, 'vehiculo:procesamiento:inicio', {
         sessionId,
         socketId,
         tipo: 'creacion',
@@ -251,13 +269,13 @@ function inicializarProcesadores() {
 
       if (categoriasFaltantes.length > 0) {
         const errorMsg = `Falta la tarjeta de propiedad, que es obligatoria.`;
-        await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_documentos_faltantes');
+        await handleProcessingError(userId, sessionId, socketId, errorMsg, 'validacion_documentos_faltantes');
         throw new Error(errorMsg);
       }
 
       if (adaptedFiles.length !== categorias.length) {
         const errorMsg = `El número de archivos (${adaptedFiles.length}) no coincide con el número de categorías (${categorias.length})`;
-        await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_cantidad_archivos');
+        await handleProcessingError(userId, sessionId, socketId, errorMsg, 'validacion_cantidad_archivos');
         throw new Error(errorMsg);
       }
 
@@ -269,7 +287,7 @@ function inicializarProcesadores() {
         'mensaje', 'Procesando documentos...'
       );
 
-      notificarGlobal('vehiculo:procesamiento:progreso', {
+      notifyUser(userId, 'vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
         mensaje: 'Procesando documentos...',
@@ -290,7 +308,7 @@ function inicializarProcesadores() {
           'documento_actual', archivo.categoria
         );
 
-        notificarGlobal('vehiculo:procesamiento:progreso', {
+        notifyUser(userId, 'vehiculo:procesamiento:progreso', {
           sessionId,
           socketId,
           mensaje: `Procesando documento ${archivo.categoria} (${i + 1}/${totalArchivos})...`,
@@ -321,7 +339,7 @@ function inicializarProcesadores() {
               'documento_actual', 'OCR_TARJETA_DE_PROPIEDAD'
             );
 
-            notificarGlobal('vehiculo:procesamiento:progreso', {
+            notifyUser(userId, 'vehiculo:procesamiento:progreso', {
               sessionId,
               socketId,
               mensaje: 'Extrayendo datos de la tarjeta de propiedad...',
@@ -343,7 +361,7 @@ function inicializarProcesadores() {
 
         } catch (error) {
           logger.error(`Error procesando documento ${archivo.categoria}: ${error.message}`);
-          await handleDocumentError(sessionId, socketId, archivo.categoria, error.message);
+          await handleDocumentError(userId, sessionId, socketId, archivo.categoria, error.message);
           throw new Error(error.message);
         }
       }
@@ -351,7 +369,7 @@ function inicializarProcesadores() {
       // ====== PASO 3: VALIDO LOS VALORES EXTRAÍDOS ======
       if (!datosExtraidos) {
         const errorMsg = 'No se pudieron extraer datos de la tarjeta de propiedad';
-        await handleProcessingError(sessionId, socketId, errorMsg, 'ocr_sin_datos');
+        await handleProcessingError(userId, sessionId, socketId, errorMsg, 'ocr_sin_datos');
         throw new Error(errorMsg);
       }
 
@@ -362,7 +380,7 @@ function inicializarProcesadores() {
         'mensaje', 'Validando datos extraídos...'
       );
 
-      notificarGlobal('vehiculo:procesamiento:progreso', {
+      notifyUser(userId, 'vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
         mensaje: 'Validando datos extraídos...',
@@ -375,7 +393,7 @@ function inicializarProcesadores() {
 
       if (camposFaltantes.length > 0) {
         const errorMsg = `Faltan los siguientes campos obligatorios: ${camposFaltantes.join(', ')}`;
-        await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_campos_obligatorios');
+        await handleProcessingError(userId, sessionId, socketId, errorMsg, 'validacion_campos_obligatorios');
         throw new Error(errorMsg);
       }
 
@@ -387,7 +405,7 @@ function inicializarProcesadores() {
         'mensaje', 'Verificando duplicados...'
       );
 
-      notificarGlobal('vehiculo:procesamiento:progreso', {
+      notifyUser(userId, 'vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
         mensaje: 'Verificando duplicados...',
@@ -401,7 +419,7 @@ function inicializarProcesadores() {
       if (vehiculoExistente) {
         const errorMsg = `Ya existe un vehículo con la placa ${datosExtraidos.placa}`;
         logger.error(errorMsg);
-        await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_placa_existente', vehiculoExistente);
+        await handleProcessingError(userId, sessionId, socketId, errorMsg, 'validacion_placa_existente', vehiculoExistente);
         throw new Error(errorMsg);
       }
 
@@ -415,7 +433,7 @@ function inicializarProcesadores() {
       );
 
       // Enviar ÚNICAMENTE los datos de la tarjeta de propiedad
-      notificarGlobal('vehiculo:confirmacion:requerida', {
+      notifyUser(userId, 'vehiculo:confirmacion:requerida', {
         sessionId,
         socketId,
         mensaje: 'Datos extraídos de la tarjeta de propiedad. Por favor confirme la información',
@@ -449,7 +467,7 @@ function inicializarProcesadores() {
 
         await redisClient.del(`vehiculo:${sessionId}:ocr:TARJETA_DE_PROPIEDAD`);
 
-        notificarGlobal('vehiculo:procesamiento:cancelado', {
+        notifyUser(userId, 'vehiculo:procesamiento:cancelado', {
           sessionId,
           socketId,
           mensaje: 'Registro de vehículo cancelado por el usuario'
@@ -469,7 +487,7 @@ function inicializarProcesadores() {
 
         if (camposFaltantesEditados.length > 0) {
           const errorMsg = `Los siguientes campos obligatorios no pueden estar vacíos: ${camposFaltantesEditados.join(', ')}`;
-          await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_campos_editados_obligatorios');
+          await handleProcessingError(userId, sessionId, socketId, errorMsg, 'validacion_campos_editados_obligatorios');
           throw new Error(errorMsg);
         }
 
@@ -485,7 +503,7 @@ function inicializarProcesadores() {
         'esperando_confirmacion', 'false'
       );
 
-      notificarGlobal('vehiculo:procesamiento:progreso', {
+      notifyUser(userId, 'vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
         mensaje: 'Creando vehículo en la base de datos...',
@@ -512,7 +530,7 @@ function inicializarProcesadores() {
         'mensaje', 'Subiendo documentos al almacenamiento...'
       );
 
-      notificarGlobal('vehiculo:procesamiento:progreso', {
+      notifyUser(userId, 'vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
         mensaje: 'Subiendo documentos al almacenamiento...',
@@ -544,7 +562,7 @@ function inicializarProcesadores() {
         await redisClient.hset(`vehiculo:${sessionId}`, `documento_${doc.document_type}_id`, doc.id);
       }
 
-      notificarGlobal('vehiculo:procesamiento:completado', {
+      notifyUser(userId, 'vehiculo:procesamiento:completado', {
         sessionId,
         socketId,
         tipo: 'creacion',
@@ -554,7 +572,16 @@ function inicializarProcesadores() {
         progreso: 100
       });
 
-      notificarGlobal('vehiculo:creado', {
+      notifyUser(userId, 'vehiculo:creado', {
+        vehiculo: nuevoVehiculo,
+        documentos: documentosCreados
+      });
+
+      const { id, nombre } = await User.findByPk(userId);
+
+      notificarGlobal('vehiculo:creado-global', {
+        usuarioId: id,
+        usuarioNombre: nombre,
         vehiculo: nuevoVehiculo,
         documentos: documentosCreados
       });
@@ -567,7 +594,7 @@ function inicializarProcesadores() {
 
       if (!error.message.includes('DISCREPANCIA DE PLACA DETECTADA') &&
         !error.message.includes('Registro cancelado por el usuario')) {
-        await handleProcessingError(sessionId, socketId, error.message, 'general');
+        await handleProcessingError(userId, sessionId, socketId, error.message, 'general');
       }
 
       // Limpiar archivos temporales
@@ -645,7 +672,7 @@ function inicializarProcesadores() {
           'timeout_confirmacion', 'true'
         );
 
-        notificarGlobal('vehiculo:confirmacion:timeout', {
+        notifyUser(userId, 'vehiculo:confirmacion:timeout', {
           sessionId,
           socketId,
           mensaje: 'Tiempo de espera agotado para confirmación'
@@ -698,7 +725,7 @@ function inicializarProcesadores() {
   }
 
   // ✅ Función auxiliar para manejo centralizado de errores de procesamiento
-  async function handleProcessingError(sessionId, socketId, errorMessage, errorType, vehiculo = null) {
+  async function handleProcessingError(userId, sessionId, socketId, errorMessage, errorType, vehiculo = null) {
     try {
       // Actualizar Redis con información detallada del error
       await redisClient.hmset(`vehiculo:${sessionId}`,
@@ -710,7 +737,7 @@ function inicializarProcesadores() {
       );
 
       // Notificar globalmente sobre el error
-      notificarGlobal('vehiculo:procesamiento:error', {
+      notifyUser(userId, 'vehiculo:procesamiento:error', {
         sessionId,
         socketId,
         tipo: 'creacion',
@@ -740,7 +767,7 @@ function inicializarProcesadores() {
   }
 
   // ✅ Función auxiliar para manejo específico de errores de documentos
-  async function handleDocumentError(sessionId, socketId, categoria, errorMessage, vehiculoId = null) {
+  async function handleDocumentError(userId, sessionId, socketId, categoria, errorMessage, vehiculoId = null) {
     try {
       // ✅ Actualizar Redis con error específico del documento
       await redisClient.hmset(`vehiculo:${sessionId}`,
@@ -750,7 +777,7 @@ function inicializarProcesadores() {
       await redisClient.hset(`vehiculo:${sessionId}`, `documento_${categoria}_error`, errorMessage);
 
       // Notificar error específico del documento
-      notificarGlobal('vehiculo:procesamiento:error', {
+      notifyUser(userId, 'vehiculo:procesamiento:error', {
         sessionId,
         socketId,
         tipo: 'creacion',
@@ -782,6 +809,7 @@ function inicializarProcesadores() {
   // Procesador para actualización de vehículos - REESTRUCTURADO
   vehiculoActualizacionQueue.process('actualizar-vehiculo', async (job) => {
     const { sessionId, adaptedFiles, categorias, fechasVigencia, vehiculoId, socketId, camposBasicos } = job.data;
+    const userId = job.opts.userId;
 
     try {
       // ✅ Usar hmset para compatibilidad total
@@ -796,7 +824,7 @@ function inicializarProcesadores() {
       logger.info(`Iniciando procesamiento de actualización de vehículo: ${sessionId}`);
 
       // Notificar inicio del procesamiento
-      notificarGlobal('vehiculo:procesamiento:inicio', {
+      notifyUser(userId, 'vehiculo:procesamiento:inicio', {
         sessionId,
         socketId,
         tipo: 'actualizacion',
@@ -812,7 +840,7 @@ function inicializarProcesadores() {
         'mensaje', 'Verificando vehículo...'
       );
 
-      notificarGlobal('vehiculo:procesamiento:progreso', {
+      notifyUser(userId, 'vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
         mensaje: 'Verificando vehículo...',
@@ -822,7 +850,7 @@ function inicializarProcesadores() {
       const vehiculo = await Vehiculo.findByPk(vehiculoId);
       if (!vehiculo) {
         const errorMsg = `No se encontró el vehículo con ID: ${vehiculoId}`;
-        await handleProcessingError(sessionId, socketId, errorMsg, 'vehiculo_no_encontrado');
+        await handleProcessingError(userId, sessionId, socketId, errorMsg, 'vehiculo_no_encontrado');
         throw new Error(errorMsg);
       }
 
@@ -839,7 +867,7 @@ function inicializarProcesadores() {
           'mensaje', 'Actualizando información básica del vehículo...'
         );
 
-        notificarGlobal('vehiculo:procesamiento:progreso', {
+        notifyUser(userId, 'vehiculo:procesamiento:progreso', {
           sessionId,
           socketId,
           mensaje: 'Actualizando información básica del vehículo...',
@@ -857,7 +885,7 @@ function inicializarProcesadores() {
 
           if (vehiculoExistente) {
             const errorMsg = `Ya existe otro vehículo con la placa ${camposBasicos.placa}`;
-            await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_placa_existente');
+            await handleProcessingError(userId, sessionId, socketId, errorMsg, 'validacion_placa_existente');
             throw new Error(errorMsg);
           }
         }
@@ -879,7 +907,7 @@ function inicializarProcesadores() {
 
         const vehiculoActualizado = await Vehiculo.findByPk(vehiculoId);
 
-        notificarGlobal('vehiculo:procesamiento:completado', {
+        notifyUser(userId, 'vehiculo:procesamiento:completado', {
           sessionId,
           socketId,
           tipo: 'actualizacion',
@@ -889,7 +917,17 @@ function inicializarProcesadores() {
           progreso: 100
         });
 
-        notificarGlobal('vehiculo:actualizado', {
+        notifyUser(userId, 'vehiculo:actualizado', {
+          vehiculo: vehiculoActualizado,
+          documentosActualizados: [],
+          categoriasActualizadas: []
+        });
+
+        const { id, nombre } = await User.findByPk(userId);
+
+        notificarGlobal('vehiculo:actualizado-global', {
+          usuarioId: id,
+          usuarioNombre: nombre,
           vehiculo: vehiculoActualizado,
           documentosActualizados: [],
           categoriasActualizadas: []
@@ -906,7 +944,7 @@ function inicializarProcesadores() {
         'mensaje', 'Validando documentos para actualización...'
       );
 
-      notificarGlobal('vehiculo:procesamiento:progreso', {
+      notifyUser(userId, 'vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
         mensaje: 'Validando documentos para actualización...',
@@ -916,7 +954,7 @@ function inicializarProcesadores() {
       // Validar que el número de archivos coincida con las categorías
       if (adaptedFiles.length !== categorias.length) {
         const errorMsg = `El número de archivos (${adaptedFiles.length}) no coincide con el número de categorías (${categorias.length})`;
-        await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_cantidad_archivos');
+        await handleProcessingError(userId, sessionId, socketId, errorMsg, 'validacion_cantidad_archivos');
         throw new Error(errorMsg);
       }
 
@@ -935,7 +973,7 @@ function inicializarProcesadores() {
           'documento_actual', archivo.categoria
         );
 
-        notificarGlobal('vehiculo:procesamiento:progreso', {
+        notifyUser(userId, 'vehiculo:procesamiento:progreso', {
           sessionId,
           socketId,
           mensaje: `Procesando documento ${archivo.categoria} (${i + 1}/${totalArchivos})...`,
@@ -966,7 +1004,7 @@ function inicializarProcesadores() {
               'documento_actual', 'OCR_TARJETA_DE_PROPIEDAD'
             );
 
-            notificarGlobal('vehiculo:procesamiento:progreso', {
+            notifyUser(userId, 'vehiculo:procesamiento:progreso', {
               sessionId,
               socketId,
               mensaje: 'Extrayendo datos de la tarjeta de propiedad...',
@@ -990,7 +1028,7 @@ function inicializarProcesadores() {
             // ====== VALIDACIÓN CRÍTICA: COMPARAR PLACAS ======
             if (!datosExtraidos || !datosExtraidos.placa) {
               const errorMsg = 'No se pudo extraer la placa de la tarjeta de propiedad';
-              await handleProcessingError(sessionId, socketId, errorMsg, 'ocr_sin_placa');
+              await handleProcessingError(userId, sessionId, socketId, errorMsg, 'ocr_sin_placa');
               throw new Error(errorMsg);
             }
 
@@ -1002,7 +1040,7 @@ function inicializarProcesadores() {
               const errorMsg = `DISCREPANCIA DE PLACA DETECTADA: La placa extraída de la tarjeta de propiedad (${placaExtraida}) no coincide con la placa del vehículo actual (${placaVehiculo}). Verifique que está actualizando el vehículo correcto.`;
               logger.error(errorMsg);
 
-              await handleProcessingError(sessionId, socketId, errorMsg, 'discrepancia_placa', {
+              await handleProcessingError(userId, sessionId, socketId, errorMsg, 'discrepancia_placa', {
                 placaExtraida,
                 placaVehiculo,
                 vehiculoId: vehiculo.id
@@ -1020,7 +1058,7 @@ function inicializarProcesadores() {
 
         } catch (error) {
           logger.error(`Error procesando documento ${archivo.categoria}: ${error.message}`);
-          await handleDocumentError(sessionId, socketId, archivo.categoria, error.message);
+          await handleDocumentError(userId, sessionId, socketId, archivo.categoria, error.message);
           throw new Error(error.message);
         }
       }
@@ -1038,7 +1076,7 @@ function inicializarProcesadores() {
         );
 
         // Enviar ÚNICAMENTE los datos de la tarjeta de propiedad
-        notificarGlobal('vehiculo:confirmacion:requerida', {
+        notifyUser(userId, 'vehiculo:confirmacion:requerida', {
           sessionId,
           socketId,
           mensaje: 'Datos extraídos de la tarjeta de propiedad. Por favor confirme la información para actualizar el vehículo',
@@ -1075,7 +1113,7 @@ function inicializarProcesadores() {
 
           await redisClient.del(`vehiculo:${sessionId}:ocr:TARJETA_DE_PROPIEDAD`);
 
-          notificarGlobal('vehiculo:procesamiento:cancelado', {
+          notifyUser(userId, 'vehiculo:procesamiento:cancelado', {
             sessionId,
             socketId,
             mensaje: 'Actualización de vehículo cancelada por el usuario'
@@ -1098,7 +1136,7 @@ function inicializarProcesadores() {
 
           if (camposFaltantesEditados.length > 0) {
             const errorMsg = `Los siguientes campos obligatorios no pueden estar vacíos: ${camposFaltantesEditados.join(', ')}`;
-            await handleProcessingError(sessionId, socketId, errorMsg, 'validacion_campos_editados_obligatorios');
+            await handleProcessingError(userId, sessionId, socketId, errorMsg, 'validacion_campos_editados_obligatorios');
             throw new Error(errorMsg);
           }
 
@@ -1113,7 +1151,7 @@ function inicializarProcesadores() {
           'esperando_confirmacion', 'false'
         );
 
-        notificarGlobal('vehiculo:procesamiento:progreso', {
+        notifyUser(userId, 'vehiculo:procesamiento:progreso', {
           sessionId,
           socketId,
           mensaje: 'Actualizando datos del vehículo con información confirmada...',
@@ -1137,7 +1175,7 @@ function inicializarProcesadores() {
           'mensaje', 'Continuando con actualización de documentos...'
         );
 
-        notificarGlobal('vehiculo:procesamiento:progreso', {
+        notifyUser(userId, 'vehiculo:procesamiento:progreso', {
           sessionId,
           socketId,
           mensaje: 'Continuando con actualización de documentos...',
@@ -1152,7 +1190,7 @@ function inicializarProcesadores() {
         'mensaje', 'Desactivando documentos anteriores...'
       );
 
-      notificarGlobal('vehiculo:procesamiento:progreso', {
+      notifyUser(userId, 'vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
         mensaje: 'Desactivando documentos anteriores...',
@@ -1182,7 +1220,7 @@ function inicializarProcesadores() {
         'mensaje', 'Subiendo documentos al almacenamiento...'
       );
 
-      notificarGlobal('vehiculo:procesamiento:progreso', {
+      notifyUser(userId, 'vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
         mensaje: 'Subiendo documentos al almacenamiento...',
@@ -1206,7 +1244,7 @@ function inicializarProcesadores() {
         'mensaje', 'Actualizando fechas de vigencia...'
       );
 
-      notificarGlobal('vehiculo:procesamiento:progreso', {
+      notifyUser(userId, 'vehiculo:procesamiento:progreso', {
         sessionId,
         socketId,
         mensaje: 'Actualizando fechas de vigencia...',
@@ -1242,7 +1280,7 @@ function inicializarProcesadores() {
 
       const vehiculoActualizado = await Vehiculo.findByPk(vehiculoId);
 
-      notificarGlobal('vehiculo:procesamiento:completado', {
+      notifyUser(userId, 'vehiculo:procesamiento:completado', {
         sessionId,
         socketId,
         tipo: 'actualizacion',
@@ -1254,7 +1292,7 @@ function inicializarProcesadores() {
         datosConfirmados: !!datosFinales
       });
 
-      notificarGlobal('vehiculo:actualizado', {
+      notifyUser(userId, 'vehiculo:actualizado', {
         vehiculo: vehiculoActualizado,
         documentosActualizados: documentosCreados,
         categoriasActualizadas: categorias
@@ -1268,7 +1306,7 @@ function inicializarProcesadores() {
 
       if (!error.message.includes('DISCREPANCIA DE PLACA DETECTADA') &&
         !error.message.includes('Actualización cancelada por el usuario')) {
-        await handleProcessingError(sessionId, socketId, error.message, 'general');
+        await handleProcessingError(userId, sessionId, socketId, error.message, 'general');
       }
 
       // Limpiar archivos temporales
@@ -1316,7 +1354,7 @@ function inicializarProcesadores() {
 }
 
 // Función para procesar documentos (creación)
-async function procesarDocumentos(adaptedFiles, categorias, datosVehiculo, socketId) {
+async function procesarDocumentos(userId, adaptedFiles, categorias, datosVehiculo, socketId) {
   const sessionId = uuidv4();
 
   const jobData = {
@@ -1331,6 +1369,7 @@ async function procesarDocumentos(adaptedFiles, categorias, datosVehiculo, socke
   try {
     await vehiculoCreacionQueue.add('crear-vehiculo', jobData, {
       jobId: sessionId,
+      userId,
       priority: 10
     });
 
