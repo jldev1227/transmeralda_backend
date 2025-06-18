@@ -1,5 +1,5 @@
 // src/controllers/vehiculoController.js
-const { Vehiculo, Conductor, Documento } = require('../models');
+const { User, Vehiculo, Conductor, Documento } = require('../models');
 const { Op } = require('sequelize');
 const multer = require('multer');
 const { procesarDocumentos, actualizarDocumentosVehiculo } = require('../queues/vehiculo');
@@ -8,6 +8,7 @@ const PDFDocument = require('pdfkit');
 const archiver = require('archiver');
 const fs = require('fs');
 const path = require('path');
+const logger = require('../utils/logger');
 
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -17,6 +18,41 @@ const upload = multer({
 
 const uploadDocumentos = upload.array('documentos', 10); // Espera un campo llamado 'documentos'
 
+/**
+ * Notifica a todos los clientes conectados
+ * @param {string} evento - Nombre del evento a emitir
+ * @param {object} datos - Datos a enviar
+ */
+function notificarGlobal(evento, datos) {
+  if (!global.io) {
+    logger.error(`No se puede emitir evento global ${evento}: global.io no inicializado`);
+    return;
+  }
+
+  try {
+    global.io.emit(evento, datos);
+    logger.debug(`Evento ${evento} emitido globalmente a todos los clientes conectados`);
+  } catch (error) {
+    logger.error(`Error al emitir evento global ${evento}: ${error.message}`);
+  }
+}
+
+function notifyUser(userId, event, data) {
+  try {
+    // Obtener la función notifyUser de la aplicación global
+    const notifyFn = global.app?.get("notifyUser");
+
+    if (notifyFn) {
+      notifyFn(userId, event, data);
+    } else {
+      console.log(
+        `No se pudo notificar al usuario ${userId} (evento: ${event}) - Socket.IO no está disponible`
+      );
+    }
+  } catch (error) {
+    console.error("Error al notificar al usuario:", error);
+  }
+}
 /**
  * Obtener todos los vehículos con filtros de documentos (sin paginación/limit)
  */
@@ -32,8 +68,6 @@ const getVehiculos = async (req, res) => {
       fechaVencimientoHasta,
       diasAlerta
     } = req.query;
-
-    console.log('Query completa recibida:', req.query);
 
     const sequelizeOrder = order === 'ascending' ? 'ASC' : 'DESC';
     const whereClause = {};
@@ -384,7 +418,7 @@ const createVehiculo = async (req, res) => {
     }
 
     // Validar fechas de vigencia para documentos que las requieren
-    const documentosConVigencia = ["SOAT", "TECNOMECANICA", "TARJETA_DE_OPERACION", "POLIZA_CONTRACTUAL", "POLIZA_EXTRACONTRACTUAL", "POLIZA_TODO_RIESGO", "CERTIFICADO_GPS"];
+    const documentosConVigencia = ["SOAT", "TECNOMECANICA", "TARJETA_DE_OPERACION", "POLIZA_CONTRACTUAL", "POLIZA_EXTRACONTRACTUAL", "POLIZA_TODO_RIESGO"];
 
     // Obtener fecha actual solo con día, mes y año (sin horas)
     const fechaActual = new Date();
@@ -448,7 +482,7 @@ const createVehiculo = async (req, res) => {
     const socketId = req.headers['socket-id'] || req.body.socketId || 'unknown';
 
     // Iniciar procesamiento asíncrono
-    const sessionId = await procesarDocumentos(adaptedFiles, categoriasArray, datosVehiculo, socketId);
+    const sessionId = await procesarDocumentos(req.user.id, adaptedFiles, categoriasArray, datosVehiculo, socketId);
 
     // Devolver respuesta inmediata
     return res.status(202).json({
@@ -492,6 +526,8 @@ const updateVehiculo = async (req, res) => {
       });
     }
 
+    console.log("first 1")
+
     // Preparar los campos básicos para actualizar
     const camposBasicos = {};
     if (placa !== undefined) camposBasicos.placa = placa;
@@ -510,11 +546,13 @@ const updateVehiculo = async (req, res) => {
         // Aquí deberías llamar a tu función para actualizar los campos básicos del vehículo
         const [updated] = await Vehiculo.update(camposBasicos, { where: { id } });
         if (updated === 0) {
+          console.log('Vehículo no encontrado al intentar actualizar campos básicos');
           return res.status(404).json({
             success: false,
             message: 'Vehículo no encontrado'
           });
         }
+        console.log('Campos básicos del vehículo actualizados correctamente');
       } catch (error) {
         console.error('Error al actualizar campos básicos:', error);
         return res.status(500).json({
@@ -526,6 +564,7 @@ const updateVehiculo = async (req, res) => {
 
     // Si no hay archivos ni categorías para documentos, devolver respuesta exitosa
     if (!files || !categorias || files.length === 0 || categorias.length === 0) {
+      console.log('No se proporcionaron archivos ni categorías para documentos. Actualización solo de campos básicos.');
       return res.status(200).json({
         success: true,
         message: Object.keys(camposBasicos).length > 0
@@ -569,8 +608,7 @@ const updateVehiculo = async (req, res) => {
     }
 
     // Validar fechas de vigencia para documentos que las requieren
-    const documentosConVigencia = ["SOAT", "TECNOMECANICA", "TARJETA_DE_OPERACION", "POLIZA_CONTRACTUAL", "POLIZA_EXTRACONTRACTUAL", "POLIZA_TODO_RIESGO", "CERTIFICADO_GPS"];
-
+    const documentosConVigencia = ["SOAT", "TECNOMECANICA", "TARJETA_DE_OPERACION", "POLIZA_CONTRACTUAL", "POLIZA_EXTRACONTRACTUAL", "POLIZA_TODO_RIESGO"];
     // Obtener fecha actual solo con día, mes y año (sin horas)
     const fechaActual = new Date();
     fechaActual.setHours(0, 0, 0, 0);
@@ -681,6 +719,18 @@ const createVehiculoBasico = async (req, res) => {
     // Crear vehículo en la base de datos
     const nuevoVehiculo = await Vehiculo.create(datosNormalizados);
 
+    notifyUser(req.user.id, 'vehiculo:creado', {
+      vehiculo: nuevoVehiculo,
+    });
+
+    const { id, nombre } = await User.findByPk(req.user.id);
+
+    notificarGlobal('vehiculo:creado-global', {
+      usuarioId: id,
+      usuarioNombre: nombre,
+      vehiculo: nuevoVehiculo,
+    });
+
     // Responder con el vehículo creado
     return res.status(201).json({
       success: true,
@@ -720,6 +770,7 @@ const createVehiculoBasico = async (req, res) => {
 // Actualizar un vehículo existente de manera básica
 const updateVehiculoBasico = async (req, res) => {
   try {
+    console.log(req.body);
     const [updated] = await Vehiculo.update(req.body, {
       where: { id: req.params.id }
     });
@@ -730,6 +781,21 @@ const updateVehiculoBasico = async (req, res) => {
         message: 'Vehículo no encontrado'
       });
     }
+
+    // Obtener el vehículo actualizado para retornarlo
+    const vehiculoActualizado = await Vehiculo.findByPk(req.params.id);
+
+    notifyUser(req.user.id, 'vehiculo:actualizado', {
+      vehiculo: vehiculoActualizado,
+    });
+
+    const { id, nombre } = await User.findByPk(req.user.id);
+
+    notificarGlobal('vehiculo:actualizado-global', {
+      usuarioId: id,
+      usuarioNombre: nombre,
+      vehiculo: vehiculoActualizado,
+    });
 
     res.status(200).json({
       success: true,
