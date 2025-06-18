@@ -526,8 +526,6 @@ const updateVehiculo = async (req, res) => {
       });
     }
 
-    console.log("first 1")
-
     // Preparar los campos básicos para actualizar
     const camposBasicos = {};
     if (placa !== undefined) camposBasicos.placa = placa;

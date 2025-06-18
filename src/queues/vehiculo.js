@@ -457,7 +457,7 @@ function inicializarProcesadores() {
 
 
       // Esperar respuesta del usuario
-      const confirmacion = await esperarConfirmacionUsuario(sessionId, socketId);
+      const confirmacion = await esperarConfirmacionUsuario(userId, sessionId, socketId);
 
       // ====== PASO 6: PROCESAR RESPUESTA DEL USUARIO ======
       let datosFinales = { ...datosExtraidos, ...confirmacion.datosModificados };
@@ -664,7 +664,7 @@ function inicializarProcesadores() {
   // ========== CORRECCIÓN EN EL PROCESADOR ==========
 
   // OPCIÓN 1: Cambiar la validación para NO verificar socketId específico
-  async function esperarConfirmacionUsuario(sessionId, socketId, timeoutMs = 300000) {
+  async function esperarConfirmacionUsuario(userId, sessionId, socketId, timeoutMs = 300000) {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(async () => {
         await redisClient.hmset(`vehiculo:${sessionId}`,
@@ -1105,7 +1105,7 @@ function inicializarProcesadores() {
         logger.info(`Esperando confirmación del usuario para actualizar vehículo con placa: ${datosExtraidos.placa}`);
 
         // Esperar respuesta del usuario
-        const confirmacion = await esperarConfirmacionUsuario(sessionId, socketId);
+        const confirmacion = await esperarConfirmacionUsuario(userId, sessionId, socketId);
 
         // ====== PASO 6: PROCESAR RESPUESTA DEL USUARIO ======
         if (confirmacion.accion === 'cancelar') {
