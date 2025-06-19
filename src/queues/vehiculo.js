@@ -1366,6 +1366,10 @@ async function procesarDocumentos(userId, adaptedFiles, categorias, datosVehicul
     timestamp: new Date().toISOString()
   };
 
+  // DEBUG: Mostrar información relevante antes de encolar el job
+  logger.debug(`Usuario que solicita creación: ${userId}`);
+  logger.debug(`Job data: ${JSON.stringify(jobData)}`);
+
   try {
     await vehiculoCreacionQueue.add('crear-vehiculo', jobData, {
       jobId: sessionId,
@@ -1394,6 +1398,10 @@ async function actualizarDocumentosVehiculo(userId, adaptedFiles, categorias, fe
     socketId,
     timestamp: new Date().toISOString()
   };
+
+  // DEBUG: Mostrar información relevante antes de encolar el job
+  logger.debug(`Usuario que solicita actualización: ${userId}`);
+  logger.debug(`Job data: ${JSON.stringify(jobData)}`);
 
   try {
     await vehiculoActualizacionQueue.add('actualizar-vehiculo', jobData, {
