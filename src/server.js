@@ -9,7 +9,7 @@ const rateLimit = require('express-rate-limit');
 const { sequelize, testConnection } = require('./config/database.js');
 const { setupBullQueues, setupBullBoard } = require('./config/bull');
 const documentController = require('./controllers/documentoController.js');
-const { scheduleRecurringCheck, runCheckNow } = require('./queues/serviceStatusQueue');
+const { scheduleRecurringCheck } = require('./queues/serviceStatusQueue');
 const { inicializarProcesadores } = require('./queues/vehiculo.js');
 const logger = require('./utils/logger');
 const { redisClient } = require('./config/redisClient.js');
@@ -174,9 +174,9 @@ io.on('connection', (socket) => {
     
       const eventName = `vehiculo:confirmacion:respuesta:${sessionId}`;
       
-      // 🔥 DEBUG: Verificar estado antes de emit
+      // 🔥 info: Verificar estado antes de emit
       logger.info(`📡 A punto de emitir evento: ${eventName}`);
-      eventEmitter.debug(eventName);
+      eventEmitter.info(eventName);
       
       // ✅ EMITIR EVENTO INTERNO
       eventEmitter.emit(eventName, {
@@ -325,7 +325,7 @@ io.on('connection', (socket) => {
   
   // Manejar desconexión
   socket.on('disconnect', async () => {
-    console.log('Cliente desconectado:', socket.id);
+    logger.info('Cliente desconectado:', socket.id);
     
     try {
       // Verificar si hay procesos de confirmación activos para este socket
@@ -405,34 +405,19 @@ async function verificarEstadoConfirmacion(sessionId) {
   }
 }
 
-// Función para limpiar datos de confirmación
-async function limpiarDatosConfirmacion(sessionId) {
-  try {
-    await redisClient.del(`vehiculo:${sessionId}:confirmacion:respuesta`);
-    await redisClient.del(`vehiculo:${sessionId}:confirmacion`);
-    await redisClient.hdel(`vehiculo:${sessionId}`, 
-      'esperando_confirmacion', 
-      'timeout_confirmacion',
-      'desconexion_confirmacion'
-    );
-    logger.info(`Datos de confirmación limpiados para sesión ${sessionId}`);
-  } catch (error) {
-    logger.error(`Error limpiando datos de confirmación para sesión ${sessionId}:`, error);
-  }
-}
-
 // Función para enviar actualizaciones a un usuario específico
 const notifyUser = (userId, event, data) => {
   if (userSockets.has(userId)) {
     const userSocketIds = userSockets.get(userId);
-    console.log(`Enviando ${event} a usuario ${userId} (${userSocketIds.size} conexiones)`);
+    logger.info(`Enviando ${event} a usuario ${userId} (${userSocketIds.size} conexiones)`);
     
     for (const socketId of userSocketIds) {
+      logger.info(`Enviando evento ${event} a socketId ${socketId}`);
       io.to(socketId).emit(event, data);
     }
     return true;
   }
-  console.log(`Usuario ${userId} no está conectado para recibir ${event}`);
+  logger.info(`Usuario ${userId} no está conectado para recibir ${event}`);
   return false;
 };
 
@@ -476,7 +461,7 @@ app.use('/api/servicios-historico', require('./routes/servicioHistoricoRoutes.js
 app.use('/api/liquidaciones_servicios', require('./routes/liquidacionServiciosRoutes.js'));
 app.use('/api/documentos', require('./routes/documentoRoutes.js'));
 app.use('/api/export', require('./routes/exportRoutes'));
-app.use('/api/pdf', require('./routes/pdfRoutes'));
+app.use('/api/pdf', require('./routes/desprendibleNominaRoutes'));
 
 // Ruta de verificación de salud
 app.get('/health', (req, res) => {
