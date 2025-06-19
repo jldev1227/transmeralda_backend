@@ -665,6 +665,7 @@ const updateVehiculo = async (req, res) => {
 
     // Iniciar procesamiento asíncrono de actualización de documentos
     const sessionId = await actualizarDocumentosVehiculo(
+      req.user.id,
       adaptedFiles,
       categoriasArray,
       fechasVigenciaNormalizadas,

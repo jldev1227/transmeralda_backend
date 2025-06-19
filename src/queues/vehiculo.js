@@ -1382,7 +1382,7 @@ async function procesarDocumentos(userId, adaptedFiles, categorias, datosVehicul
 }
 
 // Función para actualizar documentos de vehículo
-async function actualizarDocumentosVehiculo(adaptedFiles, categorias, fechasVigencia, vehiculoId, socketId) {
+async function actualizarDocumentosVehiculo(userId, adaptedFiles, categorias, fechasVigencia, vehiculoId, socketId) {
   const sessionId = uuidv4();
 
   const jobData = {
@@ -1398,6 +1398,7 @@ async function actualizarDocumentosVehiculo(adaptedFiles, categorias, fechasVige
   try {
     await vehiculoActualizacionQueue.add('actualizar-vehiculo', jobData, {
       jobId: sessionId,
+      userId,
       priority: 10
     });
 
