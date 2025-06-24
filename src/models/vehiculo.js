@@ -164,29 +164,6 @@ module.exports = (sequelize) => {
       defaultValue: 'DISPONIBLE',
       allowNull: true
     },
-    galeria: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: '[]',
-      get() {
-        const rawValue = this.getDataValue('galeria');
-        return JSON.parse(rawValue || '[]');
-      },
-      set(value) {
-        this.setDataValue('galeria', JSON.stringify(value));
-      },
-      validate: {
-        isValidJSON(value) {
-          if (value !== null && value !== undefined) {
-            try {
-              JSON.parse(value);
-            } catch (e) {
-              throw new Error('El formato de galería debe ser JSON válido');
-            }
-          }
-        }
-      }
-    },
     fecha_matricula: {
       type: DataTypes.STRING,
       allowNull: true,
