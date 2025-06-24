@@ -160,7 +160,7 @@ module.exports = (sequelize) => {
       }
     },
     estado: {
-      type: DataTypes.ENUM('DISPONIBLE', 'NO DISPONIBLE', 'MANTENIMIENTO', 'INACTIVO'),
+      type: DataTypes.ENUM('DISPONIBLE', 'SERVICIO', 'MANTENIMIENTO', 'DESVINCULADO'),
       defaultValue: 'DISPONIBLE',
       allowNull: true
     },
