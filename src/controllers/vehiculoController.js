@@ -87,12 +87,12 @@ const getVehiculos = async (req, res) => {
 
     // ====== FILTROS BÁSICOS DE VEHÍCULOS ======
     if (req.query.estado) {
-      const estados = req.query.estado.split(',');
+      const estados = req.query.estado.split(',').map(e => e.toUpperCase());
       whereClause.estado = { [Op.in]: estados };
     }
 
     if (req.query.clase) {
-      const clases = req.query.clase.split(',');
+      const clases = req.query.clase.split(',').map(c => c.toUpperCase());
       whereClause.clase_vehiculo = { [Op.in]: clases };
     }
 
