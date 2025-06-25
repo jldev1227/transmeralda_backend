@@ -1532,17 +1532,6 @@ async function generateVehiculoPDF(vehiculo, documentos) {
       });
 
       yPos += 30;
-      // Documentos requeridos
-      const categoriasRequeridas = [
-        "TARJETA_DE_PROPIEDAD",
-        "SOAT",
-        "TECNOMECANICA",
-        "TARJETA_DE_OPERACION",
-        "POLIZA_CONTRACTUAL",
-        "POLIZA_EXTRACONTRACTUAL",
-        "POLIZA_TODO_RIESGO",
-        "CERTIFICADO_GPS"
-      ];
 
       // Mapear documentos por categoría para fácil acceso
       const documentosMap = {};
