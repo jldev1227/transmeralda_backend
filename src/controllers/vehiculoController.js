@@ -1621,7 +1621,7 @@ async function generateVehiculoPDF(vehiculo, documentos) {
 
           if (hoy < fechaAlerta) {
             // Aún no se requiere tecnomecánica
-            estado = 'No requerida';
+            estado = 'Vigente';
             // Sumar un día solo en este caso
             const fechaRequeridaMostrar = new Date(fechaRequerida);
             fechaRequeridaMostrar.setDate(fechaRequeridaMostrar.getDate() + 1);
@@ -1683,16 +1683,16 @@ async function generateVehiculoPDF(vehiculo, documentos) {
           }
           } else {
             // No hay fecha de matrícula
-            estado = 'No requerida';
+            estado = 'Vigente';
             fechaVigencia = 'No hay fecha de matrícula';
             diasRestantes = 'N/A';
             colorEstado = '#95a5a6';
           }
         } else if (documento) {
           if (categoria === 'TARJETA_DE_PROPIEDAD') {
-            estado = 'Permanente';
+            estado = 'N/A';
             fechaVigencia = 'No aplica';
-            diasRestantes = 'Permanente';
+            diasRestantes = 'N/A';
             colorEstado = '#3498db';
           } else {
             const fechaVigenciaRaw = documento.fecha_vigencia || documento.fechaVigencia;
