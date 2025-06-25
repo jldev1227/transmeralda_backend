@@ -1532,17 +1532,6 @@ async function generateVehiculoPDF(vehiculo, documentos) {
       });
 
       yPos += 30;
-      // Documentos requeridos
-      const categoriasRequeridas = [
-        "TARJETA_DE_PROPIEDAD",
-        "SOAT",
-        "TECNOMECANICA",
-        "TARJETA_DE_OPERACION",
-        "POLIZA_CONTRACTUAL",
-        "POLIZA_EXTRACONTRACTUAL",
-        "POLIZA_TODO_RIESGO",
-        "CERTIFICADO_GPS"
-      ];
 
       // Mapear documentos por categoría para fácil acceso
       const documentosMap = {};
@@ -1621,7 +1610,7 @@ async function generateVehiculoPDF(vehiculo, documentos) {
 
           if (hoy < fechaAlerta) {
             // Aún no se requiere tecnomecánica
-            estado = 'No requerida';
+            estado = 'Vigente';
             // Sumar un día solo en este caso
             const fechaRequeridaMostrar = new Date(fechaRequerida);
             fechaRequeridaMostrar.setDate(fechaRequeridaMostrar.getDate() + 1);
@@ -1640,7 +1629,10 @@ async function generateVehiculoPDF(vehiculo, documentos) {
           } else if (hoy >= fechaRequerida && !documento) {
             // Ya se requiere y no hay documento
             estado = 'Faltante';
-            fechaVigencia = `Desde ${fechaRequerida.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+            // Sumar un día a la fecha requerida
+            const fechaRequeridaMostrar = new Date(fechaRequerida);
+            fechaRequeridaMostrar.setDate(fechaRequeridaMostrar.getDate() + 1);
+            fechaVigencia = `Desde el ${fechaRequeridaMostrar.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
             diasRestantes = 'N/A';
             colorEstado = '#e74c3c';
           }
@@ -1683,16 +1675,16 @@ async function generateVehiculoPDF(vehiculo, documentos) {
           }
           } else {
             // No hay fecha de matrícula
-            estado = 'No requerida';
+            estado = 'Faltante';
             fechaVigencia = 'No hay fecha de matrícula';
             diasRestantes = 'N/A';
             colorEstado = '#95a5a6';
           }
         } else if (documento) {
           if (categoria === 'TARJETA_DE_PROPIEDAD') {
-            estado = 'Permanente';
+            estado = 'N/A';
             fechaVigencia = 'No aplica';
-            diasRestantes = 'Permanente';
+            diasRestantes = 'N/A';
             colorEstado = '#3498db';
           } else {
             const fechaVigenciaRaw = documento.fecha_vigencia || documento.fechaVigencia;
