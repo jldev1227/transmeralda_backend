@@ -1507,111 +1507,188 @@ async function generateVehiculoPDF(vehiculo, documentos) {
 
       yPos += 25;
 
-      if (!documentos || documentos.length === 0) {
-        // Estado vacío con mejor presentación
-        doc.rect(40, yPos, 515, 60)
-          .fillColor('#f8f9fa')
-          .fill();
 
-        doc.fontSize(12)
-          .font('Helvetica')
-          .fillColor('#95a5a6')
-          .text('No hay documentos registrados para este vehículo', 40, yPos + 25, {
-            align: 'center',
-            width: 515
-          });
-        yPos += 80;
-      } else {
-        // Headers de tabla más grandes
-        const tableHeaders = ['DOCUMENTO', 'FECHA VIGENCIA', 'ESTADO', 'DÍAS RESTANTES POR VENCER'];
-        const colWidths = [180, 120, 100, 205];
-        const colPositions = [40, 190, 300, 360];
+      // Headers de tabla más grandes
+      const tableHeaders = ['DOCUMENTO', 'FECHA VIGENCIA', 'ESTADO', 'DÍAS RESTANTES POR VENCER'];
+      const colWidths = [180, 120, 100, 205];
+      const colPositions = [40, 190, 300, 360];
 
-        // Header con mejor diseño
-        doc.rect(40, yPos, 515, 25)
-          .fillColor('#ecf0f1')
-          .fill();
+      // Header con mejor diseño
+      doc.rect(40, yPos, 515, 25)
+        .fillColor('#ecf0f1')
+        .fill();
 
-        doc.strokeColor('#bdc3c7')
-          .lineWidth(1)
-          .rect(40, yPos, 515, 25)
+      doc.strokeColor('#bdc3c7')
+        .lineWidth(1)
+        .rect(40, yPos, 515, 25)
+        .stroke();
+
+      doc.fontSize(11)
+        .font('Helvetica-Bold')
+        .fillColor('#2c3e50');
+
+      tableHeaders.forEach((header, i) => {
+        doc.text(header, colPositions[i] + 8, yPos + 8, { width: colWidths[i] - 15 });
+      });
+
+      yPos += 30;
+      // Documentos requeridos
+      const categoriasRequeridas = [
+        "TARJETA_DE_PROPIEDAD",
+        "SOAT",
+        "TECNOMECANICA",
+        "TARJETA_DE_OPERACION",
+        "POLIZA_CONTRACTUAL",
+        "POLIZA_EXTRACONTRACTUAL",
+        "POLIZA_TODO_RIESGO",
+        "CERTIFICADO_GPS"
+      ];
+
+      // Mapear documentos por categoría para fácil acceso
+      const documentosMap = {};
+      if (documentos && documentos.length > 0) {
+        documentos.forEach(doc => {
+          const cat = (doc.categoria || '').toUpperCase();
+          if (!documentosMap[cat]) {
+            documentosMap[cat] = doc;
+          }
+        });
+      }
+
+      // Ordenar categorías requeridas según prioridad visual
+      const categoriasOrdenadas = [
+        "TARJETA_DE_PROPIEDAD",
+        "SOAT",
+        "TECNOMECANICA",
+        "TARJETA_DE_OPERACION",
+        "POLIZA_CONTRACTUAL",
+        "POLIZA_EXTRACONTRACTUAL",
+        "POLIZA_TODO_RIESGO",
+        "CERTIFICADO_GPS"
+      ];
+
+      // Mostrar todos, pero marcar faltantes los que no estén en documentosMap
+      const categoriasParaMostrar = categoriasOrdenadas;
+
+      // Determinar si hay faltantes
+      const faltantes = categoriasParaMostrar.filter(cat => !documentosMap[cat] && !(cat === "TECNOMECANICA" && (() => {
+        // Lógica especial: tecnomecánica puede no ser requerida aún
+        const fechaMatricula = vehiculo.fecha_matricula ? new Date(vehiculo.fecha_matricula) : null;
+        if (!fechaMatricula || isNaN(fechaMatricula.getTime())) return false;
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        const fechaRequerida = new Date(fechaMatricula);
+        fechaRequerida.setFullYear(fechaRequerida.getFullYear() + 2);
+        fechaRequerida.setHours(0, 0, 0, 0);
+        return hoy < fechaRequerida;
+      })()));
+
+      categoriasParaMostrar.forEach((categoria, index) => {
+        const rowHeight = 35;
+        // Fondo alternado
+        if (index % 2 === 0) {
+          doc.rect(40, yPos, 515, rowHeight)
+            .fillColor('#fafafa')
+            .fill();
+        }
+        // Borde de la fila
+        doc.strokeColor('#e8e8e8')
+          .lineWidth(0.5)
+          .rect(40, yPos, 515, rowHeight)
           .stroke();
 
-        doc.fontSize(11)
-          .font('Helvetica-Bold')
-          .fillColor('#2c3e50');
+        let documento = documentosMap[categoria];
+        let estado = 'Faltante';
+        let fechaVigencia = 'No especificada';
+        let diasRestantes = 'N/A';
+        let colorEstado = '#e74c3c';
 
-        tableHeaders.forEach((header, i) => {
-          doc.text(header, colPositions[i] + 8, yPos + 8, { width: colWidths[i] - 15 });
-        });
+        // Lógica especial para TECNOMECANICA
+        if (categoria === 'TECNOMECANICA') {
+          const fechaMatricula = vehiculo.fecha_matricula ? new Date(vehiculo.fecha_matricula) : null;
+          const hoy = new Date();
+          hoy.setHours(0, 0, 0, 0);
 
-        yPos += 30;
+          if (fechaMatricula && !isNaN(fechaMatricula.getTime())) {
+            // Fecha en que se requiere tecnomecánica (2 años después de matrícula)
+            const fechaRequerida = new Date(fechaMatricula);
+            fechaRequerida.setFullYear(fechaRequerida.getFullYear() + 2);
+            fechaRequerida.setHours(0, 0, 0, 0);
 
-        // Filas de documentos más espaciadas
-        // Ordenar documentos según prioridad especificada
-        // Filtrar la tarjeta de propiedad antes de ordenar
-        const documentosFiltrados = documentos.filter(
-          doc => (doc.categoria || '').toUpperCase() !== 'TARJETA_DE_PROPIEDAD'
-        );
+            // Un mes antes de la fecha requerida
+            const fechaAlerta = new Date(fechaRequerida);
+            fechaAlerta.setMonth(fechaAlerta.getMonth() - 1);
 
-        const documentosOrdenados = [...documentosFiltrados].sort((a, b) => {
-          const catA = (a.categoria || '').toUpperCase();
-          const catB = (b.categoria || '').toUpperCase();
-
-          // Función para determinar prioridad de grupo
-          const getPrioridad = (categoria) => {
-            if (categoria.startsWith('T')) return 2; // Otras T
-            if (categoria === 'SOAT') return 3; // SOAT después de T
-            if (categoria.startsWith('P')) return 4; // P después de SOAT
-            return 5; // Resto al final
-          };
-
-          const prioridadA = getPrioridad(catA);
-          const prioridadB = getPrioridad(catB);
-
-          // Si tienen diferente prioridad de grupo, ordenar por prioridad
-          if (prioridadA !== prioridadB) {
-            return prioridadA - prioridadB;
+          if (hoy < fechaAlerta) {
+            // Aún no se requiere tecnomecánica
+            estado = 'No requerida';
+            // Sumar un día solo en este caso
+            const fechaRequeridaMostrar = new Date(fechaRequerida);
+            fechaRequeridaMostrar.setDate(fechaRequeridaMostrar.getDate() + 1);
+            fechaVigencia = `Desde el ${fechaRequeridaMostrar.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+            diasRestantes = `${Math.ceil((fechaRequerida - hoy) / (1000 * 60 * 60 * 24)) + 1} días para requerirse`;
+            colorEstado = '#3498db';
+          } else if (hoy >= fechaAlerta && hoy < fechaRequerida) {
+            // Próxima a requerirse
+            estado = 'Próxima a requerir';
+            // Sumar un día solo en este caso
+            const fechaRequeridaMostrar = new Date(fechaRequerida);
+            fechaRequeridaMostrar.setDate(fechaRequeridaMostrar.getDate() + 1);
+            fechaVigencia = `Desde el ${fechaRequeridaMostrar.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+            diasRestantes = `${Math.ceil((fechaRequerida - hoy) / (1000 * 60 * 60 * 24)) + 1} días para requerirse`;
+            colorEstado = '#f39c12';
+          } else if (hoy >= fechaRequerida && !documento) {
+            // Ya se requiere y no hay documento
+            estado = 'Faltante';
+            fechaVigencia = `Desde ${fechaRequerida.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+            diasRestantes = 'N/A';
+            colorEstado = '#e74c3c';
           }
+          // Si hay documento, aplicar lógica normal
+          if (documento) {
+            const fechaVigenciaRaw = documento.fecha_vigencia || documento.fechaVigencia;
+            if (fechaVigenciaRaw) {
+              const fechaVigenciaDate = new Date(fechaVigenciaRaw);
+              fechaVigenciaDate.setHours(0, 0, 0, 0);
+              const diffDias = Math.ceil((fechaVigenciaDate - hoy) / (1000 * 60 * 60 * 24));
+              fechaVigencia = fechaVigenciaDate.toLocaleDateString('es-CO', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+              });
 
-          // Si están en el mismo grupo, aplicar regla específica
-          if (prioridadA === 2) {
-            // Grupo T: ordenar A-Z
-            return catA.localeCompare(catB);
-          } else if (prioridadA === 4) {
-            // Grupo P: ordenar A-Z
-            return catA.localeCompare(catB);
-          } else if (prioridadA === 5) {
-            // Resto: ordenar Z-A
-            return catB.localeCompare(catA);
+              if (diffDias < 0) {
+                estado = 'Vencido';
+                diasRestantes = `${Math.abs(diffDias)} días vencido`;
+                colorEstado = '#e74c3c';
+              } else if (diffDias === 0) {
+                estado = 'Vence hoy';
+                diasRestantes = `0 días restantes`;
+                colorEstado = '#e74c3c';
+              } else if (diffDias <= 30) {
+                estado = 'Por vencer';
+                diasRestantes = `${diffDias} días restantes`;
+                colorEstado = '#f39c12';
+              } else {
+                estado = 'Vigente';
+                diasRestantes = `${diffDias} días restantes`;
+                colorEstado = '#27ae60';
+              }
+            } else {
+              estado = 'Sin vigencia';
+              fechaVigencia = 'No especificada';
+              diasRestantes = 'N/A';
+              colorEstado = '#95a5a6';
+            }
           }
-
-          return 0;
-        });
-
-        documentosOrdenados.forEach((documento, index) => {
-          const rowHeight = 35;
-
-          // Fondo alternado
-          if (index % 2 === 0) {
-            doc.rect(40, yPos, 515, rowHeight)
-              .fillColor('#fafafa')
-              .fill();
+          } else {
+            // No hay fecha de matrícula
+            estado = 'No requerida';
+            fechaVigencia = 'No hay fecha de matrícula';
+            diasRestantes = 'N/A';
+            colorEstado = '#95a5a6';
           }
-
-          // Borde de la fila
-          doc.strokeColor('#e8e8e8')
-            .lineWidth(0.5)
-            .rect(40, yPos, 515, rowHeight)
-            .stroke();
-
-          // Calcular estado y datos
-          const categoria = (documento.categoria || '').toUpperCase();
-          let estado = 'Sin especificar';
-          let fechaVigencia = 'No especificada';
-          let diasRestantes = 'N/A';
-          let colorEstado = '#95a5a6';
-
+        } else if (documento) {
           if (categoria === 'TARJETA_DE_PROPIEDAD') {
             estado = 'Permanente';
             fechaVigencia = 'No aplica';
@@ -1645,48 +1722,66 @@ async function generateVehiculoPDF(vehiculo, documentos) {
                 diasRestantes = `${diffDias} días restantes`;
                 colorEstado = '#27ae60';
               }
+            } else {
+              estado = 'Sin vigencia';
+              fechaVigencia = 'No especificada';
+              diasRestantes = 'N/A';
+              colorEstado = '#95a5a6';
             }
           }
+        }
+        // Si no hay documento, mantener estado "Faltante" y color rojo
 
-          // Barra de color lateral más prominente
-          doc.rect(40, yPos, 6, rowHeight)
-            .fillColor(colorEstado)
-            .fill();
+        // Barra de color lateral
+        doc.rect(40, yPos, 6, rowHeight)
+          .fillColor(colorEstado)
+          .fill();
 
-          // Contenido de la fila con fuentes más grandes
-          doc.fontSize(10)
-            .font('Helvetica')
-            .fillColor('#2c3e50');
+        // Contenido de la fila
+        doc.fontSize(10)
+          .font('Helvetica')
+          .fillColor('#2c3e50');
 
-          // Documento
-          const nombreDoc = (documento.categoria || '').replace(/_/g, ' ');
-          doc.text(nombreDoc, colPositions[0] + 12, yPos + 14, { width: colWidths[0] - 20 });
+        // Documento
+        const nombreDoc = categoria.replace(/_/g, ' ');
+        doc.text(nombreDoc, colPositions[0] + 12, yPos + 14, { width: colWidths[0] - 20 });
 
-          // Vigencia
-          doc.text(fechaVigencia, colPositions[1] + 8, yPos + 14, {
-            width: colWidths[1] - 15,
+        // Vigencia
+        doc.text(fechaVigencia, colPositions[1] + 8, yPos + 14, {
+          width: colWidths[1] - 15,
+          align: 'center'
+        });
+
+        // Estado con color y negrita
+        doc.fillColor(colorEstado)
+          .font('Helvetica-Bold')
+          .text(estado, colPositions[2] + 8, yPos + 14, { width: colWidths[2] - 15 });
+
+        // Días restantes centrado horizontalmente
+        doc.fillColor('#2c3e50')
+          .font('Helvetica')
+          .text(diasRestantes, colPositions[3] + 8, yPos + 14, {
+            width: colWidths[3] - 15,
             align: 'center'
           });
 
-          // Estado con color y negrita
-          doc.fillColor(colorEstado)
-            .font('Helvetica-Bold')
-            .text(estado, colPositions[2] + 8, yPos + 14, { width: colWidths[2] - 15 });
+        yPos += rowHeight;
+      });
 
-          // Días restantes centrado horizontalmente
-          doc.fillColor('#2c3e50')
-            .font('Helvetica')
-            .text(diasRestantes, colPositions[3] + 8, yPos + 14, {
-              width: colWidths[3] - 15,
-              align: 'center'
-            });
-
-          yPos += rowHeight;
-        });
+      // Si hay faltantes, mostrar advertencia al final
+      if (faltantes.length > 0) {
+        yPos += 10;
+        doc.fontSize(11)
+          .font('Helvetica-Bold')
+          .fillColor('#e74c3c')
+          .text(`Faltan documentos obligatorios: ${faltantes.map(f => f.replace(/_/g, ' ')).join(', ')}`, 45, yPos, {
+            width: 500
+          });
+        yPos += 20;
       }
 
       // === FOOTER ===
-      const footerY = 750;
+      const footerY = 760;
 
       doc.strokeColor('#2E8B57')
         .lineWidth(1)
