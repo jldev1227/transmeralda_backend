@@ -1640,7 +1640,10 @@ async function generateVehiculoPDF(vehiculo, documentos) {
           } else if (hoy >= fechaRequerida && !documento) {
             // Ya se requiere y no hay documento
             estado = 'Faltante';
-            fechaVigencia = `Desde ${fechaRequerida.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+            // Sumar un día a la fecha requerida
+            const fechaRequeridaMostrar = new Date(fechaRequerida);
+            fechaRequeridaMostrar.setDate(fechaRequeridaMostrar.getDate() + 1);
+            fechaVigencia = `Desde el ${fechaRequeridaMostrar.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
             diasRestantes = 'N/A';
             colorEstado = '#e74c3c';
           }
@@ -1683,7 +1686,7 @@ async function generateVehiculoPDF(vehiculo, documentos) {
           }
           } else {
             // No hay fecha de matrícula
-            estado = 'Vigente';
+            estado = 'Faltante';
             fechaVigencia = 'No hay fecha de matrícula';
             diasRestantes = 'N/A';
             colorEstado = '#95a5a6';
