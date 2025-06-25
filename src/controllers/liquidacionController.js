@@ -17,22 +17,23 @@ exports.obtenerLiquidaciones = async (req, res) => {
   try {
     const liquidaciones = await Liquidacion.findAll({
       include: [
-        { model: Conductor, as: "conductor" },
-        { model: Vehiculo, as: "vehiculos" },
-        { model: Bonificacion, as: "bonificaciones" },
-        { model: Pernote, as: "pernotes" },
-        { model: Recargo, as: "recargos", include: [{ model: Empresa, as: "empresa" }] },
-        { model: Anticipo, as: "anticipos" },
-        {
-          model: User,
-          as: "creadoPor",
-          attributes: ["id", "nombre", "correo"],
-        }, // Cambiado a creadoPor
-        {
-          model: User,
-          as: "liquidadoPor",
-          attributes: ["id", "nombre", "correo"],
-        }, // Cambiado a liquidadoPor
+      { model: Conductor, as: "conductor" },
+      { model: Vehiculo, as: "vehiculos" },
+      { model: Bonificacion, as: "bonificaciones" },
+      { model: Mantenimiento, as: "mantenimientos" },
+      { model: Pernote, as: "pernotes" },
+      { model: Recargo, as: "recargos", include: [{ model: Empresa, as: "empresa" }] },
+      { model: Anticipo, as: "anticipos" },
+      {
+        model: User,
+        as: "creadoPor",
+        attributes: ["id", "nombre", "correo"],
+      },
+      {
+        model: User,
+        as: "liquidadoPor",
+        attributes: ["id", "nombre", "correo"],
+      },
       ],
     });
 
