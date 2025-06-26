@@ -709,7 +709,6 @@ exports.cambiarEstado = async (req, res) => {
   try {
     const { id } = req.params;
     const { estado, fecha_finalizacion } = req.body;
-    console.log(fecha_finalizacion)
 
     if (
       !estado ||

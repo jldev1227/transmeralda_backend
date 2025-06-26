@@ -663,8 +663,6 @@ const updateVehiculo = async (req, res) => {
     // Obtener el ID del socket del cliente
     const socketId = req.headers['socket-id'] || req.body.socketId || 'unknown';
 
-    console.log(req.user.id, categoriasArray, fechasVigenciaNormalizadas, id, socketId);
-
     // Iniciar procesamiento asíncrono de actualización de documentos
     const sessionId = await actualizarDocumentosVehiculo(
       req.user.id,
@@ -771,7 +769,6 @@ const createVehiculoBasico = async (req, res) => {
 // Actualizar un vehículo existente de manera básica
 const updateVehiculoBasico = async (req, res) => {
   try {
-    console.log(req.body);
     const [updated] = await Vehiculo.update(req.body, {
       where: { id: req.params.id }
     });
@@ -1159,7 +1156,6 @@ const getProgressProccess = async (req, res) => {
       porcentaje: total > 0 ? Math.round((parseInt(procesados) / parseInt(total)) * 100) : 0
     };
 
-    console.log('Progreso obtenido:', response);
     res.json(response);
 
   } catch (error) {
