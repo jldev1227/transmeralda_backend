@@ -805,6 +805,14 @@ async function generatePDF(liquidacion) {
         .font("Helvetica-Bold")
         .text(`COMPROBANTE DE NOMINA - ${getMesyAño(liquidacion.periodo_end)}`);
 
+      doc.moveDown(1); // Mueve el cursor hacia abajo (alternativa a marginTop)
+      
+      doc
+        .fontSize(11)
+        .fillColor("#2E8B57")
+        .font("Helvetica-Bold")
+        .text(`BÁSICO CORRESPONDIENTE AL MES DE - ${getMesyAño(liquidacion.periodo_end)}`);
+
       // If you have a logo to insert
       doc.image(imagePath, imageX, imageY, {
         fit: [175, 100],
