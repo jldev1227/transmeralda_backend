@@ -806,7 +806,7 @@ async function generatePDF(liquidacion) {
         .text(`COMPROBANTE DE NOMINA - ${getMesyAño(liquidacion.periodo_end)}`);
 
       doc.moveDown(1); // Mueve el cursor hacia abajo (alternativa a marginTop)
-      
+
       doc
         .fontSize(11)
         .fillColor("#2E8B57")
@@ -904,26 +904,29 @@ async function generatePDF(liquidacion) {
         }
       );
 
-      // Incapacidad remuneración
-      drawTableRow(
-        doc,
-        "Remuneración por incapacidad",
-        formatToCOP(safeValue(liquidacion.valor_incapacidad, "0")),
-        {
-          middleText: `${safeValue(calcularDiferenciaDias(liquidacion.periodo_start_incapacidad, liquidacion.periodo_end_incapacidad), "0")} días`,
-          middleAlign: "center",
-          valueStyle: {
-            color: "#2E8B57",
-            fontSize: 12,
-            bgColor: "#F3F8F5",
-            marginRight: 5,
-          },
-          valueAlign: "right",
-          rowHeight: 26,
-          drawVerticalBorders: false,
-          borderStyle: "outer",
-        }
-      );
+      // Incapacidad remuneración - Solo mostrar si existe valor y es mayor a 0
+      const valorIncapacidad = safeValue(liquidacion.valor_incapacidad, 0);
+      if (valorIncapacidad > 0 && valorIncapacidad > 0) {
+        drawTableRow(
+          doc,
+          "Remuneración por incapacidad",
+          formatToCOP(valorIncapacidad),
+          {
+            middleText: `${safeValue(calcularDiferenciaDias(liquidacion.periodo_start_incapacidad, liquidacion.periodo_end_incapacidad), "0")} días`,
+            middleAlign: "center",
+            valueStyle: {
+              color: "#2E8B57",
+              fontSize: 12,
+              bgColor: "#F3F8F5",
+              marginRight: 5,
+            },
+            valueAlign: "right",
+            rowHeight: 26,
+            drawVerticalBorders: false,
+            borderStyle: "outer",
+          }
+        );
+      }
 
       // Adjustment
       drawTableRow(
@@ -957,7 +960,7 @@ async function generatePDF(liquidacion) {
         .fillColor("#2E8B57")
         .font("Helvetica-Bold")
         .text(
-          `${formatDate(liquidacion.periodo_start)} - ${formatDate(
+          `ADICIONALES ${formatDate(liquidacion.periodo_start)} - ${formatDate(
             liquidacion.periodo_end
           )}`,
           {
