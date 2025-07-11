@@ -8,7 +8,7 @@ const PDFDocument = require('pdfkit');
 const archiver = require('archiver');
 const fs = require('fs');
 const path = require('path');
-const logger = require('../utils/logger');
+const { notifyUser, notificarGlobal } = require('../utils/notificar');
 
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -18,41 +18,6 @@ const upload = multer({
 
 const uploadDocumentos = upload.array('documentos', 10); // Espera un campo llamado 'documentos'
 
-/**
- * Notifica a todos los clientes conectados
- * @param {string} evento - Nombre del evento a emitir
- * @param {object} datos - Datos a enviar
- */
-function notificarGlobal(evento, datos) {
-  if (!global.io) {
-    logger.error(`No se puede emitir evento global ${evento}: global.io no inicializado`);
-    return;
-  }
-
-  try {
-    global.io.emit(evento, datos);
-    logger.debug(`Evento ${evento} emitido globalmente a todos los clientes conectados`);
-  } catch (error) {
-    logger.error(`Error al emitir evento global ${evento}: ${error.message}`);
-  }
-}
-
-function notifyUser(userId, event, data) {
-  try {
-    // Obtener la función notifyUser de la aplicación global
-    const notifyFn = global.app?.get("notifyUser");
-
-    if (notifyFn) {
-      notifyFn(userId, event, data);
-    } else {
-      console.log(
-        `No se pudo notificar al usuario ${userId} (evento: ${event}) - Socket.IO no está disponible`
-      );
-    }
-  } catch (error) {
-    console.error("Error al notificar al usuario:", error);
-  }
-}
 /**
  * Obtener todos los vehículos con filtros de documentos (sin paginación/limit)
  */
@@ -1581,7 +1546,6 @@ async function generateVehiculoPDF(vehiculo, documentos) {
           .lineWidth(0.5)
           .rect(40, yPos, 515, rowHeight)
           .stroke();
-
         let documento = documentosMap[categoria];
         let estado = 'Faltante';
         let fechaVigencia = 'No especificada';
@@ -1604,71 +1568,63 @@ async function generateVehiculoPDF(vehiculo, documentos) {
             const fechaAlerta = new Date(fechaRequerida);
             fechaAlerta.setMonth(fechaAlerta.getMonth() - 1);
 
-          if (hoy < fechaAlerta) {
-            // Aún no se requiere tecnomecánica
-            estado = 'Vigente';
-            // Sumar un día solo en este caso
-            const fechaRequeridaMostrar = new Date(fechaRequerida);
-            fechaRequeridaMostrar.setDate(fechaRequeridaMostrar.getDate() + 1);
-            fechaVigencia = `Desde el ${fechaRequeridaMostrar.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
-            diasRestantes = `${Math.ceil((fechaRequerida - hoy) / (1000 * 60 * 60 * 24)) + 1} días para requerirse`;
-            colorEstado = '#3498db';
-          } else if (hoy >= fechaAlerta && hoy < fechaRequerida) {
-            // Próxima a requerirse
-            estado = 'Próxima a requerir';
-            // Sumar un día solo en este caso
-            const fechaRequeridaMostrar = new Date(fechaRequerida);
-            fechaRequeridaMostrar.setDate(fechaRequeridaMostrar.getDate() + 1);
-            fechaVigencia = `Desde el ${fechaRequeridaMostrar.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
-            diasRestantes = `${Math.ceil((fechaRequerida - hoy) / (1000 * 60 * 60 * 24)) + 1} días para requerirse`;
-            colorEstado = '#f39c12';
-          } else if (hoy >= fechaRequerida && !documento) {
-            // Ya se requiere y no hay documento
-            estado = 'Faltante';
-            // Sumar un día a la fecha requerida
-            const fechaRequeridaMostrar = new Date(fechaRequerida);
-            fechaRequeridaMostrar.setDate(fechaRequeridaMostrar.getDate() + 1);
-            fechaVigencia = `Desde el ${fechaRequeridaMostrar.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
-            diasRestantes = 'N/A';
-            colorEstado = '#e74c3c';
-          }
-          // Si hay documento, aplicar lógica normal
-          if (documento) {
-            const fechaVigenciaRaw = documento.fecha_vigencia || documento.fechaVigencia;
-            if (fechaVigenciaRaw) {
-              const fechaVigenciaDate = new Date(fechaVigenciaRaw);
-              fechaVigenciaDate.setHours(0, 0, 0, 0);
-              const diffDias = Math.ceil((fechaVigenciaDate - hoy) / (1000 * 60 * 60 * 24));
-              fechaVigencia = fechaVigenciaDate.toLocaleDateString('es-CO', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric'
-              });
-
-              if (diffDias < 0) {
-                estado = 'Vencido';
-                diasRestantes = `${Math.abs(diffDias)} días vencido`;
-                colorEstado = '#e74c3c';
-              } else if (diffDias === 0) {
-                estado = 'Vence hoy';
-                diasRestantes = `0 días restantes`;
-                colorEstado = '#e74c3c';
-              } else if (diffDias <= 30) {
-                estado = 'Por vencer';
-                diasRestantes = `${diffDias} días restantes`;
-                colorEstado = '#f39c12';
-              } else {
-                estado = 'Vigente';
-                diasRestantes = `${diffDias} días restantes`;
-                colorEstado = '#27ae60';
-              }
-            } else {
-              estado = 'Sin vigencia';
-              fechaVigencia = 'No especificada';
+            if (hoy < fechaAlerta) {
+              // Aún no se requiere tecnomecánica
+              estado = 'Vigente';
+              fechaVigencia = `Desde el ${fechaRequerida.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+              diasRestantes = `${Math.ceil((fechaRequerida - hoy) / (1000 * 60 * 60 * 24))} días para requerirse`;
+              colorEstado = '#3498db';
+            } else if (hoy >= fechaAlerta && hoy < fechaRequerida) {
+              // Próxima a requerirse
+              estado = 'Próxima a requerir';
+              fechaVigencia = `Desde el ${fechaRequerida.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+              diasRestantes = `${Math.ceil((fechaRequerida - hoy) / (1000 * 60 * 60 * 24))} días para requerirse`;
+              colorEstado = '#f39c12';
+            } else if (hoy >= fechaRequerida && !documento) {
+              // Ya se requiere y no hay documento
+              estado = 'Faltante';
+              fechaVigencia = `Desde el ${fechaRequerida.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
               diasRestantes = 'N/A';
-              colorEstado = '#95a5a6';
+              colorEstado = '#e74c3c';
             }
-          }
+
+            // Si hay documento, aplicar lógica normal
+            if (documento) {
+              const fechaVigenciaRaw = documento.fecha_vigencia || documento.fechaVigencia;
+              if (fechaVigenciaRaw) {
+                const fechaVigenciaDate = new Date(fechaVigenciaRaw);
+                fechaVigenciaDate.setHours(0, 0, 0, 0);
+                const diffDias = Math.ceil((fechaVigenciaDate - hoy) / (1000 * 60 * 60 * 24));
+                fechaVigencia = fechaVigenciaDate.toLocaleDateString('es-CO', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric'
+                });
+
+                if (diffDias < 0) {
+                  estado = 'Vencido';
+                  diasRestantes = `${Math.abs(diffDias)} días vencido`;
+                  colorEstado = '#e74c3c';
+                } else if (diffDias === 0) {
+                  estado = 'Vence hoy';
+                  diasRestantes = `0 días restantes`;
+                  colorEstado = '#e74c3c';
+                } else if (diffDias <= 30) {
+                  estado = 'Por vencer';
+                  diasRestantes = `${diffDias} días restantes`;
+                  colorEstado = '#f39c12';
+                } else {
+                  estado = 'Vigente';
+                  diasRestantes = `${diffDias} días restantes`;
+                  colorEstado = '#27ae60';
+                }
+              } else {
+                estado = 'Sin vigencia';
+                fechaVigencia = 'No especificada';
+                diasRestantes = 'N/A';
+                colorEstado = '#95a5a6';
+              }
+            }
           } else {
             // No hay fecha de matrícula
             estado = 'Faltante';
@@ -1690,7 +1646,6 @@ async function generateVehiculoPDF(vehiculo, documentos) {
               const fechaVigenciaDate = new Date(fechaVigenciaRaw);
               fechaVigenciaDate.setHours(0, 0, 0, 0);
               const diffDias = Math.ceil((fechaVigenciaDate - hoy) / (1000 * 60 * 60 * 24));
-
               fechaVigencia = fechaVigenciaDate.toLocaleDateString('es-CO', {
                 day: '2-digit',
                 month: '2-digit',
@@ -1718,8 +1673,8 @@ async function generateVehiculoPDF(vehiculo, documentos) {
             }
           }
         }
-        // Si no hay documento, mantener estado "Faltante" y color rojo
 
+        // Si no hay documento, mantener estado "Faltante" y color rojo
         // Barra de color lateral
         doc.rect(40, yPos, 6, rowHeight)
           .fillColor(colorEstado)
