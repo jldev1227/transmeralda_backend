@@ -4,49 +4,14 @@ const logger = require('../utils/logger');
 const { User, Vehiculo, Documento } = require('../models');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
-const { uploadProcessedDocuments, saveTemporaryDocument } = require('../controllers/documentoController');
+const { uploadProcessedDocumentsVehiculo, saveTemporaryDocument } = require('../controllers/documentoController');
 const fs = require('fs').promises;
 const { redisClient } = require('../config/redisClient');
 const { spawn } = require('child_process');
 const axios = require('axios');
 const FormData = require('form-data');
 const eventEmitter = require('../utils/eventEmitter');
-
-/**
- * Notifica a todos los clientes conectados
- * @param {string} evento - Nombre del evento a emitir
- * @param {object} datos - Datos a enviar
- */
-function notificarGlobal(evento, datos) {
-  if (!global.io) {
-    logger.error(`No se puede emitir evento global ${evento}: global.io no inicializado`);
-    return;
-  }
-
-  try {
-    global.io.emit(evento, datos);
-    logger.debug(`Evento ${evento} emitido globalmente a todos los clientes conectados`);
-  } catch (error) {
-    logger.error(`Error al emitir evento global ${evento}: ${error.message}`);
-  }
-}
-
-function notifyUser(userId, event, data) {
-  try {
-    // Obtener la función notifyUser de la aplicación global
-    const notifyFn = global.app?.get("notifyUser");
-
-    if (notifyFn) {
-      notifyFn(userId, event, data);
-    } else {
-      console.log(
-        `No se pudo notificar al usuario ${userId} (evento: ${event}) - Socket.IO no está disponible`
-      );
-    }
-  } catch (error) {
-    console.error("Error al notificar al usuario:", error);
-  }
-}
+const { notificarGlobal, notifyUser } = require('../utils/notificar');
 
 // Configuración de las colas
 const vehiculoCreacionQueue = new Queue('vehiculo-creacion', {
@@ -232,7 +197,7 @@ async function procesarConArchivoTemporal(ocrData, placa = null) {
 }
 
 // Función para inicializar los procesadores (debe ser llamada al iniciar la app)
-function inicializarProcesadores() {
+function inicializarProcesadoresVehiculo() {
   logger.info('Inicializando procesadores de colas de vehículos...');
 
   // Procesador para creación de vehículos
@@ -537,7 +502,7 @@ function inicializarProcesadores() {
         progreso: 95
       });
 
-      const documentosCreados = await uploadProcessedDocuments(
+      const documentosCreados = await uploadProcessedDocumentsVehiculo(
         sessionId,
         nuevoVehiculo.id,
         datosVehiculo.fechasVigencia,
@@ -1240,7 +1205,7 @@ function inicializarProcesadores() {
         progreso: 90
       });
 
-      const documentosCreados = await uploadProcessedDocuments(
+      const documentosCreados = await uploadProcessedDocumentsVehiculo(
         sessionId,
         vehiculoId,
         fechasVigencia,
@@ -1442,5 +1407,5 @@ module.exports = {
   vehiculoActualizacionQueue,
   procesarDocumentos,
   actualizarDocumentosVehiculo,
-  inicializarProcesadores
+  inicializarProcesadoresVehiculo
 };
