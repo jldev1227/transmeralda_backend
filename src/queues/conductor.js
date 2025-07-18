@@ -10,7 +10,6 @@ const fs = require('fs').promises;
 const { redisClient } = require('../config/redisClient');
 const axios = require('axios');
 const FormData = require('form-data');
-const eventEmitter = require('../utils/eventEmitter');
 const { notificarGlobal, notifyUser } = require('../utils/notificar');
 const { procesarDatosOCRConMinistral } = require('../services/ministralConductor');
 
@@ -335,7 +334,6 @@ function inicializarProcesadoresConductorMinistral() {
         if (datosDocumentos[categoria]) {
           try {
             if (categoria === 'FOTO_PERFIL') {
-              console.log('⚠️ Saltando procesamiento de FOTO_PERFIL temporalmente');
               datosEstructurados[categoria] = null; // o datos por defecto
               continue;
             }
@@ -362,65 +360,302 @@ function inicializarProcesadoresConductorMinistral() {
         }
       }
 
-      // ====== PASO 4: COMBINAR DATOS DE TODOS LOS DOCUMENTOS ======
-      job.progress(70);
+      // ✅ REEMPLAZAR TODA LA SECCIÓN DE COMBINACIÓN DE DATOS (PASO 4)
+
+      // ====== PASO 4: COMBINAR DATOS EXISTENTES CON NUEVOS (VERSIÓN CORREGIDA) ======
+      job.progress(65);
       await redisClient.hmset(`conductor:${sessionId}`,
-        'progreso', '70',
+        'progreso', '65',
         'estado', 'combinando_datos',
-        'mensaje', 'Combinando información de todos los documentos...'
+        'mensaje', 'Combinando datos existentes con información nueva...'
       );
 
       notifyUser(userId, 'conductor:procesamiento:progreso', {
         sessionId,
         socketId,
-        mensaje: 'Combinando información de todos los documentos...',
-        progreso: 70
+        mensaje: 'Combinando datos existentes con información nueva...',
+        progreso: 65
       });
 
-      // Combinar datos usando Ministral
-      const { MinistralConductorService } = require('../services/ministralConductor');
-      const ministralService = new MinistralConductorService();
-      const datosFinales = await ministralService.combinarDatosDocumentos(datosEstructurados);
+      // Obtener datos actuales del conductor
+      const datosActuales = conductorExistente.toJSON();
 
-      console.log('Datos finales combinados:', datosFinales);
+      let datosNuevosExtracted = {};
 
-      // Validar campos obligatorios
-      const camposObligatorios = ['nombre', 'apellido', 'numero_identificacion', 'genero'];
-      const camposFaltantes = camposObligatorios.filter(campo =>
-        !datosFinales[campo] || datosFinales[campo].toString().trim() === ''
+      // ✅ SOLO COMBINAR DATOS SI HAY DOCUMENTOS QUE EXTRAIGAN INFORMACIÓN
+      if (categoriesWithData.length > 0) {
+        logger.info(`🔄 Combinando datos de documentos: ${categoriesWithData.join(', ')}`);
+
+        // Filtrar solo los documentos que tienen datos para extraer
+        const datosParaCombinar = {};
+        categoriesWithData.forEach(cat => {
+          datosParaCombinar[cat] = datosEstructurados[cat];
+        });
+
+        // Combinar datos usando Ministral
+        const { MinistralConductorService } = require('../services/ministralConductor');
+        const ministralService = new MinistralConductorService();
+
+        datosNuevosExtracted = await ministralService.combinarDatosDocumentos(datosParaCombinar);
+        logger.info(`✅ Datos extraídos por IA:`, datosNuevosExtracted);
+      } else {
+        logger.info(`ℹ️ No hay documentos con datos para combinar (solo FOTO_PERFIL o documentos sin extracción)`);
+        datosNuevosExtracted = {}; // Objeto vacío si solo es foto de perfil
+      }
+
+      // ✅ FUNCIÓN PARA PRESERVAR DATOS EXISTENTES CUANDO LOS NUEVOS SON INVÁLIDOS
+      const preservarDatosExistentes = (datosExistentes, datosNuevos, datosBasicos = {}) => {
+        logger.info(`📊 Iniciando preservación de datos existentes...`);
+
+        // Empezar con datos existentes como base
+        const resultado = { ...datosExistentes };
+
+        // Aplicar datos básicos del formulario primero (tienen prioridad)
+        Object.keys(datosBasicos).forEach(campo => {
+          const valor = datosBasicos[campo];
+          if (valor !== null && valor !== undefined && valor !== '') {
+            resultado[campo] = valor;
+            logger.info(`📝 Campo ${campo} actualizado desde formulario: "${valor}"`);
+          }
+        });
+
+        // Aplicar datos nuevos extraídos, pero solo si son válidos
+        Object.keys(datosNuevos).forEach(campo => {
+          const valorNuevo = datosNuevos[campo];
+          const valorExistente = datosExistentes[campo];
+
+          // ✅ DETERMINAR SI EL VALOR NUEVO ES VÁLIDO
+          let esValorValido = false;
+
+          if (valorNuevo === null || valorNuevo === undefined) {
+            esValorValido = false;
+          } else if (typeof valorNuevo === 'string') {
+            esValorValido = valorNuevo.trim().length > 0;
+          } else if (typeof valorNuevo === 'number') {
+            esValorValido = !isNaN(valorNuevo);
+          } else if (typeof valorNuevo === 'boolean') {
+            esValorValido = true;
+          } else if (typeof valorNuevo === 'object' && valorNuevo !== null) {
+            esValorValido = Object.keys(valorNuevo).length > 0;
+          }
+
+          if (esValorValido) {
+            // ✅ VALIDACIONES ESPECÍFICAS POR CAMPO
+            let valorFinal = valorNuevo;
+
+            switch (campo) {
+              case 'nombre':
+              case 'apellido':
+                if (typeof valorNuevo === 'string' && valorNuevo.trim().length >= 2) {
+                  valorFinal = valorNuevo.trim();
+                } else {
+                  valorFinal = valorExistente; // Preservar existente
+                  esValorValido = false;
+                }
+                break;
+
+              case 'email':
+                if (typeof valorNuevo === 'string' && valorNuevo.includes('@') && valorNuevo.length > 5) {
+                  valorFinal = valorNuevo.trim().toLowerCase();
+                } else {
+                  valorFinal = valorExistente;
+                  esValorValido = false;
+                }
+                break;
+
+              case 'telefono':
+                if (typeof valorNuevo === 'string' && valorNuevo.trim().length >= 7) {
+                  valorFinal = valorNuevo.trim();
+                } else {
+                  valorFinal = valorExistente;
+                  esValorValido = false;
+                }
+                break;
+
+              case 'numero_identificacion':
+                if (typeof valorNuevo === 'string' && valorNuevo.trim().length >= 7) {
+                  valorFinal = valorNuevo.trim();
+                } else {
+                  valorFinal = valorExistente;
+                  esValorValido = false;
+                }
+                break;
+
+              case 'fecha_nacimiento':
+              case 'fecha_ingreso':
+                if (typeof valorNuevo === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(valorNuevo)) {
+                  valorFinal = valorNuevo;
+                } else {
+                  valorFinal = valorExistente;
+                  esValorValido = false;
+                }
+                break;
+
+              case 'salario_base':
+                if ((typeof valorNuevo === 'number' && valorNuevo > 0) ||
+                  (typeof valorNuevo === 'string' && !isNaN(parseFloat(valorNuevo)) && parseFloat(valorNuevo) > 0)) {
+                  valorFinal = typeof valorNuevo === 'string' ? parseFloat(valorNuevo) : valorNuevo;
+                } else {
+                  valorFinal = valorExistente;
+                  esValorValido = false;
+                }
+                break;
+
+              default:
+                // Para otros campos, usar el valor si no está vacío
+                if (typeof valorNuevo === 'string' && valorNuevo.trim().length === 0) {
+                  valorFinal = valorExistente;
+                  esValorValido = false;
+                }
+            }
+
+            if (esValorValido && valorFinal !== valorExistente) {
+              resultado[campo] = valorFinal;
+              logger.info(`🔄 Campo ${campo} actualizado: "${valorExistente}" → "${valorFinal}"`);
+            } else {
+              resultado[campo] = valorExistente;
+              logger.info(`📌 Campo ${campo} preservado con valor existente: "${valorExistente}" (nuevo valor inválido: "${valorNuevo}")`);
+            }
+          } else {
+            // ✅ PRESERVAR VALOR EXISTENTE
+            resultado[campo] = valorExistente;
+            logger.info(`📌 Campo ${campo} preservado con valor existente: "${valorExistente}" (nuevo valor era null/vacío)`);
+          }
+        });
+
+        return resultado;
+      };
+
+      // ✅ APLICAR PRESERVACIÓN DE DATOS
+      const datosFinales = preservarDatosExistentes(
+        datosActuales,
+        datosNuevosExtracted,
+        datosBasicos
       );
 
-      if (camposFaltantes.length > 0) {
-        const errorMsg = `Faltan los siguientes campos obligatorios: ${camposFaltantes.join(', ')}`;
-        await handleProcessingError(userId, sessionId, socketId, errorMsg, 'validacion_campos_obligatorios');
-        throw new Error(errorMsg);
-      }
+      // Conservar campos que nunca deben cambiar
+      datosFinales.id = conductorId;
+      datosFinales.numero_identificacion = datosActuales.numero_identificacion; // No cambiar identificación
+      datosFinales.createdAt = datosActuales.createdAt;
+      datosFinales.creado_por_id = datosActuales.creado_por_id;
+
+      // ✅ LOG DETALLADO DE PRESERVACIÓN
+      const camposPreservados = [];
+      const camposActualizados = [];
+
+      Object.keys(datosNuevosExtracted).forEach(campo => {
+        if (datosFinales[campo] === datosActuales[campo]) {
+          camposPreservados.push(campo);
+        } else {
+          camposActualizados.push({
+            campo,
+            anterior: datosActuales[campo],
+            nuevo: datosFinales[campo]
+          });
+        }
+      });
+
+      logger.info(`📈 Resumen de preservación de datos:`, {
+        categoriasConDatos: categoriesWithData,
+        camposExtraidos: Object.keys(datosNuevosExtracted).length,
+        camposPreservados: camposPreservados.length,
+        camposActualizados: camposActualizados.length,
+        detallePreservados: camposPreservados,
+        detalleActualizados: camposActualizados
+      });
 
       // ====== PASO 5: VERIFICAR DUPLICADOS ======
       job.progress(75);
       await redisClient.hmset(`conductor:${sessionId}`,
         'progreso', '75',
-        'estado', 'verificando_duplicados',
-        'mensaje', 'Verificando duplicados...'
+        'estado', 'validando_datos',
+        'mensaje', 'Validando datos actualizados...'
       );
 
       notifyUser(userId, 'conductor:procesamiento:progreso', {
         sessionId,
         socketId,
-        mensaje: 'Verificando duplicados...',
+        mensaje: 'Validando datos actualizados...',
         progreso: 75
       });
 
-      const conductorExistente = await Conductor.findOne({
-        where: { numero_identificacion: datosFinales.numero_identificacion }
+      // ✅ VALIDACIÓN INTELIGENTE BASADA EN CATEGORÍAS DE DOCUMENTOS
+      const categoriasQueExtraenDatos = ['CEDULA', 'LICENCIA', 'CONTRATO'];
+      const categoriasEnProcesamiento = categorias.filter(cat => categoriasQueExtraenDatos.includes(cat));
+      const soloFotoPerfil = categorias.length === 1 && categorias.includes('FOTO_PERFIL');
+
+      // ✅ SOLO VALIDAR CAMPOS CRÍTICOS SI SE PROCESARON DOCUMENTOS QUE EXTRAEN DATOS PERSONALES
+      if (categoriasEnProcesamiento.length > 0) {
+        logger.info(`Validando campos críticos porque se procesaron documentos que extraen datos: ${categoriasEnProcesamiento.join(', ')}`);
+
+        // ✅ VALIDACIÓN MEJORADA: Solo fallar si REALMENTE faltan campos críticos
+        const camposCriticos = ['nombre', 'apellido', 'numero_identificacion'];
+        const camposFaltantes = camposCriticos.filter(campo => {
+          const valor = datosFinales[campo];
+          // ✅ CONSIDERAR FALTANTE SOLO SI ES null, undefined O string vacío
+          const estaFaltante = valor === null ||
+            valor === undefined ||
+            (typeof valor === 'string' && valor.trim() === '');
+
+          if (estaFaltante) {
+            logger.warn(`⚠️ Campo crítico faltante: ${campo} = "${valor}"`);
+          } else {
+            logger.info(`✅ Campo crítico presente: ${campo} = "${valor}"`);
+          }
+
+          return estaFaltante;
+        });
+
+        // ✅ SOLO FALLAR SI HAY CAMPOS REALMENTE FALTANTES
+        if (camposFaltantes.length > 0) {
+          const errorMsg = `Faltan los siguientes campos críticos después de procesar ${categoriasEnProcesamiento.join(', ')}: ${camposFaltantes.join(', ')}`;
+          logger.error(`❌ Validación fallida:`, {
+            camposFaltantes,
+            valoresActuales: camposFaltantes.reduce((obj, campo) => {
+              obj[campo] = datosFinales[campo];
+              return obj;
+            }, {}),
+            categoriasProcessadas: categoriasEnProcesamiento
+          });
+
+          await handleProcessingError(userId, sessionId, socketId, errorMsg, 'validacion_campos_criticos', 'actualizacion');
+          throw new Error(errorMsg);
+        }
+
+        logger.info(`✅ Validación de campos críticos completada exitosamente - todos los campos tienen valores válidos`);
+
+      } else if (soloFotoPerfil) {
+        logger.info(`⚠️ Solo se está actualizando FOTO_PERFIL, saltando validación de campos críticos`);
+      } else {
+        logger.info(`ℹ️ No se procesaron documentos que requieran validación de campos críticos`);
+      }
+
+      // ✅ VALIDACIÓN ADICIONAL: Asegurar que campos básicos de BD no sean null
+      const camposBasicosBD = ['tipo_identificacion', 'estado'];
+      camposBasicosBD.forEach(campo => {
+        if (!datosFinales[campo]) {
+          switch (campo) {
+            case 'tipo_identificacion':
+              datosFinales[campo] = datosActuales[campo] || 'CC';
+              logger.info(`🔧 Campo ${campo} establecido por defecto: ${datosFinales[campo]}`);
+              break;
+            case 'estado':
+              datosFinales[campo] = datosActuales[campo] || 'disponible';
+              logger.info(`🔧 Campo ${campo} establecido por defecto: ${datosFinales[campo]}`);
+              break;
+          }
+        }
       });
 
-      if (conductorExistente) {
-        const errorMsg = `Ya existe un conductor con esa identificación ${datosFinales.numero_identificacion}`;
-        logger.error(errorMsg);
-        await handleProcessingError(userId, sessionId, socketId, errorMsg, 'validacion_identificacion_existente', conductorExistente);
-        throw new Error(errorMsg);
-      }
+      // ✅ LOG FINAL DE VALIDACIÓN
+      logger.info(`📋 Estado final de validación:`, {
+        categoriasProcessadas: categoriasEnProcesamiento,
+        validacionRequerida: categoriasEnProcesamiento.length > 0,
+        camposCriticosCompletos: ['nombre', 'apellido', 'numero_identificacion'].every(campo =>
+          datosFinales[campo] && typeof datosFinales[campo] === 'string' && datosFinales[campo].trim() !== ''
+        ),
+        estadoValidacion: 'aprobado'
+      });
 
       // ====== PASO 6: ACTUALIZAR ESTADO COMO COMPLETADO ======
       job.progress(80);
@@ -468,7 +703,6 @@ function inicializarProcesadoresConductorMinistral() {
         estado: 'disponible'
       };
 
-      console.log('Datos para BD:', datosParaBD);
       const nuevoConductor = await Conductor.create(datosParaBD, {
         user_id: userId // ID del usuario autenticado
       });
@@ -495,17 +729,17 @@ function inicializarProcesadoresConductorMinistral() {
         false
       );
 
-      // ====== FINALIZACIÓN AUTOMÁTICA ======
       job.progress(100);
       await redisClient.hmset(`conductor:${sessionId}`,
         'progreso', '100',
         'estado', 'completado',
-        'mensaje', 'Conductor registrado exitosamente con IA',
+        'mensaje', 'Conductor actualizado exitosamente con IA',
         'documentos_creados', documentosCreados.length.toString(),
         'fecha_completado', new Date().toISOString(),
         'procesamiento_completado', 'ministral'
       );
 
+      // ✅ NOTIFICACIÓN ÚNICA DE PROCESAMIENTO COMPLETADO
       notifyUser(userId, 'conductor:procesamiento:completado', {
         sessionId,
         socketId,
@@ -519,12 +753,14 @@ function inicializarProcesadoresConductorMinistral() {
         actualizacionAutomatica: true
       });
 
+      // ✅ NOTIFICACIÓN ESPECÍFICA DE CONDUCTOR ACTUALIZADO
       notifyUser(userId, 'conductor:actualizado', {
         conductor: conductorActualizado,
         documentos: documentosCreados,
         procesamiento: 'ministral'
       });
 
+      // ✅ NOTIFICACIÓN GLOBAL
       const { id, nombre } = await User.findByPk(userId);
       notificarGlobal('conductor:actualizado-global', {
         usuarioId: id,
@@ -544,7 +780,7 @@ function inicializarProcesadoresConductorMinistral() {
       // Limpiar archivos temporales
       try {
         const tempDir = path.join(__dirname, '..', '..', 'temp', sessionId);
-        // await fs.rm(tempDir, { recursive: true, force: true });
+        await fs.rm(tempDir, { recursive: true, force: true });
         logger.info(`Directorio temporal limpiado para sesión ${sessionId}`);
       } catch (cleanupError) {
         logger.warn(`Error al limpiar directorio temporal: ${cleanupError.message}`);
@@ -642,6 +878,28 @@ async function actualizarDocumentosConMinistral(userId, conductorId, adaptedFile
     throw error;
   }
 }
+
+// ✅ FUNCIÓN PARA NORMALIZAR NÚMEROS DE IDENTIFICACIÓN
+const normalizarNumeroIdentificacion = (numero) => {
+  if (!numero) return '';
+  // Convertir a string y remover todos los caracteres que no sean números
+  return numero.toString().replace(/[^\d]/g, '');
+};
+
+// ✅ FUNCIÓN PARA VALIDAR COINCIDENCIA DE DOCUMENTOS
+const validarCoincidenciaDocumento = (numeroExistente, numeroExtraido, categoria) => {
+  const numeroExistenteNormalizado = normalizarNumeroIdentificacion(numeroExistente);
+  const numeroExtraidoNormalizado = normalizarNumeroIdentificacion(numeroExtraido);
+
+  logger.info(`🔍 Validando coincidencia para ${categoria}:`, {
+    numeroExistente: numeroExistente,
+    numeroExistenteNormalizado: numeroExistenteNormalizado,
+    numeroExtraido: numeroExtraido,
+    numeroExtraidoNormalizado: numeroExtraidoNormalizado
+  });
+
+  return numeroExistenteNormalizado === numeroExtraidoNormalizado;
+};
 
 // ✅ PROCESADOR PARA ACTUALIZACIÓN DE CONDUCTORES CON MINISTRAL
 conductorActualizacionQueueMinistral.process('actualizar-conductor-ministral', async (job) => {
@@ -823,6 +1081,125 @@ conductorActualizacionQueueMinistral.process('actualizar-conductor-ministral', a
     logger.info(`📊 Categorías con datos para combinar: ${categoriesWithData.join(', ')}`);
     logger.info(`📋 Total de categorías procesadas: ${Object.keys(datosEstructurados).length}`);
 
+    job.progress(60);
+    await redisClient.hmset(`conductor:${sessionId}`,
+      'progreso', '60',
+      'estado', 'validando_identidad',
+      'mensaje', 'Validando identidad de documentos...'
+    );
+
+    notifyUser(userId, 'conductor:procesamiento:progreso', {
+      sessionId,
+      socketId,
+      mensaje: 'Validando identidad de documentos...',
+      progreso: 60
+    });
+
+    // ✅ NUEVA VALIDACIÓN: VERIFICAR COINCIDENCIA DE NÚMERO DE IDENTIFICACIÓN
+    const categoriasConIdentificacion = ['CEDULA', 'LICENCIA', 'CONTRATO'];
+    const numeroIdentificacionConductor = conductorExistente.numero_identificacion;
+
+    logger.info(`🔒 Iniciando validación de identidad del conductor:`, {
+      conductorId: conductorId,
+      numeroIdentificacionConductor: numeroIdentificacionConductor,
+      categoriasAProcesar: categorias,
+      categoriasConDatos: categoriesWithData
+    });
+
+    // Verificar cada documento que contiene número de identificación
+    for (const categoria of categoriesWithData) {
+      if (categoriasConIdentificacion.includes(categoria)) {
+        const datosCategoria = datosEstructurados[categoria];
+
+        // Buscar el número de identificación en los datos extraídos
+        let numeroExtraido = null;
+
+        if (datosCategoria && typeof datosCategoria === 'object') {
+          // Buscar en diferentes posibles campos donde puede estar el número según el documento
+          switch (categoria) {
+            case 'CEDULA':
+              numeroExtraido = datosCategoria.numero_identificacion ||
+                datosCategoria.numero_documento ||
+                datosCategoria.cedula ||
+                datosCategoria.numero_cedula;
+              break;
+            case 'LICENCIA':
+              // En licencia, también debe venir numero_identificacion además de numero_licencia
+              numeroExtraido = datosCategoria.numero_identificacion ||
+                datosCategoria.numero_documento ||
+                datosCategoria.cedula;
+              break;
+            case 'CONTRATO':
+              numeroExtraido = datosCategoria.numero_identificacion ||
+                datosCategoria.numero_documento ||
+                datosCategoria.cedula ||
+                datosCategoria.documento_identidad;
+              break;
+            default:
+              numeroExtraido = datosCategoria.numero_identificacion ||
+                datosCategoria.numero_documento;
+          }
+        }
+
+        if (numeroExtraido) {
+          logger.info(`🔍 Validando ${categoria} - Número extraído: "${numeroExtraido}"`);
+
+          const coincide = validarCoincidenciaDocumento(
+            numeroIdentificacionConductor,
+            numeroExtraido,
+            categoria
+          );
+
+          if (!coincide) {
+            const errorMsg = `El documento ${categoria} no corresponde al conductor. El número de identificación del documento (${numeroExtraido}) no coincide con el del conductor (${numeroIdentificacionConductor}).`;
+
+            logger.error(`❌ Error de validación de identidad:`, {
+              categoria: categoria,
+              numeroIdentificacionConductor: numeroIdentificacionConductor,
+              numeroExtraido: numeroExtraido,
+              numeroIdentificacionNormalizado: normalizarNumeroIdentificacion(numeroIdentificacionConductor),
+              numeroExtraidoNormalizado: normalizarNumeroIdentificacion(numeroExtraido)
+            });
+
+            await handleProcessingError(
+              userId,
+              sessionId,
+              socketId,
+              errorMsg,
+              'documento_no_corresponde_conductor',
+              'actualizacion'
+            );
+
+            throw new Error(errorMsg);
+          } else {
+            logger.info(`✅ ${categoria} validado correctamente - El documento corresponde al conductor`);
+          }
+        } else {
+          // ✅ CRÍTICO: Si no se puede extraer número de identificación, es un error
+          const errorMsg = `No se pudo extraer el número de identificación del documento ${categoria}. Verifica que el documento sea legible y contenga la información de identificación.`;
+
+          logger.error(`❌ Error extrayendo número de identificación:`, {
+            categoria: categoria,
+            datosExtraidos: datosCategoria,
+            numeroIdentificacionConductor: numeroIdentificacionConductor
+          });
+
+          await handleProcessingError(
+            userId,
+            sessionId,
+            socketId,
+            errorMsg,
+            'numero_identificacion_no_extraido',
+            'actualizacion'
+          );
+
+          throw new Error(errorMsg);
+        }
+      }
+    }
+
+    logger.info(`✅ Validación de identidad completada exitosamente para todas las categorías`);
+
     job.progress(65);
     await redisClient.hmset(`conductor:${sessionId}`,
       'progreso', '65',
@@ -857,31 +1234,200 @@ conductorActualizacionQueueMinistral.process('actualizar-conductor-ministral', a
       const ministralService = new MinistralConductorService();
 
       datosNuevosExtracted = await ministralService.combinarDatosDocumentos(datosParaCombinar);
-      logger.info(`✅ Datos combinados exitosamente:`, datosNuevosExtracted);
+      logger.info(`✅ Datos extraídos por IA:`, datosNuevosExtracted);
     } else {
       logger.info(`ℹ️ No hay documentos con datos para combinar (solo FOTO_PERFIL o documentos sin extracción)`);
       datosNuevosExtracted = {}; // Objeto vacío si solo es foto de perfil
     }
 
-    // ✅ FUSIONAR CON DATOS EXISTENTES
-    const datosFinales = {
-      ...datosActuales,
-      ...datosBasicos, // Datos básicos del formulario si los hay
-      ...datosNuevosExtracted // Datos extraídos de documentos nuevos (tienen prioridad)
+    // ✅ FUNCIÓN PARA PRESERVAR DATOS EXISTENTES CUANDO LOS NUEVOS SON INVÁLIDOS
+    const preservarDatosExistentes = (datosExistentes, datosNuevos, datosBasicos = {}) => {
+      logger.info(`📊 Iniciando preservación de datos existentes...`);
+
+      // Empezar con datos existentes como base
+      const resultado = { ...datosExistentes };
+
+      // Aplicar datos básicos del formulario primero (tienen prioridad máxima)
+      Object.keys(datosBasicos).forEach(campo => {
+        const valor = datosBasicos[campo];
+        if (valor !== null && valor !== undefined && valor !== '') {
+          resultado[campo] = valor;
+          logger.info(`📝 Campo ${campo} actualizado desde formulario: "${valor}"`);
+        }
+      });
+
+      // ✅ PROCESAR DATOS EXTRAÍDOS CON VALIDACIÓN ESTRICTA
+      Object.keys(datosNuevos).forEach(campo => {
+        const valorNuevo = datosNuevos[campo];
+        const valorExistente = datosExistentes[campo];
+
+        // ✅ VALIDAR SI EL NUEVO VALOR ES REALMENTE ÚTIL
+        let debeActualizar = false;
+        let valorFinal = valorExistente; // Por defecto, mantener existente
+
+        if (valorNuevo === null || valorNuevo === undefined) {
+          // Valor nulo/undefined: mantener existente
+          debeActualizar = false;
+          logger.info(`📌 ${campo}: mantener existente "${valorExistente}" (nuevo era null/undefined)`);
+        } else if (typeof valorNuevo === 'string') {
+          const valorLimpio = valorNuevo.trim();
+          if (valorLimpio.length === 0) {
+            // String vacío: mantener existente
+            debeActualizar = false;
+            logger.info(`📌 ${campo}: mantener existente "${valorExistente}" (nuevo era string vacío)`);
+          } else {
+            // ✅ STRING CON CONTENIDO: Validar según el campo
+            switch (campo) {
+              case 'nombre':
+              case 'apellido':
+                if (valorLimpio.length >= 2) {
+                  debeActualizar = true;
+                  valorFinal = valorLimpio;
+                }
+                break;
+
+              case 'email':
+                if (valorLimpio.includes('@') && valorLimpio.length > 5) {
+                  debeActualizar = true;
+                  valorFinal = valorLimpio.toLowerCase();
+                }
+                break;
+
+              case 'telefono':
+                if (valorLimpio.length >= 7) {
+                  debeActualizar = true;
+                  valorFinal = valorLimpio;
+                }
+                break;
+
+              case 'numero_identificacion':
+                // ✅ VALIDACIÓN ESPECIAL: El número de identificación NO debe cambiar
+                // Solo loggear pero no actualizar
+                logger.warn(`⚠️ Se intentó actualizar numero_identificacion: "${valorExistente}" → "${valorLimpio}". Se mantiene el original.`);
+                debeActualizar = false;
+                valorFinal = valorExistente; // Mantener siempre el original
+                break;
+
+              case 'direccion':
+                if (valorLimpio.length >= 5) {
+                  debeActualizar = true;
+                  valorFinal = valorLimpio;
+                }
+                break;
+
+              case 'fecha_nacimiento':
+              case 'fecha_ingreso':
+              case 'fecha_terminacion':
+                if (/^\d{4}-\d{2}-\d{2}$/.test(valorLimpio)) {
+                  debeActualizar = true;
+                  valorFinal = valorLimpio;
+                }
+                break;
+
+              case 'genero':
+                if (['M', 'F', 'Masculino', 'Femenino'].includes(valorLimpio)) {
+                  debeActualizar = true;
+                  valorFinal = valorLimpio;
+                }
+                break;
+
+              case 'sede_trabajo':
+                if (['YOPAL', 'VILLANUEVA', 'TAURAMENA'].includes(valorLimpio)) {
+                  debeActualizar = true;
+                  valorFinal = valorLimpio;
+                }
+                break;
+
+              case 'tipo_identificacion':
+                if (['CC', 'CE', 'TI', 'PP'].includes(valorLimpio)) {
+                  debeActualizar = true;
+                  valorFinal = valorLimpio;
+                }
+                break;
+
+              case 'termino_contrato':
+                if (['FIJO', 'INDEFINIDO', 'TEMPORAL'].includes(valorLimpio)) {
+                  debeActualizar = true;
+                  valorFinal = valorLimpio;
+                }
+                break;
+
+              default:
+                // Para otros campos string, usar si tiene contenido válido
+                if (valorLimpio.length > 0) {
+                  debeActualizar = true;
+                  valorFinal = valorLimpio;
+                }
+            }
+          }
+        } else if (typeof valorNuevo === 'number') {
+          if (!isNaN(valorNuevo)) {
+            switch (campo) {
+              case 'salario_base':
+                if (valorNuevo > 0) {
+                  debeActualizar = true;
+                  valorFinal = valorNuevo;
+                }
+                break;
+              default:
+                debeActualizar = true;
+                valorFinal = valorNuevo;
+            }
+          }
+        } else if (typeof valorNuevo === 'object' && valorNuevo !== null) {
+          // Para objetos como licencia_conduccion
+          if (Object.keys(valorNuevo).length > 0) {
+            debeActualizar = true;
+            valorFinal = valorNuevo;
+          }
+        }
+
+        // ✅ APLICAR CAMBIO SOLO SI ES VÁLIDO
+        if (debeActualizar) {
+          resultado[campo] = valorFinal;
+          logger.info(`🔄 ${campo}: "${valorExistente}" → "${valorFinal}"`);
+        } else {
+          resultado[campo] = valorExistente;
+          logger.info(`📌 ${campo}: preservado "${valorExistente}" (nuevo inválido: "${valorNuevo}")`);
+        }
+      });
+
+      return resultado;
     };
 
-    // Conservar el ID y campos críticos
+    // ✅ APLICAR PRESERVACIÓN DE DATOS EN LUGAR DE FUSIÓN SIMPLE
+    const datosFinales = preservarDatosExistentes(
+      datosActuales,
+      datosNuevosExtracted,
+      datosBasicos
+    );
+
+    // Conservar campos que nunca deben cambiar
     datosFinales.id = conductorId;
-    datosFinales.numero_identificacion = datosActuales.numero_identificacion; // No cambiar identificación
+    datosFinales.numero_identificacion = datosActuales.numero_identificacion; // Nunca cambiar identificación
+    datosFinales.createdAt = datosActuales.createdAt;
+    datosFinales.creado_por_id = datosActuales.creado_por_id;
 
-    logger.info(`📝 Datos finales para actualización:`, {
-      categoriasConDatos: categoriesWithData,
-      soloFotoPerfil: categorias.length === 1 && categorias.includes('FOTO_PERFIL'),
-      camposActualizados: Object.keys(datosNuevosExtracted),
-      totalCampos: Object.keys(datosFinales).length
+    // ✅ LOG DETALLADO DE CAMBIOS
+    const camposExtraidos = Object.keys(datosNuevosExtracted);
+    const camposPreservados = camposExtraidos.filter(campo =>
+      datosFinales[campo] === datosActuales[campo]
+    );
+    const camposActualizados = camposExtraidos.filter(campo =>
+      datosFinales[campo] !== datosActuales[campo]
+    );
+
+    logger.info(`📈 Resumen de preservación de datos:`, {
+      totalCamposExtraidos: camposExtraidos.length,
+      camposPreservados: camposPreservados.length,
+      camposActualizados: camposActualizados.length,
+      detallePreservados: camposPreservados,
+      detalleActualizados: camposActualizados.map(campo => ({
+        campo,
+        anterior: datosActuales[campo],
+        nuevo: datosFinales[campo]
+      }))
     });
-
-    console.log('Datos finales para actualización:', datosFinales);
 
     // ====== PASO 5: VALIDAR CAMPOS CRÍTICOS (VERSIÓN CORREGIDA) ======
     job.progress(75);
@@ -903,23 +1449,50 @@ conductorActualizacionQueueMinistral.process('actualizar-conductor-ministral', a
     const categoriasEnProcesamiento = categorias.filter(cat => categoriasQueExtraenDatos.includes(cat));
     const soloFotoPerfil = categorias.length === 1 && categorias.includes('FOTO_PERFIL');
 
-    // ✅ SOLO VALIDAR CAMPOS CRÍTICOS SI SE PROCESARON DOCUMENTOS QUE EXTRAEN DATOS
+    // ✅ SOLO VALIDAR CAMPOS CRÍTICOS SI SE PROCESARON DOCUMENTOS QUE EXTRAEN DATOS PERSONALES
     if (categoriasEnProcesamiento.length > 0) {
       logger.info(`Validando campos críticos porque se procesaron documentos que extraen datos: ${categoriasEnProcesamiento.join(', ')}`);
 
-      // Validar que no se pierdan campos críticos solo si se extrajeron datos de documentos importantes
+      // ✅ VALIDACIÓN MEJORADA: Solo fallar si REALMENTE faltan campos críticos
       const camposCriticos = ['nombre', 'apellido', 'numero_identificacion'];
-      const camposFaltantes = camposCriticos.filter(campo =>
-        !datosFinales[campo] || datosFinales[campo].toString().trim() === ''
-      );
+      const camposFaltantes = camposCriticos.filter(campo => {
+        const valor = datosFinales[campo];
+        // ✅ CONSIDERAR FALTANTE SOLO SI ES null, undefined O string vacío DESPUÉS de la preservación
+        const estaFaltante = valor === null ||
+          valor === undefined ||
+          (typeof valor === 'string' && valor.trim() === '');
 
+        if (estaFaltante) {
+          logger.warn(`⚠️ Campo crítico faltante después de preservación: ${campo} = "${valor}"`);
+        } else {
+          logger.info(`✅ Campo crítico presente: ${campo} = "${valor}"`);
+        }
+
+        return estaFaltante;
+      });
+
+      // ✅ SOLO FALLAR SI HAY CAMPOS REALMENTE FALTANTES DESPUÉS DE PRESERVACIÓN
       if (camposFaltantes.length > 0) {
         const errorMsg = `Faltan los siguientes campos críticos después de procesar ${categoriasEnProcesamiento.join(', ')}: ${camposFaltantes.join(', ')}`;
+        logger.error(`❌ Validación fallida después de preservación:`, {
+          camposFaltantes,
+          valoresFinales: camposCriticos.reduce((obj, campo) => {
+            obj[campo] = datosFinales[campo];
+            return obj;
+          }, {}),
+          valoresOriginales: camposCriticos.reduce((obj, campo) => {
+            obj[campo] = datosActuales[campo];
+            return obj;
+          }, {}),
+          categoriasProcessadas: categoriasEnProcesamiento
+        });
+
         await handleProcessingError(userId, sessionId, socketId, errorMsg, 'validacion_campos_criticos', 'actualizacion');
         throw new Error(errorMsg);
       }
 
-      logger.info(`✅ Validación de campos críticos completada exitosamente`);
+      logger.info(`✅ Validación de campos críticos completada exitosamente - todos los campos preservados/actualizados correctamente`);
+
     } else if (soloFotoPerfil) {
       logger.info(`⚠️ Solo se está actualizando FOTO_PERFIL, saltando validación de campos críticos`);
     } else {
@@ -1040,7 +1613,7 @@ conductorActualizacionQueueMinistral.process('actualizar-conductor-ministral', a
     // Limpiar archivos temporales
     try {
       const tempDir = path.join(__dirname, '..', '..', 'temp', sessionId);
-      // await fs.rm(tempDir, { recursive: true, force: true });
+      await fs.rm(tempDir, { recursive: true, force: true });
       logger.info(`Directorio temporal limpiado para sesión ${sessionId}`);
     } catch (cleanupError) {
       logger.warn(`Error al limpiar directorio temporal: ${cleanupError.message}`);

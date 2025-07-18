@@ -17,8 +17,6 @@ const serviceStatusQueue = new Queue('serviceStatusUpdate', {
 // Definir el procesador de la cola
 serviceStatusQueue.process(async (job) => {
   try {
-    console.log('Verificando servicios planificados vencidos...');
-
     // Obtener la fecha actual
     const now = new Date();
 
@@ -53,8 +51,6 @@ serviceStatusQueue.process(async (job) => {
           mensaje: `El estado del servicio ha cambiado a ${estado}`
         });
       }
-      console.log(`Servicios actualizados: ${idsActualizados.join(', ')}`);
-
       return { processed: idsActualizados.length, ids: idsActualizados };
     }
 
@@ -77,7 +73,6 @@ module.exports = {
         },
       }
     );
-    console.log('Verificación programada cada 5 minutos');
   },
 
   // Ejecución manual para pruebas

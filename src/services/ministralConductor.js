@@ -198,8 +198,6 @@ class MinistralConductorService {
   async _callMinistralAPI(systemPrompt, userPrompt, categoria) {
     try {
       const totalLength = systemPrompt.length + userPrompt.length;
-      console.log(`📏 Tamaño total del prompt para ${categoria}: ${totalLength} caracteres`);
-      console.log(`🔢 Tokens estimados: ${this.estimateTokens(systemPrompt + userPrompt)}`);
 
       const response = await this.client.path("/chat/completions").post({
         body: {
@@ -224,8 +222,6 @@ class MinistralConductorService {
       }
 
       const result = response.body.choices[0].message.content;
-      console.log(`✅ Respuesta exitosa de Ministral para ${categoria}`);
-      console.log(`📋 Respuesta cruda (primeros 500 chars):`, result.substring(0, 500));
 
       return this._extractAndParseJSON(result, categoria);
 
@@ -240,21 +236,16 @@ class MinistralConductorService {
    */
   async procesarDatosConductor(ocrData, categoria, conductorExistente = null) {
     try {
-      console.log(`🚀 Iniciando procesamiento con Ministral para ${categoria}`);
-
       const ocrDataTruncated = this._truncateOcrDataAggressively(ocrData, categoria);
 
       const systemPrompt = this._generarSystemPrompt();
       const userPrompt = this._generarUserPrompt(ocrDataTruncated, categoria, conductorExistente);
 
       const promptSize = systemPrompt.length + userPrompt.length;
-      console.log(`📏 Tamaño final del prompt para ${categoria}: ${promptSize} caracteres`);
 
       if (promptSize > 15000) {
-        console.log(`⚠️ Prompt aún muy largo, truncando más agresivamente...`);
         const ocrDataMinimal = this._getMinimalOcrData(ocrData, categoria);
         const minimalUserPrompt = this._generarUserPrompt(ocrDataMinimal, categoria, conductorExistente);
-        console.log(`📏 Tamaño con datos mínimos: ${systemPrompt.length + minimalUserPrompt.length} caracteres`);
         return this._callMinistralAPI(systemPrompt, minimalUserPrompt, categoria);
       }
 
@@ -295,7 +286,6 @@ Extrae esta información:
   "nombre": "SOLO los nombres de la persona EN MAYÚSCULAS (ejemplo: 'JUAN CARLOS', 'MARÍA FERNANDA', 'YORK ESTEBAN'). NO incluyas apellidos aquí",
   "apellido": "SOLO los apellidos de la persona EN MAYÚSCULAS (ejemplo: 'GARCÍA LÓPEZ', 'MARTÍNEZ', 'RODRÍGUEZ SILVA'). NO incluyas nombres aquí",
   "tipo_identificacion": "tipo de documento EN MAYÚSCULAS (CC, TI, CE, etc.)",
-  "numero_identificacion": "número de identificación del documento",
   "fecha_nacimiento": "fecha de nacimiento en formato YYYY-MM-DD",
   "genero": "género EN MAYÚSCULAS (M para masculino, F para femenino)",
   "tipo_sangre": "tipo de sangre EN MAYÚSCULAS (A+, A-, B+, B-, AB+, AB-, O+, O-). Si encuentras '0+' o '0-', cámbialo por 'O+' o 'O-'"
@@ -321,7 +311,6 @@ REGLAS IMPORTANTES:
 6. Los nombres van DESPUÉS de los apellidos  
 7. Si no encuentras algún campo, déjalo como string vacío ""
 8. Asegúrate de que tipo_sangre use la letra 'O' no el número '0'
-=======
 2. ORDEN DE LECTURA: número documento → apellidos → nombres
 3. Si nombre y apellido son exactamente iguales, revisa de nuevo la cédula siguiendo el orden correcto
 4. Los apellidos van DESPUÉS del número de documento
@@ -344,8 +333,6 @@ IMPORTANTE: En la licencia de conducción aparecen DOS números importantes:
 
 {
   "numero_identificacion": "número de cédula del titular de la licencia (campo OBLIGATORIO)",
-{
-
   "numero_licencia": "número de la licencia de conducción",
   "categorias": [
     {
@@ -367,7 +354,6 @@ REGLAS IMPORTANTES:
 5. Las categorías deben estar en MAYÚSCULAS (A1, A2, B1, B2, B3, C1, C2, C3)
 6. Si no encuentras algún campo, déjalo como string vacío "" o array vacío []
 7. Las fechas mantienen el formato YYYY-MM-DD (no necesitan mayúsculas)
-
 2. Para categorias, incluye todas las categorías encontradas en el documento
 3. Las categorías deben estar en MAYÚSCULAS (A1, A2, B1, B2, B3, C1, C2, C3)
 4. Si no encuentras algún campo, déjalo como string vacío "" o array vacío []
@@ -422,8 +408,6 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
    */
   combinarDatosDocumentos(datosDocumentos) {
     try {
-      console.log(datosDocumentos, 'Datos de documentos recibidos para combinar:');
-
       // Detectar si los datos vienen organizados por categorías o como objeto plano
       const esObjetoPlano = !datosDocumentos.CEDULA && !datosDocumentos.LICENCIA && !datosDocumentos.CONTRATO;
 
@@ -431,8 +415,6 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
 
       if (esObjetoPlano) {
         // Los datos vienen como un objeto plano con todos los campos mezclados
-        console.log('📋 Procesando datos como objeto plano...');
-
         conductorCompleto = {
           // Campos del modelo - usar directamente los datos del objeto plano
           nombre: datosDocumentos.nombre || "",
@@ -467,8 +449,6 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
         };
       } else {
         // Los datos vienen organizados por categorías (formato original)
-        console.log('📋 Procesando datos organizados por categorías...');
-
         conductorCompleto = {
           // Campos del modelo mapeados correctamente
           nombre: datosDocumentos.CEDULA?.nombre || "",
@@ -504,9 +484,6 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
           )
         };
       }
-
-      console.log('✅ Datos combinados exitosamente');
-      console.log(`📋 Documentos procesados: ${conductorCompleto.documentosProcesados.join(', ')}`, conductorCompleto);
 
       return conductorCompleto;
 
