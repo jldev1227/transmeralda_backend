@@ -10,10 +10,11 @@ const { sequelize, testConnection } = require('./config/database.js');
 const { setupBullQueues, setupBullBoard } = require('./config/bull');
 const documentController = require('./controllers/documentoController.js');
 const { scheduleRecurringCheck } = require('./queues/serviceStatusQueue');
-const { inicializarProcesadores } = require('./queues/vehiculo.js');
+const { inicializarProcesadoresVehiculo } = require('./queues/vehiculo.js');
 const logger = require('./utils/logger');
 const { redisClient } = require('./config/redisClient.js');
 const eventEmitter = require('./utils/eventEmitter.js');
+const { inicializarProcesadoresConductor, inicializarProcesadoresConductorMinistral } = require('./queues/conductor.js');
 
 // Inicializar app
 const app = express();
@@ -176,7 +177,6 @@ io.on('connection', (socket) => {
       
       // 🔥 info: Verificar estado antes de emit
       logger.info(`📡 A punto de emitir evento: ${eventName}`);
-      eventEmitter.info(eventName);
       
       // ✅ EMITIR EVENTO INTERNO
       eventEmitter.emit(eventName, {
@@ -221,7 +221,7 @@ io.on('connection', (socket) => {
         return;
       }
       
-      const estado = await verificarEstadoConfirmacion(sessionId);
+      const estado = await verificarEstadoConfirmacionVehiculo(sessionId);
       const progreso = await redisClient.hget(`vehiculo:${sessionId}`, 'progreso');
       const mensaje = await redisClient.hget(`vehiculo:${sessionId}`, 'mensaje');
       
@@ -379,7 +379,7 @@ io.on('connection', (socket) => {
 });
 
 // Función para verificar estado de confirmación
-async function verificarEstadoConfirmacion(sessionId) {
+async function verificarEstadoConfirmacionVehiculo(sessionId) {
   try {
     const estado = await redisClient.hmget(`vehiculo:${sessionId}`, 
       'esperando_confirmacion', 
@@ -460,6 +460,7 @@ app.use('/api/servicios', require('./routes/servicioRoutes.js'));
 app.use('/api/servicios-historico', require('./routes/servicioHistoricoRoutes.js'));
 app.use('/api/liquidaciones_servicios', require('./routes/liquidacionServiciosRoutes.js'));
 app.use('/api/documentos', require('./routes/documentoRoutes.js'));
+app.use('/api/documentos-conductor', require('./routes/documentosRequeridosConductorRoutes.js'));
 app.use('/api/export', require('./routes/exportRoutes'));
 app.use('/api/pdf', require('./routes/desprendibleNominaRoutes'));
 
@@ -533,9 +534,34 @@ const emitVehiculoToUser = (userId, eventName, data) => {
   return false;
 };
 
+// Función para emitir eventos de conductores a todos los clientes
+const emitConductorEvent = (eventName, data) => {
+  console.log(`Emitiendo evento ${eventName}:`, data);
+  io.emit(eventName, data);
+};
+
+// Función para emitir eventos de Conductor a un usuario específico
+const emitConductorToUser = (userId, eventName, data) => {
+  if (userSockets.has(userId)) {
+    const userSocketIds = userSockets.get(userId);
+    console.log(`Enviando ${eventName} a usuario ${userId} (${userSocketIds.size} conexiones)`);
+    
+    for (const socketId of userSocketIds) {
+      io.to(socketId).emit(eventName, data);
+    }
+    return true;
+  }
+  console.log(`Usuario ${userId} no está conectado para recibir ${eventName}`);
+  return false;
+};
+
 // Exponer funciones de socket.io para vehiculos a otros módulos
 app.set('emitVehiculoEvent', emitVehiculoEvent);
 app.set('emitVehiculoToUser', emitVehiculoToUser);
+
+// Exponer funciones de socket.io para conductores a otros módulos
+app.set('emitConductorEvent', emitConductorEvent);
+app.set('emitConductorToUser', emitConductorToUser);
 
 // Función para emitir eventos de servicios a todos los clientes
 const emitServicioEvent = (eventName, data) => {
@@ -599,7 +625,8 @@ const iniciarServidor = async () => {
     // Configurar colas de Bull
     setupBullQueues(app);
     scheduleRecurringCheck();
-    inicializarProcesadores()
+    inicializarProcesadoresVehiculo()
+    inicializarProcesadoresConductorMinistral()
     
     // Iniciar servidor HTTP con Socket.IO
     server.listen(PORT, () => {

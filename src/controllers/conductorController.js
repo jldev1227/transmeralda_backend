@@ -1,7 +1,31 @@
-const { Conductor, Vehiculo } = require('../models');
+const { Conductor, Vehiculo, Documento, User } = require('../models');
 const { Op, ValidationError } = require('sequelize');
+const multer = require('multer');
+const { procesarDocumentos } = require('../queues/conductor');
 
-exports.crearConductor = async (req, res) => {
+exports.uploadDocumentos = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB por archivo
+    files: 10 // máximo 10 archivos
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'application/pdf'
+    ];
+
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Tipo de archivo no permitido: ${file.mimetype}`), false);
+    }
+  }
+}).array('files', 10); // ✅ IMPORTANTE: Usar 'files' y permitir hasta 10 archivos
+
+exports.crearConductorBasico = async (req, res) => {
   try {
     const datos = req.body;
 
@@ -24,7 +48,6 @@ exports.crearConductor = async (req, res) => {
     // Validar campos obligatorios para conductores de planta
     const camposPlantaRequeridos = [
       'email',
-      'salario_base',
       'fecha_ingreso'
     ];
 
@@ -112,10 +135,13 @@ exports.crearConductor = async (req, res) => {
     }
 
     // Crear el conductor
-    const nuevoConductor = await Conductor.create(datos);
+    const nuevoConductor = await Conductor.create(datos, {
+      user_id: req.user.id // ID del usuario autenticado
+    });
 
     // Emitir evento para todos los clientes conectados
     const emitConductorEvent = req.app.get('emitConductorEvent');
+
     if (emitConductorEvent) {
       emitConductorEvent('conductor:creado', nuevoConductor);
     }
@@ -163,6 +189,89 @@ exports.crearConductor = async (req, res) => {
       success: false,
       message: 'Error al crear conductor',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Error interno del servidor'
+    });
+  }
+};
+
+// Crear un nuevo vehículo
+exports.crearConductor = async (req, res) => {
+  try {
+    // Extraer datos del formulario
+    const { categorias } = req.body;
+    const files = req.files;
+
+    // Validar que se proporcionaron archivos y categorías
+    if (!files || !categorias || files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Archivos y categorías son requeridos."
+      });
+    }
+
+    // Convertir categorías a array si llega como string
+    let categoriasArray = categorias;
+    if (typeof categorias === 'string') {
+      try {
+        categoriasArray = JSON.parse(categorias);
+      } catch (e) {
+        categoriasArray = categorias.split(',').map(cat => cat.trim());
+      }
+    }
+
+    const categoriasPermitidas = ['CEDULA', 'LICENCIA', 'CONTRATO', 'FOTO_PERFIL']
+
+    // Definir categorías obligatorias
+    const categoriasObligatorias = ['CEDULA', 'LICENCIA', 'CONTRATO']
+
+    // Verificar si todas las categorías proporcionadas son permitidas
+    const categoriasInvalidas = categoriasArray.filter(
+      (categoria) => !categoriasPermitidas.includes(categoria)
+    );
+
+    if (categoriasInvalidas.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Las siguientes categorías no son válidas: ${categoriasInvalidas.join(", ")}.`
+      });
+    }
+
+    // Verificar que todas las categorías obligatorias estén presentes
+    const categoriasFaltantes = categoriasObligatorias.filter(
+      (categoria) => !categoriasArray.includes(categoria)
+    );
+
+    if (categoriasFaltantes.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Falta la tarjeta de propiedad, que es obligatoria.`
+      });
+    }
+
+    // Adaptar los archivos de multer al formato esperado por el procesador
+    const adaptedFiles = files.map((file, index) => ({
+      buffer: file.buffer,
+      filename: file.originalname,
+      mimetype: file.mimetype,
+      categoria: categoriasArray[index]
+    }));
+
+    // Obtener el ID del socket del cliente
+    const socketId = req.headers['socket-id'] || req.body.socketId || 'unknown';
+
+    // // Iniciar procesamiento asíncrono
+    const sessionId = await procesarDocumentos(req.user.id, adaptedFiles, categoriasArray, socketId);
+
+    // Devolver respuesta inmediata
+    return res.status(202).json({
+      success: true,
+      sessionId,
+      message: "El procesamiento de documentos ha comenzado. Recibirás actualizaciones en tiempo real."
+    });
+  } catch (error) {
+    console.error("Error al procesar la solicitud:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error interno del servidor"
     });
   }
 };
@@ -236,7 +345,20 @@ exports.obtenerConductores = async (req, res) => {
       offset: parseInt(offset),
       order: orderArray,
       include: [
-        { model: Vehiculo, as: 'vehiculos', attributes: ['id', 'placa'] }
+        { model: Vehiculo, as: 'vehiculos', attributes: ['id', 'placa'] },
+        { model: Documento, as: 'documentos' },
+        {
+          model: User,
+          as: 'creadoPor',
+          attributes: ['id', 'nombre', 'correo'],
+          required: false // LEFT JOIN - no excluir conductores sin creador
+        },
+        {
+          model: User,
+          as: 'actualizadoPor',
+          attributes: ['id', 'nombre', 'correo'],
+          required: false // LEFT JOIN - no excluir conductores sin actualizador
+        }
       ],
       distinct: true  // Importante para contar correctamente con includes
     });
@@ -262,7 +384,8 @@ exports.obtenerConductorPorId = async (req, res) => {
   try {
     const conductor = await Conductor.findByPk(req.params.id, {
       include: [
-        { model: Vehiculo, as: 'vehiculos', attributes: ['id', 'placa'] }
+        { model: Vehiculo, as: 'vehiculos', attributes: ['id', 'placa'] },
+        { model: Documento, as: 'documentos' }
       ]
     });
 
@@ -414,6 +537,298 @@ exports.asignarConductorAVehiculo = async (req, res) => {
       success: false,
       message: 'Error al asignar conductor a vehículo',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Funciones para agregar a src/controllers/conductorController.js
+
+const { procesarDocumentosConMinistral, actualizarDocumentosConMinistral } = require('../queues/conductor');
+const { procesarDatosOCRConMinistral } = require('../services/ministralConductor');
+const logger = require('../utils/logger');
+
+// Crear conductor usando Ministral-3B
+exports.crearConductorConIA = async (req, res) => {
+  try {
+    // Extraer datos del formulario
+    const { categorias } = req.body;
+    const files = req.files;
+
+    // Validar que se proporcionaron archivos y categorías
+    if (!files || !categorias || files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Archivos y categorías son requeridos para el procesamiento con IA."
+      });
+    }
+
+    // Convertir categorías a array si llega como string
+    let categoriasArray = categorias;
+    if (typeof categorias === 'string') {
+      try {
+        categoriasArray = JSON.parse(categorias);
+      } catch (e) {
+        categoriasArray = categorias.split(',').map(cat => cat.trim());
+      }
+    }
+
+    const categoriasPermitidas = ['CEDULA', 'LICENCIA', 'CONTRATO', 'FOTO_PERFIL'];
+    const categoriasObligatorias = ['CEDULA', 'LICENCIA', 'CONTRATO'];
+
+    // Verificar si todas las categorías proporcionadas son permitidas
+    const categoriasInvalidas = categoriasArray.filter(
+      (categoria) => !categoriasPermitidas.includes(categoria)
+    );
+
+    if (categoriasInvalidas.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Las siguientes categorías no son válidas: ${categoriasInvalidas.join(", ")}.`
+      });
+    }
+
+    // Verificar que todas las categorías obligatorias estén presentes
+    const categoriasFaltantes = categoriasObligatorias.filter(
+      (categoria) => !categoriasArray.includes(categoria)
+    );
+
+    if (categoriasFaltantes.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Faltan los siguientes documentos obligatorios: ${categoriasFaltantes.join(", ")}.`
+      });
+    }
+
+    // Adaptar los archivos de multer al formato esperado por el procesador
+    const adaptedFiles = files.map((file, index) => ({
+      buffer: file.buffer,
+      filename: file.originalname,
+      mimetype: file.mimetype,
+      categoria: categoriasArray[index]
+    }));
+
+    // Obtener el ID del socket del cliente
+    const socketId = req.headers['socket-id'] || req.body.socketId || 'unknown';
+
+    logger.info(`Iniciando procesamiento con Ministral-IA para usuario ${req.user.id}`, {
+      categorias: categoriasArray,
+      socketId,
+      archivos: adaptedFiles.length
+    });
+
+    // Iniciar procesamiento asíncrono con Ministral
+    const sessionId = await procesarDocumentosConMinistral(
+      req.user.id,
+      adaptedFiles,
+      categoriasArray,
+      socketId
+    );
+
+    // Devolver respuesta inmediata
+    return res.status(202).json({
+      success: true,
+      sessionId,
+      message: "El procesamiento de documentos con Inteligencia Artificial ha comenzado. Recibirás actualizaciones en tiempo real.",
+      procesamiento: "ministral-ai",
+      endpoint_confirmacion: `/api/conductores/ia/confirmar-datos/${sessionId}`,
+      endpoint_estado: `/api/conductores/ia/estado-procesamiento/${sessionId}`
+    });
+
+  } catch (error) {
+    logger.error("Error al procesar la solicitud con Ministral-IA:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error interno del servidor"
+    });
+  }
+};
+
+// Actualizar conductor usando Ministral-3B
+exports.actualizarConductorConIA = async (req, res) => {
+  try {
+    const { id: conductorId } = req.params;
+    const { categorias, fechasVigencia, camposBasicos } = req.body;
+    const files = req.files;
+
+    // Validar que el conductorId existe
+    if (!conductorId) {
+      return res.status(400).json({
+        success: false,
+        message: "ID del conductor es requerido."
+      });
+    }
+
+    // Verificar que el conductor existe
+    const { Conductor } = require('../models');
+    const conductor = await Conductor.findByPk(conductorId);
+    if (!conductor) {
+      return res.status(404).json({
+        success: false,
+        message: "Conductor no encontrado."
+      });
+    }
+
+    // Si hay archivos, validar categorías
+    if (files && files.length > 0) {
+      if (!categorias) {
+        return res.status(400).json({
+          success: false,
+          message: "Categorías son requeridas cuando se proporcionan archivos."
+        });
+      }
+
+      let categoriasArray = categorias;
+      if (typeof categorias === 'string') {
+        try {
+          categoriasArray = JSON.parse(categorias);
+        } catch (e) {
+          categoriasArray = categorias.split(',').map(cat => cat.trim());
+        }
+      }
+
+      const categoriasPermitidas = ['CEDULA', 'LICENCIA', 'CONTRATO', 'FOTO_PERFIL'];
+      const categoriasInvalidas = categoriasArray.filter(
+        (categoria) => !categoriasPermitidas.includes(categoria)
+      );
+
+      if (categoriasInvalidas.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Las siguientes categorías no son válidas: ${categoriasInvalidas.join(", ")}.`
+        });
+      }
+
+      // Adaptar archivos
+      const adaptedFiles = files.map((file, index) => ({
+        buffer: file.buffer,
+        filename: file.originalname,
+        mimetype: file.mimetype,
+        categoria: categoriasArray[index]
+      }));
+
+      const socketId = req.headers['socket-id'] || req.body.socketId || 'unknown';
+
+      logger.info(`Iniciando actualización con Ministral-IA para conductor ${conductorId}`, {
+        categorias: categoriasArray,
+        socketId,
+        archivos: adaptedFiles.length,
+        camposBasicos: !!camposBasicos
+      });
+
+      console.log(req.user.id,
+        req.user.id,
+        conductorId,
+        adaptedFiles,
+        categoriasArray,
+        socketId,
+        camposBasicos
+      )
+
+      // Iniciar procesamiento asíncrono con Ministral
+      const sessionId = await actualizarDocumentosConMinistral(
+        req.user.id,
+        conductorId,
+        adaptedFiles,
+        categoriasArray,
+        socketId,
+        camposBasicos
+      );
+
+      return res.status(202).json({
+        success: true,
+        sessionId,
+        message: "La actualización con Inteligencia Artificial ha comenzado. Recibirás actualizaciones en tiempo real.",
+        procesamiento: "ministral-ai",
+        endpoint_confirmacion: `/api/conductores/ia/confirmar-datos/${sessionId}`,
+        endpoint_estado: `/api/conductores/ia/estado-procesamiento/${sessionId}`
+      });
+
+    } else {
+      // Solo actualizar campos básicos sin procesamiento OCR
+      if (camposBasicos && Object.keys(camposBasicos).length > 0) {
+        await conductor.update(camposBasicos);
+
+        return res.status(200).json({
+          success: true,
+          message: "Conductor actualizado exitosamente.",
+          conductor: conductor,
+          procesamiento: "campos-basicos"
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: "No se proporcionaron datos para actualizar."
+      });
+    }
+
+  } catch (error) {
+    logger.error("Error al actualizar conductor con Ministral-IA:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error interno del servidor"
+    });
+  }
+};
+
+// Probar Ministral con datos OCR existentes
+exports.probarMinistral = async (req, res) => {
+  try {
+    const { ocrData, categoria, conductorExistente } = req.body;
+
+    if (!ocrData || !categoria) {
+      return res.status(400).json({
+        success: false,
+        message: "ocrData y categoria son requeridos para la prueba."
+      });
+    }
+
+    const categoriasValidas = ['CEDULA', 'LICENCIA', 'CONTRATO'];
+    if (!categoriasValidas.includes(categoria)) {
+      return res.status(400).json({
+        success: false,
+        message: `Categoría no válida. Debe ser: ${categoriasValidas.join(', ')}`
+      });
+    }
+
+    logger.info(`Probando Ministral-IA para categoría: ${categoria}`, {
+      usuario: req.user.id,
+      tieneOcrData: !!ocrData,
+      tieneConductorExistente: !!conductorExistente
+    });
+
+    const resultado = await procesarDatosOCRConMinistral(ocrData, categoria, conductorExistente);
+
+    return res.status(200).json({
+      success: true,
+      message: "Datos procesados exitosamente con Ministral-IA",
+      input: {
+        categoria,
+        ocrDataSize: JSON.stringify(ocrData).length,
+        tieneConductorExistente: !!conductorExistente
+      },
+      output: {
+        datosEstructurados: resultado,
+        camposExtraidos: Object.keys(resultado).length,
+        procesamiento: "ministral-ai"
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        usuario: req.user.id,
+        version: "1.0"
+      }
+    });
+
+  } catch (error) {
+    logger.error("Error en prueba de Ministral-IA:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error interno del servidor",
+      error: {
+        message: error.message,
+        type: error.constructor.name
+      },
+      procesamiento: "ministral-ai"
     });
   }
 };
