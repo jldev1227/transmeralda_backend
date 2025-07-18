@@ -3,7 +3,7 @@ const { AzureKeyCredential } = require("@azure/core-auth");
 
 const endpoint = "https://lopezvidaljuliandavid5--resource.services.ai.azure.com/models";
 const modelName = "Ministral-3B-2";
-const API_KEY = process.env.MINISTRAL_API_KEY || "C7pdrNJd6uU6MQmqXTNcDylNoGoiNYZ33OWQWq8JzH2N7ZzWBBrOJQQJ99BGACHYHv6XJ3w3AAAAACOGxcPb";
+const API_KEY = process.env.MINISTRAL_API_KEY || "";
 
 // Límites más conservadores
 const MAX_TOKENS = 25000;
