@@ -2,6 +2,7 @@ const { Conductor, Vehiculo, Documento, User } = require('../models');
 const { Op, ValidationError } = require('sequelize');
 const multer = require('multer');
 const { procesarDocumentos } = require('../queues/conductor');
+const { sequelize } = require('../config/database');
 
 exports.uploadDocumentos = multer({
   storage: multer.memoryStorage(),
@@ -307,6 +308,8 @@ exports.obtenerConductores = async (req, res) => {
       whereClause.estado = { [Op.in]: estados };
     }
 
+    console.log(req.query)
+
     // Procesamiento de filtro por sede de trabajo (puede ser múltiple)
     if (req.query.sede_trabajo) {
       const sedes = req.query.sede_trabajo.split(',');
@@ -536,6 +539,116 @@ exports.asignarConductorAVehiculo = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error al asignar conductor a vehículo',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+exports.obtenerEstadisticasEstados = async (req, res) => {
+  try {
+    const {
+      search,
+      sede_trabajo,
+      tipo_identificacion,
+      tipo_contrato,
+      // ✅ NO incluir filtro de estado aquí para obtener todos los conteos
+    } = req.query;
+
+    // ✅ CONSTRUIR WHERE CLAUSE CON TODOS LOS FILTROS EXCEPTO ESTADO
+    const whereClause = {};
+
+    // Procesamiento de búsqueda general
+    if (search) {
+      whereClause[Op.or] = [
+        { nombre: { [Op.iLike]: `%${search}%` } },
+        { apellido: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } },
+        { numero_identificacion: { [Op.iLike]: `%${search}%` } },
+        { telefono: { [Op.iLike]: `%${search}%` } }
+      ];
+    }
+
+    // Procesamiento de filtro por sede de trabajo
+    if (sede_trabajo) {
+      const sedes = sede_trabajo.split(',');
+      whereClause.sede_trabajo = { [Op.in]: sedes };
+    }
+
+    // Procesamiento de filtro por tipo de identificación
+    if (tipo_identificacion) {
+      const tiposId = tipo_identificacion.split(',');
+      whereClause.tipo_identificacion = { [Op.in]: tiposId };
+    }
+
+    // Procesamiento de filtro por tipo de contrato
+    if (tipo_contrato) {
+      const tiposContrato = tipo_contrato.split(',');
+      whereClause.tipo_contrato = { [Op.in]: tiposContrato };
+    }
+
+    console.log('📊 Consultando estadísticas con filtros:', whereClause);
+
+    // ✅ CONSULTA PARA OBTENER CONTEOS POR ESTADO
+    const estadisticas = await Conductor.findAll({
+      attributes: [
+        'estado',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'cantidad']
+      ],
+      where: whereClause,
+      group: ['estado'],
+      raw: true
+    });
+
+    // ✅ OBTENER TOTAL DE CONDUCTORES CON LOS FILTROS APLICADOS
+    const totalConductores = await Conductor.count({
+      where: whereClause,
+      distinct: true
+    });
+
+    // ✅ FORMATEAR RESPUESTA PARA INCLUIR TODOS LOS ESTADOS (incluso los con 0)
+    const estadosCompletos = [
+      'servicio',
+      'disponible', 
+      'descanso',
+      'vacaciones',
+      'incapacidad',
+      'desvinculado'
+    ];
+
+    const estadisticasFormateadas = estadosCompletos.map(estado => {
+      const encontrado = estadisticas.find(est => est.estado === estado);
+      return {
+        estado,
+        cantidad: encontrado ? parseInt(encontrado.cantidad) : 0
+      };
+    });
+
+    // ✅ CALCULAR ESTADÍSTICAS ADICIONALES
+    const totalActivos = estadisticasFormateadas
+      .filter(item => !['desvinculado', 'incapacidad', 'vacaciones'].includes(item.estado))
+      .reduce((sum, item) => sum + item.cantidad, 0);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        estadisticas: estadisticasFormateadas,
+        totalConductores,
+        totalActivos,
+        // ✅ INCLUIR FILTROS APLICADOS PARA REFERENCIA
+        filtrosAplicados: {
+          search: search || null,
+          sede_trabajo: sede_trabajo || null,
+          tipo_identificacion: tipo_identificacion || null,
+          tipo_contrato: tipo_contrato || null
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error al obtener estadísticas de estados:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener estadísticas de estados',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
