@@ -1,14 +1,12 @@
 const ModelClient = require("@azure-rest/ai-inference").default;
 const { AzureKeyCredential } = require("@azure/core-auth");
 
-const endpoint = "https://lopezvidaljuliandavid5--resource.services.ai.azure.com/models";
-const modelName = "Ministral-3B-2";
-const API_KEY = process.env.MINISTRAL_API_KEY || "C7pdrNJd6uU6MQmqXTNcDylNoGoiNYZ33OWQWq8JzH2N7ZzWBBrOJQQJ99BGACHYHv6XJ3w3AAAAACOGxcPb";
+const endpoint = process.env.MINISTRAL_ENDPOINT || "https://ministral.openai.azure.com";
+const modelName = process.env.MINISTRAL_MODEL_NAME || "Ministral-3B-2"; // Asegúrate de que este modelo esté disponible en tu cuenta
+const API_KEY = process.env.MINISTRAL_API_KEY || "";
 
 // Límites más conservadores
-const MAX_TOKENS = 25000;
 const ESTIMATED_CHARS_PER_TOKEN = 3;
-const MAX_CHARS = MAX_TOKENS * ESTIMATED_CHARS_PER_TOKEN;
 
 class MinistralConductorService {
   constructor() {
@@ -290,6 +288,10 @@ En las cédulas colombianas el orden es:
 
 Extrae esta información:
 {
+  "numero_identificacion": "número de identificación del documento (campo OBLIGATORIO)",
+  "nombre": "SOLO los nombres de la persona EN MAYÚSCULAS (ejemplo: 'JUAN CARLOS', 'MARÍA FERNANDA', 'YORK ESTEBAN'). NO incluyas apellidos aquí",
+  "apellido": "SOLO los apellidos de la persona EN MAYÚSCULAS (ejemplo: 'GARCÍA LÓPEZ', 'MARTÍNEZ', 'RODRÍGUEZ SILVA'). NO incluyas nombres aquí",
+  "tipo_identificacion": "tipo de documento EN MAYÚSCULAS (CC, TI, CE, etc.)",
   "nombre": "SOLO los nombres de la persona EN MAYÚSCULAS (ejemplo: 'JUAN CARLOS', 'MARÍA FERNANDA', 'YORK ESTEBAN'). NO incluyas apellidos aquí",
   "apellido": "SOLO los apellidos de la persona EN MAYÚSCULAS (ejemplo: 'GARCÍA LÓPEZ', 'MARTÍNEZ', 'RODRÍGUEZ SILVA'). NO incluyas nombres aquí",
   "tipo_identificacion": "tipo de documento EN MAYÚSCULAS (CC, TI, CE, etc.)",
@@ -301,15 +303,25 @@ Extrae esta información:
 
 EJEMPLOS DE DIFERENCIACIÓN (orden en la cédula):
 - Si la cédula dice "1.118.571.552 MARTÍNEZ LÓPEZ YORK ESTEBAN"
+  - numero_identificacion: "1118571552" (sin puntos ni espacios)
   - apellido: "MARTÍNEZ LÓPEZ" (viene después del número)
   - nombre: "YORK ESTEBAN" (viene después del apellido)
 
 - Si la cédula dice "12.345.678 GARCÍA RODRÍGUEZ MARÍA FERNANDA"
+  - numero_identificacion: "12345678" (sin puntos ni espacios)
   - apellido: "GARCÍA RODRÍGUEZ" (viene después del número)
   - nombre: "MARÍA FERNANDA" (viene después del apellido)
 
 REGLAS IMPORTANTES:
 1. TODOS LOS VALORES DE TEXTO DEBEN ESTAR EN MAYÚSCULAS
+2. El numero_identificacion es OBLIGATORIO y debe extraerse sin puntos, comas ni espacios
+3. ORDEN DE LECTURA: número documento → apellidos → nombres
+4. Si nombre y apellido son exactamente iguales, revisa de nuevo la cédula siguiendo el orden correcto
+5. Los apellidos van DESPUÉS del número de documento
+6. Los nombres van DESPUÉS de los apellidos  
+7. Si no encuentras algún campo, déjalo como string vacío ""
+8. Asegúrate de que tipo_sangre use la letra 'O' no el número '0'
+=======
 2. ORDEN DE LECTURA: número documento → apellidos → nombres
 3. Si nombre y apellido son exactamente iguales, revisa de nuevo la cédula siguiendo el orden correcto
 4. Los apellidos van DESPUÉS del número de documento
@@ -320,16 +332,20 @@ REGLAS IMPORTANTES:
 Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
   }
 
-  /**
-   * Prompt específico para licencia - CORREGIDO CON UPPERCASE
-   */
   buildLicenciaPrompt() {
     return `
 Extrae la siguiente información de la licencia de conducción colombiana:
 
 ⚠️ REGLA CRÍTICA: Todos los valores de texto deben estar en MAYÚSCULAS (uppercase).
 
+IMPORTANTE: En la licencia de conducción aparecen DOS números importantes:
+1. NÚMERO DE LICENCIA (propio de la licencia)
+2. NÚMERO DE IDENTIFICACIÓN (cédula del titular)
+
 {
+  "numero_identificacion": "número de cédula del titular de la licencia (campo OBLIGATORIO)",
+{
+
   "numero_licencia": "número de la licencia de conducción",
   "categorias": [
     {
@@ -345,6 +361,13 @@ Extrae la siguiente información de la licencia de conducción colombiana:
 
 REGLAS IMPORTANTES:
 1. TODOS LOS VALORES DE TEXTO DEBEN ESTAR EN MAYÚSCULAS
+2. numero_identificacion es OBLIGATORIO - es el número de cédula del titular (sin puntos ni espacios)
+3. numero_licencia es diferente al numero_identificacion
+4. Para categorias, incluye todas las categorías encontradas en el documento
+5. Las categorías deben estar en MAYÚSCULAS (A1, A2, B1, B2, B3, C1, C2, C3)
+6. Si no encuentras algún campo, déjalo como string vacío "" o array vacío []
+7. Las fechas mantienen el formato YYYY-MM-DD (no necesitan mayúsculas)
+
 2. Para categorias, incluye todas las categorías encontradas en el documento
 3. Las categorías deben estar en MAYÚSCULAS (A1, A2, B1, B2, B3, C1, C2, C3)
 4. Si no encuentras algún campo, déjalo como string vacío "" o array vacío []
@@ -353,9 +376,6 @@ REGLAS IMPORTANTES:
 Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
   }
 
-  /**
-   * Prompt específico para contrato - CORREGIDO CON UPPERCASE
-   */
   buildContratoPrompt() {
     return `
 Extrae la siguiente información del contrato de trabajo:
@@ -363,6 +383,7 @@ Extrae la siguiente información del contrato de trabajo:
 ⚠️ REGLA CRÍTICA: Todos los valores de texto deben estar en MAYÚSCULAS (uppercase).
 
 {
+  "numero_identificacion": "número de cédula del empleado (campo OBLIGATORIO)",
   "email": "correo electrónico del conductor EN MAYÚSCULAS",
   "telefono": "número de teléfono del conductor",
   "direccion": "dirección de residencia del conductor EN MAYÚSCULAS",
@@ -375,6 +396,15 @@ Extrae la siguiente información del contrato de trabajo:
 
 REGLAS IMPORTANTES:
 1. TODOS LOS VALORES DE TEXTO DEBEN ESTAR EN MAYÚSCULAS
+2. numero_identificacion es OBLIGATORIO - es el número de cédula del empleado (sin puntos ni espacios)
+3. Para email, convierte todo a mayúsculas (ej: USUARIO@EMPRESA.COM)
+4. Para dirección, convierte toda la dirección a mayúsculas
+5. Para término de contrato, usa: INDEFINIDO, FIJO, TEMPORAL, etc.
+6. Para salario_base, extrae solo el número sin símbolos
+7. Para sede_trabajo, usa exactamente: YOPAL, VILLANUEVA, o TAURAMENA (EN MAYÚSCULAS)
+8. Las fechas mantienen el formato YYYY-MM-DD (no necesitan mayúsculas)
+9. Los números de teléfono y salario no necesitan mayúsculas
+10. Si no encuentras algún campo, déjalo como string vacío "" o null para salario_base
 2. Para email, convierte todo a mayúsculas (ej: USUARIO@EMPRESA.COM)
 3. Para dirección, convierte toda la dirección a mayúsculas
 4. Para término de contrato, usa: INDEFINIDO, FIJO, TEMPORAL, etc.
