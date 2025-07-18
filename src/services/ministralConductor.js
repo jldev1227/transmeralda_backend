@@ -6,9 +6,7 @@ const modelName = process.env.MINISTRAL_MODEL_NAME || "Ministral-3B-2"; // Aseg�
 const API_KEY = process.env.MINISTRAL_API_KEY || "";
 
 // Límites más conservadores
-const MAX_TOKENS = 25000;
 const ESTIMATED_CHARS_PER_TOKEN = 3;
-const MAX_CHARS = MAX_TOKENS * ESTIMATED_CHARS_PER_TOKEN;
 
 class MinistralConductorService {
   constructor() {
