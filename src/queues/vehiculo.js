@@ -126,7 +126,6 @@ async function runOcrScript(filePath, placa = null) {
       if (code === 0) {
         try {
           const parsedResult = JSON.parse(stdoutData);
-          console.log(parsedResult, "Resultado del script OCR");
           logger.info(`Script ${"ocrTARJETA_DE_PROPIEDAD.py"} ejecutado exitosamente`);
           resolve(parsedResult);
         } catch (error) {
@@ -774,16 +773,10 @@ function inicializarProcesadoresVehiculo() {
   // Procesador para actualización de vehículos - REESTRUCTURADO
   vehiculoActualizacionQueue.process('actualizar-vehiculo', async (job) => {
 
-    // 🔍 DEBUG TEMPORAL
-    console.log('🔍 DEBUG - job.opts completo:', job.opts);
-    console.log('🔍 DEBUG - job.opts.userId:', job.opts.userId);
-    console.log('🔍 DEBUG - typeof job.opts.userId:', typeof job.opts.userId);
-
     const userId = job.opts.userId;
 
     if (!userId) {
       console.error('❌ userId no encontrado en job.opts');
-      console.log('🔍 DEBUG - job.data:', Object.keys(job.data));
       return;
     }
 
@@ -1367,11 +1360,6 @@ async function procesarDocumentos(userId, adaptedFiles, categorias, datosVehicul
 async function actualizarDocumentosVehiculo(userId, adaptedFiles, categorias, fechasVigencia, vehiculoId, socketId) {
   const sessionId = uuidv4();
 
-  // 🔍 DEBUG TEMPORAL
-  console.log('🔍 DEBUG - userId recibido en actualizarDocumentosVehiculo:', userId);
-  console.log('🔍 DEBUG - typeof userId:', typeof userId);
-  console.log('🔍 DEBUG - userId === undefined:', userId === undefined);
-
   const jobData = {
     sessionId,
     adaptedFiles,
@@ -1390,8 +1378,6 @@ async function actualizarDocumentosVehiculo(userId, adaptedFiles, categorias, fe
     };
 
     // 🔍 DEBUG TEMPORAL
-    console.log('🔍 DEBUG - jobOptions antes de encolar:', jobOptions);
-
     await vehiculoActualizacionQueue.add('actualizar-vehiculo', jobData, jobOptions);
 
     logger.info(`Job de actualización de vehículo encolado: ${sessionId}`);

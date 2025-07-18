@@ -198,8 +198,6 @@ class MinistralConductorService {
   async _callMinistralAPI(systemPrompt, userPrompt, categoria) {
     try {
       const totalLength = systemPrompt.length + userPrompt.length;
-      console.log(`📏 Tamaño total del prompt para ${categoria}: ${totalLength} caracteres`);
-      console.log(`🔢 Tokens estimados: ${this.estimateTokens(systemPrompt + userPrompt)}`);
 
       const response = await this.client.path("/chat/completions").post({
         body: {
@@ -224,8 +222,6 @@ class MinistralConductorService {
       }
 
       const result = response.body.choices[0].message.content;
-      console.log(`✅ Respuesta exitosa de Ministral para ${categoria}`);
-      console.log(`📋 Respuesta cruda (primeros 500 chars):`, result.substring(0, 500));
 
       return this._extractAndParseJSON(result, categoria);
 
@@ -240,21 +236,16 @@ class MinistralConductorService {
    */
   async procesarDatosConductor(ocrData, categoria, conductorExistente = null) {
     try {
-      console.log(`🚀 Iniciando procesamiento con Ministral para ${categoria}`);
-
       const ocrDataTruncated = this._truncateOcrDataAggressively(ocrData, categoria);
 
       const systemPrompt = this._generarSystemPrompt();
       const userPrompt = this._generarUserPrompt(ocrDataTruncated, categoria, conductorExistente);
 
       const promptSize = systemPrompt.length + userPrompt.length;
-      console.log(`📏 Tamaño final del prompt para ${categoria}: ${promptSize} caracteres`);
 
       if (promptSize > 15000) {
-        console.log(`⚠️ Prompt aún muy largo, truncando más agresivamente...`);
         const ocrDataMinimal = this._getMinimalOcrData(ocrData, categoria);
         const minimalUserPrompt = this._generarUserPrompt(ocrDataMinimal, categoria, conductorExistente);
-        console.log(`📏 Tamaño con datos mínimos: ${systemPrompt.length + minimalUserPrompt.length} caracteres`);
         return this._callMinistralAPI(systemPrompt, minimalUserPrompt, categoria);
       }
 
@@ -402,8 +393,6 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
    */
   combinarDatosDocumentos(datosDocumentos) {
     try {
-      console.log(datosDocumentos, 'Datos de documentos recibidos para combinar:');
-
       // Detectar si los datos vienen organizados por categorías o como objeto plano
       const esObjetoPlano = !datosDocumentos.CEDULA && !datosDocumentos.LICENCIA && !datosDocumentos.CONTRATO;
 
@@ -411,8 +400,6 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
 
       if (esObjetoPlano) {
         // Los datos vienen como un objeto plano con todos los campos mezclados
-        console.log('📋 Procesando datos como objeto plano...');
-
         conductorCompleto = {
           // Campos del modelo - usar directamente los datos del objeto plano
           nombre: datosDocumentos.nombre || "",
@@ -447,8 +434,6 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
         };
       } else {
         // Los datos vienen organizados por categorías (formato original)
-        console.log('📋 Procesando datos organizados por categorías...');
-
         conductorCompleto = {
           // Campos del modelo mapeados correctamente
           nombre: datosDocumentos.CEDULA?.nombre || "",
@@ -484,9 +469,6 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
           )
         };
       }
-
-      console.log('✅ Datos combinados exitosamente');
-      console.log(`📋 Documentos procesados: ${conductorCompleto.documentosProcesados.join(', ')}`, conductorCompleto);
 
       return conductorCompleto;
 

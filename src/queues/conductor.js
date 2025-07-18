@@ -334,7 +334,6 @@ function inicializarProcesadoresConductorMinistral() {
         if (datosDocumentos[categoria]) {
           try {
             if (categoria === 'FOTO_PERFIL') {
-              console.log('⚠️ Saltando procesamiento de FOTO_PERFIL temporalmente');
               datosEstructurados[categoria] = null; // o datos por defecto
               continue;
             }
@@ -565,8 +564,6 @@ function inicializarProcesadoresConductorMinistral() {
         detalleActualizados: camposActualizados
       });
 
-      console.log('Datos finales para actualización (con preservación):', datosFinales);
-
       // ====== PASO 5: VERIFICAR DUPLICADOS ======
       job.progress(75);
       await redisClient.hmset(`conductor:${sessionId}`,
@@ -706,7 +703,6 @@ function inicializarProcesadoresConductorMinistral() {
         estado: 'disponible'
       };
 
-      console.log('Datos para BD:', datosParaBD);
       const nuevoConductor = await Conductor.create(datosParaBD, {
         user_id: userId // ID del usuario autenticado
       });
@@ -1432,8 +1428,6 @@ conductorActualizacionQueueMinistral.process('actualizar-conductor-ministral', a
         nuevo: datosFinales[campo]
       }))
     });
-
-    console.log('✅ Datos finales después de preservación:', datosFinales);
 
     // ====== PASO 5: VALIDAR CAMPOS CRÍTICOS (VERSIÓN CORREGIDA) ======
     job.progress(75);

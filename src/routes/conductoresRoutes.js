@@ -9,7 +9,7 @@ const { protect } = require('../middleware/auth');
 router.post('/', protect, conductorController.uploadDocumentos, conductorController.crearConductor);
 router.post('/basico', protect, conductorController.crearConductorBasico);
 router.get('/', protect, conductorController.obtenerConductores);
-router.get('/estadisticas', protect, conductorController.obtenerEstadisticasEstados);
+router.get('/estadisticas/general', protect, conductorController.obtenerEstadisticasEstados);
 router.get('/basicos', protect, conductorController.obtenerConductoresBasicos);
 router.get('/:id', protect, conductorController.obtenerConductorPorId);
 router.put('/:id', protect, conductorController.actualizarConductor);
