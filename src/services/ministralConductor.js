@@ -283,6 +283,9 @@ Extrae esta información:
   "nombre": "SOLO los nombres de la persona EN MAYÚSCULAS (ejemplo: 'JUAN CARLOS', 'MARÍA FERNANDA', 'YORK ESTEBAN'). NO incluyas apellidos aquí",
   "apellido": "SOLO los apellidos de la persona EN MAYÚSCULAS (ejemplo: 'GARCÍA LÓPEZ', 'MARTÍNEZ', 'RODRÍGUEZ SILVA'). NO incluyas nombres aquí",
   "tipo_identificacion": "tipo de documento EN MAYÚSCULAS (CC, TI, CE, etc.)",
+  "nombre": "SOLO los nombres de la persona EN MAYÚSCULAS (ejemplo: 'JUAN CARLOS', 'MARÍA FERNANDA', 'YORK ESTEBAN'). NO incluyas apellidos aquí",
+  "apellido": "SOLO los apellidos de la persona EN MAYÚSCULAS (ejemplo: 'GARCÍA LÓPEZ', 'MARTÍNEZ', 'RODRÍGUEZ SILVA'). NO incluyas nombres aquí",
+  "tipo_identificacion": "tipo de documento EN MAYÚSCULAS (CC, TI, CE, etc.)",
   "fecha_nacimiento": "fecha de nacimiento en formato YYYY-MM-DD",
   "genero": "género EN MAYÚSCULAS (M para masculino, F para femenino)",
   "tipo_sangre": "tipo de sangre EN MAYÚSCULAS (A+, A-, B+, B-, AB+, AB-, O+, O-). Si encuentras '0+' o '0-', cámbialo por 'O+' o 'O-'"
@@ -308,13 +311,16 @@ REGLAS IMPORTANTES:
 6. Los nombres van DESPUÉS de los apellidos  
 7. Si no encuentras algún campo, déjalo como string vacío ""
 8. Asegúrate de que tipo_sangre use la letra 'O' no el número '0'
+2. ORDEN DE LECTURA: número documento → apellidos → nombres
+3. Si nombre y apellido son exactamente iguales, revisa de nuevo la cédula siguiendo el orden correcto
+4. Los apellidos van DESPUÉS del número de documento
+5. Los nombres van DESPUÉS de los apellidos  
+6. Si no encuentras algún campo, déjalo como string vacío ""
+7. Asegúrate de que tipo_sangre use la letra 'O' no el número '0'
 
 Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
   }
 
-  /**
-   * Prompt específico para licencia - ACTUALIZADO PARA INCLUIR NUMERO_IDENTIFICACION
-   */
   buildLicenciaPrompt() {
     return `
 Extrae la siguiente información de la licencia de conducción colombiana:
@@ -348,13 +354,14 @@ REGLAS IMPORTANTES:
 5. Las categorías deben estar en MAYÚSCULAS (A1, A2, B1, B2, B3, C1, C2, C3)
 6. Si no encuentras algún campo, déjalo como string vacío "" o array vacío []
 7. Las fechas mantienen el formato YYYY-MM-DD (no necesitan mayúsculas)
+2. Para categorias, incluye todas las categorías encontradas en el documento
+3. Las categorías deben estar en MAYÚSCULAS (A1, A2, B1, B2, B3, C1, C2, C3)
+4. Si no encuentras algún campo, déjalo como string vacío "" o array vacío []
+5. Las fechas mantienen el formato YYYY-MM-DD (no necesitan mayúsculas)
 
 Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
   }
 
-  /**
-   * Prompt específico para contrato - ACTUALIZADO PARA INCLUIR NUMERO_IDENTIFICACION
-   */
   buildContratoPrompt() {
     return `
 Extrae la siguiente información del contrato de trabajo:
@@ -384,6 +391,14 @@ REGLAS IMPORTANTES:
 8. Las fechas mantienen el formato YYYY-MM-DD (no necesitan mayúsculas)
 9. Los números de teléfono y salario no necesitan mayúsculas
 10. Si no encuentras algún campo, déjalo como string vacío "" o null para salario_base
+2. Para email, convierte todo a mayúsculas (ej: USUARIO@EMPRESA.COM)
+3. Para dirección, convierte toda la dirección a mayúsculas
+4. Para término de contrato, usa: INDEFINIDO, FIJO, TEMPORAL, etc.
+5. Para salario_base, extrae solo el número sin símbolos
+6. Para sede_trabajo, usa exactamente: YOPAL, VILLANUEVA, o TAURAMENA (EN MAYÚSCULAS)
+7. Las fechas mantienen el formato YYYY-MM-DD (no necesitan mayúsculas)
+8. Los números de teléfono y salario no necesitan mayúsculas
+9. Si no encuentras algún campo, déjalo como string vacío "" o null para salario_base
 
 Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
   }
