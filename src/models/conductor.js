@@ -18,23 +18,37 @@ module.exports = (sequelize) => {
     },
     nombre: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true, // ✅ Permitir NULL para procesamiento con IA
       validate: {
-        notNull: { msg: 'El nombre es obligatorio' },
-        notEmpty: { msg: 'El nombre no puede estar vacío' }
+        // Validar solo si no es null
+        nombreValidation(value) {
+          if (value !== null && value !== undefined && value !== '') {
+            if (value.trim().length < 2) {
+              throw new Error('El nombre debe tener al menos 2 caracteres');
+            }
+          }
+        }
       }
     },
+
     apellido: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true, // ✅ Permitir NULL para procesamiento con IA
       validate: {
-        notNull: { msg: 'El apellido es obligatorio' },
-        notEmpty: { msg: 'El apellido no puede estar vacío' }
+        // Validar solo si no es null
+        apellidoValidation(value) {
+          if (value !== null && value !== undefined && value !== '') {
+            if (value.trim().length < 2) {
+              throw new Error('El apellido debe tener al menos 2 caracteres');
+            }
+          }
+        }
       }
     },
     tipo_identificacion: {
       type: DataTypes.STRING,
       allowNull: false,
+      defaultValue: 'CC',
       validate: {
         notNull: { msg: 'El tipo de identificación es obligatorio' },
         notEmpty: { msg: 'El tipo de identificación no puede estar vacío' }
@@ -42,16 +56,22 @@ module.exports = (sequelize) => {
     },
     numero_identificacion: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true, // ✅ Permitir NULL temporalmente para procesamiento
       unique: true,
       validate: {
-        notNull: { msg: 'El número de identificación es obligatorio' },
-        notEmpty: { msg: 'El número de identificación no puede estar vacío' }
-      }
+        // Validar solo si no es null
+        identificacionValidation(value) {
+          if (value !== null && value !== undefined && value !== '') {
+            if (value.trim().length < 7) {
+              throw new Error('El número de identificación debe tener al menos 7 caracteres');
+            }
+          }
+        }
+      },
     },
     email: {
       type: DataTypes.STRING,
-      allowNull: true,  // Cambiado de false a true
+      allowNull: true,
       unique: {
         args: true,
         msg: 'Este correo electrónico ya está registrado en el sistema'
@@ -65,10 +85,16 @@ module.exports = (sequelize) => {
     },
     telefono: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true, // ✅ CAMBIADO: Permitir NULL
       validate: {
-        notNull: { msg: 'El teléfono es obligatorio' },
-        notEmpty: { msg: 'El teléfono no puede estar vacío' }
+        // Validar solo si no es null
+        telefoneValidation(value) {
+          if (value !== null && value !== undefined && value !== '') {
+            if (value.length < 7) {
+              throw new Error('El teléfono debe tener al menos 7 caracteres');
+            }
+          }
+        }
       }
     },
     password: {
@@ -76,21 +102,11 @@ module.exports = (sequelize) => {
       allowNull: true,
       validate: {
         passwordValidation(value) {
-          // Solo validar si se proporciona una contraseña
           if (value !== null && value !== undefined && value !== '') {
             if (value.length < 8 || value.length > 16) {
               throw new Error('La contraseña debe tener entre 8 y 16 caracteres');
             }
           }
-        }
-      }
-    },
-    fotoUrl: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      validate: {
-        isUrl: {
-          msg: 'La URL de la foto debe ser una dirección web válida'
         }
       }
     },
@@ -106,29 +122,32 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true
     },
-    cargo: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      defaultValue: 'CONDUCTOR',
-      validate: {
-        notNull: { msg: 'El cargo es obligatorio' },
-        notEmpty: { msg: 'El cargo no puede estar vacío' }
-      }
-    },
     fecha_ingreso: {
       type: DataTypes.DATEONLY,
-      allowNull: false,
+      allowNull: true, // ✅ CAMBIADO: Permitir NULL
       validate: {
-        notNull: { msg: 'La fecha de ingreso es obligatoria' },
-        isDate: { msg: 'La fecha de ingreso debe ser válida' }
+        // Validar solo si no es null
+        fechaIngresoValidation(value) {
+          if (value !== null && value !== undefined && value !== '') {
+            if (!Date.parse(value)) {
+              throw new Error('La fecha de ingreso debe ser válida');
+            }
+          }
+        }
       }
     },
     salario_base: {
       type: DataTypes.DECIMAL(10, 2),
-      allowNull: false,
+      allowNull: true, // ✅ CAMBIADO: Permitir NULL
       validate: {
-        notNull: { msg: 'El salario base es obligatorio' },
-        isDecimal: { msg: 'El salario base debe ser un valor numérico' }
+        // Validar solo si no es null
+        salarioValidation(value) {
+          if (value !== null && value !== undefined && value !== '') {
+            if (isNaN(value) || parseFloat(value) < 0) {
+              throw new Error('El salario base debe ser un número válido mayor o igual a 0');
+            }
+          }
+        }
       },
       get() {
         const value = this.getDataValue('salario_base');
@@ -136,8 +155,8 @@ module.exports = (sequelize) => {
       }
     },
     estado: {
-      type: DataTypes.ENUM('ACTIVO', 'INACTIVO', 'SUSPENDIDO', 'RETIRADO'),
-      defaultValue: 'ACTIVO',
+      type: DataTypes.ENUM('servicio', 'disponible', 'descanso', 'vacaciones', 'incapacidad', 'desvinculado'),
+      defaultValue: 'disponible',
       allowNull: false
     },
     eps: {
@@ -152,33 +171,80 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true
     },
-    tipo_contrato: {
+    termino_contrato: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    fecha_terminacion: {
       type: DataTypes.STRING,
       allowNull: true
     },
     licencia_conduccion: {
-      type: DataTypes.STRING,
-      allowNull: true
-    },
-    categoria_licencia: {
-      type: DataTypes.STRING,
-      allowNull: true
-    },
-    vencimiento_licencia: {
-      type: DataTypes.DATEONLY,
-      allowNull: true
+      type: DataTypes.JSONB,
+      allowNull: true,
+      defaultValue: null,
+      validate: {
+        isValidLicenciaObject(value) {
+          if (value === null || value === undefined) return;
+
+          if (typeof value !== 'object' || Array.isArray(value)) {
+            throw new Error('licencia_conduccion debe ser un objeto');
+          }
+
+          const { fecha_expedicion, categorias } = value;
+          const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+          if (!fecha_expedicion || typeof fecha_expedicion !== 'string' || !dateRegex.test(fecha_expedicion)) {
+            throw new Error('fecha_expedicion debe estar presente y tener formato YYYY-MM-DD');
+          }
+
+          if (!Array.isArray(categorias)) {
+            throw new Error('categorias debe ser un array');
+          }
+
+          const categoriasValidas = ['A1', 'A2', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3'];
+
+          for (const item of categorias) {
+            if (typeof item !== 'object' || item === null) {
+              throw new Error('Cada categoría debe ser un objeto');
+            }
+
+            if (!item.categoria || typeof item.categoria !== 'string') {
+              throw new Error('Cada categoría debe tener un campo categoria válido');
+            }
+
+            if (!categoriasValidas.includes(item.categoria)) {
+              throw new Error(`Categoría ${item.categoria} no es válida`);
+            }
+
+            if (!item.vigencia_hasta || typeof item.vigencia_hasta !== 'string' || !dateRegex.test(item.vigencia_hasta)) {
+              throw new Error(`vigencia_hasta debe tener formato YYYY-MM-DD`);
+            }
+          }
+        }
+      }
     },
     ultimo_acceso: {
       type: DataTypes.DATE,
       allowNull: true
     },
     sede_trabajo: {
-      type: DataTypes.ENUM('Yopal', 'Villanueva', 'Tauramena'),
+      type: DataTypes.ENUM('YOPAL', 'VILLANUEVA', 'TAURAMENA'),
       allowNull: true,
       validate: {
         isIn: {
-          args: [['Yopal', 'Villanueva', 'Tauramena']],
+          args: [['YOPAL', 'VILLANUEVA', 'TAURAMENA']],
           msg: 'La sede de trabajo debe ser Yopal, Villanueva o Tauramena'
+        }
+      }
+    },
+    tipo_sangre: {
+      type: DataTypes.ENUM('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'),
+      allowNull: true,
+      validate: {
+        isIn: {
+          args: [['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']],
+          msg: 'El tipo de sangre debe ser uno de: A+, A-, B+, B-, AB+, AB-, O+, O-'
         }
       }
     },
@@ -190,6 +256,23 @@ module.exports = (sequelize) => {
         verDocumentos: true,
         actualizarPerfil: true
       }
+    },
+    // ✅ CAMPOS DE AUDITORÍA
+    creado_por_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    actualizado_por_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
     }
   }, {
     sequelize,
@@ -198,19 +281,7 @@ module.exports = (sequelize) => {
     underscored: true,
     timestamps: true,
     hooks: {
-      beforeSave: async (conductor) => {
-        // Hash de contraseña antes de guardar, pero solo si existe y ha cambiado
-        if (conductor.changed('password') && conductor.password !== null && conductor.password !== undefined) {
-          // Verificar que la contraseña no sea una cadena vacía
-          if (conductor.password.trim() !== '') {
-            const salt = await bcrypt.genSalt(10);
-            conductor.password = await bcrypt.hash(conductor.password, salt);
-          } else {
-            // Si la contraseña es una cadena vacía o solo con espacios, la establecemos como null
-            conductor.password = null;
-          }
-        }
-      },
+      // ✅ HOOK ANTES DE VALIDAR
       beforeValidate: (conductor) => {
         // Convertir cadenas vacías a null para email
         if (conductor.email !== null && conductor.email !== undefined && conductor.email.trim() === '') {
@@ -221,23 +292,93 @@ module.exports = (sequelize) => {
         if (conductor.password !== null && conductor.password !== undefined && conductor.password.trim() === '') {
           conductor.password = null;
         }
+      },
+
+      // ✅ HOOK ANTES DE CREAR
+      beforeCreate: async (conductor, options) => {
+        // Hash de contraseña si existe
+        if (conductor.password !== null && conductor.password !== undefined && conductor.password.trim() !== '') {
+          const salt = await bcrypt.genSalt(10);
+          conductor.password = await bcrypt.hash(conductor.password, salt);
+        }
+
+        // ✅ ESTABLECER CREADO_POR
+        if (options && options.user_id) {
+          conductor.creado_por_id = options.user_id;
+          conductor.actualizado_por_id = options.user_id; // También es quien lo actualizó por primera vez
+          console.log(`🆕 Conductor creado por usuario: ${options.user_id}`);
+        } else {
+          console.log('⚠️ No se proporcionó user_id en options para el conductor creado');
+        }
+      },
+
+      // ✅ HOOK ANTES DE ACTUALIZAR
+      beforeUpdate: async (conductor, options) => {
+        // Hash de contraseña solo si ha cambiado
+        if (conductor.changed('password') && conductor.password !== null && conductor.password !== undefined) {
+          if (conductor.password.trim() !== '') {
+            const salt = await bcrypt.genSalt(10);
+            conductor.password = await bcrypt.hash(conductor.password, salt);
+          } else {
+            conductor.password = null;
+          }
+        }
+
+        // ✅ ESTABLECER ACTUALIZADO_POR
+        if (options && options.user_id) {
+          conductor.actualizado_por_id = options.user_id;
+          console.log(`🔄 Conductor ${conductor.id} actualizado por usuario: ${options.user_id}`);
+        } else {
+          console.log('⚠️ No se proporcionó user_id en options para el conductor actualizado');
+        }
+      },
+
+      // ✅ HOOK GENÉRICO ANTES DE GUARDAR (para casos no cubiertos por create/update)
+      beforeSave: async (conductor, options) => {
+        // Este hook actúa como fallback para casos especiales
+        // Los casos normales ya se manejan en beforeCreate y beforeUpdate
+
+        // Solo procesar contraseña si no se procesó en beforeCreate o beforeUpdate
+        if (conductor.isNewRecord) {
+          // Ya se manejó en beforeCreate
+          return;
+        }
+
+        // Para updates que no pasaron por beforeUpdate
+        if (conductor.changed('password') && conductor.password !== null && conductor.password !== undefined) {
+          if (conductor.password.trim() !== '') {
+            // Solo hacer hash si no parece estar ya hasheada (bcrypt hashes start with $2)
+            if (!conductor.password.startsWith('$2')) {
+              const salt = await bcrypt.genSalt(10);
+              conductor.password = await bcrypt.hash(conductor.password, salt);
+            }
+          } else {
+            conductor.password = null;
+          }
+        }
       }
     }
   });
 
   Conductor.associate = (models) => {
     if (models.User) {
+      // ✅ ASOCIACIÓN PARA CREADO_POR
       Conductor.belongsTo(models.User, {
         foreignKey: 'creado_por_id',
         as: 'creadoPor'
+      });
+
+      // ✅ ASOCIACIÓN PARA ACTUALIZADO_POR
+      Conductor.belongsTo(models.User, {
+        foreignKey: 'actualizado_por_id',
+        as: 'actualizadoPor'
       });
     }
 
     if (models.Documento) {
       Conductor.hasMany(models.Documento, {
-        foreignKey: 'modelo_id',
-        constraints: false,
-        scope: { modelo_tipo: 'Conductor' }
+        foreignKey: 'conductor_id',
+        as: 'documentos'
       });
     }
 

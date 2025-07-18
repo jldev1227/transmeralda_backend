@@ -97,7 +97,7 @@ async function saveTemporaryDocument(file, sessionId, categoria) {
  * @param {boolean} isUpdate - Indica si es una actualización (true) o creación (false)
  * @returns {Promise<Array>} - Array de documentos creados
  */
-async function uploadProcessedDocuments(sessionId, vehiculoId, fechasVigencia, isUpdate = false, categorias = []) {
+async function uploadProcessedDocumentsVehiculo(sessionId, vehiculoId, fechasVigencia, isUpdate = false, categorias = []) {
     const documentosCreados = [];
     const tempDir = path.join(__dirname, '..', '..', 'temp', sessionId);
 
@@ -351,6 +351,279 @@ async function uploadProcessedDocuments(sessionId, vehiculoId, fechasVigencia, i
 }
 
 /**
+ * Sube documentos finales a S3 después de procesar un conductor exitosamente
+ * Esta función puede usarse tanto para creación como para actualización de documentos
+ * @param {string} sessionId - ID de la sesión
+ * @param {string} conductorId - ID del conductor
+ * @param {Object} fechasVigencia - Objeto con las fechas de vigencia por categoría (OPCIONAL)
+ * @param {boolean} isUpdate - Indica si es una actualización (true) o creación (false)
+ * @param {Array} categorias - Array de categorías a actualizar (solo para updates)
+ * @returns {Promise<Array>} - Array de documentos creados
+ */
+async function uploadProcessedDocumentsConductor(sessionId, conductorId, fechasVigencia, isUpdate = false, categorias = []) {
+    const documentosCreados = [];
+    const tempDir = path.join(__dirname, '..', '..', 'temp', sessionId);
+
+    try {
+        // ✅ VALIDACIÓN OPCIONAL: fechasVigencia puede estar presente o ser null
+        if (fechasVigencia && typeof fechasVigencia !== 'object') {
+            throw new Error('fechasVigencia debe ser un objeto válido si se proporciona');
+        }
+
+        logger.info(`Iniciando subida de documentos de conductor ${conductorId} con fechas de vigencia: ${JSON.stringify(fechasVigencia)}`);
+
+        // Verificar que el directorio existe
+        const exists = await fs.access(tempDir).then(() => true).catch(() => false);
+        if (!exists) {
+            logger.warn(`Directorio temporal no encontrado: ${tempDir}`);
+            return documentosCreados;
+        }
+
+        // Si es una actualización, eliminar SOLO los documentos de las categorías que se están actualizando
+        if (isUpdate && categorias && categorias.length > 0) {
+            try {
+                logger.info(`Eliminando documentos antiguos para conductor ${conductorId} en categorías: ${categorias.join(', ')}`);
+                
+                // Buscar solo documentos de las categorías específicas
+                const documentosAntiguos = await Documento.findAll({
+                    where: { 
+                        conductor_id: conductorId, // ✅ CAMBIADO: conductor_id en lugar de vehiculo_id
+                        categoria: categorias
+                    }
+                });
+
+                logger.info(`Encontrados ${documentosAntiguos.length} documentos antiguos para eliminar`);
+
+                // Eliminar archivos de S3
+                for (const doc of documentosAntiguos) {
+                    try {
+                        if (doc.s3_key) {
+                            const deleteCommand = {
+                                Bucket: BUCKET_NAME,
+                                Key: doc.s3_key
+                            };
+
+                            await s3Client.send(new DeleteObjectCommand(deleteCommand));
+                            logger.info(`Documento eliminado de S3: ${doc.s3_key} (categoría: ${doc.categoria})`);
+                        }
+                    } catch (s3Error) {
+                        logger.warn(`Error al eliminar documento de S3 (${doc.s3_key}): ${s3Error.message}`);
+                    }
+                }
+
+                // Eliminar registros de la base de datos
+                if (documentosAntiguos.length > 0) {
+                    await Documento.destroy({
+                        where: { 
+                            conductor_id: conductorId,
+                            categoria: categorias
+                        }
+                    });
+                    logger.info(`Se eliminaron ${documentosAntiguos.length} documentos antiguos de categorías ${categorias.join(', ')} para conductor ${conductorId}`);
+                }
+            } catch (deleteError) {
+                logger.error(`Error al eliminar documentos antiguos: ${deleteError.message}`);
+            }
+        }
+
+        // Obtener información de documentos desde Redis
+        const fileInfoKeys = await redisClient.keys(`conductor:${sessionId}:files:*`); // ✅ CAMBIADO: conductor en lugar de vehiculo
+
+        for (const key of fileInfoKeys) {
+            try {
+                // Extraer categoría del documento de la clave de Redis
+                const categoria = key.split(':').pop();
+                const fileInfoStr = await redisClient.get(key);
+                logger.info(`Datos de Redis para ${key}: ${fileInfoStr}`);
+
+                if (!fileInfoStr) {
+                    logger.warn(`No se encontraron datos en Redis para la clave ${key}`);
+                    continue;
+                }
+
+                try {
+                    const fileInfo = JSON.parse(fileInfoStr);
+                    logger.info(`Información del archivo parseada: ${JSON.stringify(fileInfo)}`);
+
+                    // Verificar que la información del archivo es completa
+                    if (!fileInfo.path) {
+                        logger.warn(`No se encontró ruta para documento ${categoria}`);
+                        continue;
+                    }
+
+                    // Verificar que el archivo existe en el sistema
+                    const fileExists = await fs.access(fileInfo.path).then(() => true).catch(() => false);
+                    if (!fileExists) {
+                        logger.warn(`El archivo ${fileInfo.path} no existe en el sistema`);
+                        continue;
+                    }
+
+                    // Leer el archivo
+                    const fileContent = await fs.readFile(fileInfo.path);
+                    logger.info(`Archivo leído: ${fileInfo.path}, tamaño: ${fileContent.length} bytes`);
+
+                    // Verificar que el archivo no esté vacío
+                    if (fileContent.length === 0) {
+                        logger.warn(`¡ALERTA! Archivo con 0 bytes: ${fileInfo.path}`);
+                        continue;
+                    }
+
+                    // Generar ID único para el documento
+                    const documentId = uuidv4();
+
+                    // ✅ CAMBIADO: Ruta S3 específica para conductores
+                    const s3Key = `conductores/${conductorId}/documentos/${categoria}/${documentId}${path.extname(fileInfo.originalname || 'documento.pdf')}`;
+
+                    // Subir a S3
+                    try {
+                        logger.info(`Iniciando subida a S3: ${s3Key}, tamaño: ${fileContent.length} bytes`);
+
+                        const upload = new Upload({
+                            client: s3Client,
+                            params: {
+                                Bucket: BUCKET_NAME,
+                                Key: s3Key,
+                                Body: fileContent,
+                                ContentType: fileInfo.mimetype || 'application/octet-stream',
+                                Metadata: {
+                                    'original-filename': fileInfo.originalname || `${categoria}.pdf`,
+                                    'document-category': categoria,
+                                    'conductor-id': conductorId, // ✅ CAMBIADO: conductor-id
+                                    'file-size': String(fileContent.length)
+                                }
+                            }
+                        });
+
+                        const result = await upload.done();
+                        logger.info(`Subida exitosa a S3: ${s3Key}, ETag: ${result.ETag}`);
+                    } catch (s3Error) {
+                        logger.error(`Error al subir a S3: ${s3Error.message}`);
+                        if (s3Error.message.includes('credentials')) {
+                            logger.error('Posible problema con las credenciales de AWS');
+                        }
+                        throw s3Error;
+                    }
+
+                    console.log('Fechas vigencia:', fechasVigencia);
+                    console.log('Categoria actual:', categoria);
+
+                    // ✅ OPCIONAL: Buscar fecha de vigencia si está disponible
+                    let fechaVigencia = null;
+                    
+                    if (fechasVigencia) {
+                        // Buscar coincidencia exacta primero
+                        if (fechasVigencia[categoria]) {
+                            fechaVigencia = fechasVigencia[categoria];
+                        } else {
+                            // ✅ MAPEO específico para documentos de CONDUCTOR
+                            const categoriaMapping = {
+                                'CEDULA': ['CEDULA_CIUDADANIA', 'CC', 'IDENTIFICACION'],
+                                'LICENCIA_CONDUCCION': ['LICENCIA', 'LICENSE', 'PASE'],
+                                'CERTIFICADO_MEDICO': ['MEDICO', 'CERTIFICADO_SALUD', 'EXAMEN_MEDICO'],
+                                'ANTECEDENTES_PENALES': ['ANTECEDENTES', 'JUDICIAL', 'PENALES'],
+                                'CARTA_RECOMENDACION': ['RECOMENDACION', 'REFERENCIA', 'CARTA'],
+                                'CERTIFICADO_EXPERIENCIA': ['EXPERIENCIA', 'LABORAL', 'TRABAJO'],
+                                'FOTO': ['FOTOGRAFIA', 'IMAGEN', 'RETRATO']
+                            };
+
+                            // Buscar en el mapping
+                            for (const [key, aliases] of Object.entries(categoriaMapping)) {
+                                if (aliases.includes(categoria) && fechasVigencia[key]) {
+                                    fechaVigencia = fechasVigencia[key];
+                                    break;
+                                }
+                            }
+
+                            // Búsqueda flexible si no encuentra coincidencia exacta
+                            if (!fechaVigencia) {
+                                const fechaKey = Object.keys(fechasVigencia).find(key => 
+                                    key.toLowerCase().includes(categoria.toLowerCase()) || 
+                                    categoria.toLowerCase().includes(key.toLowerCase())
+                                );
+                                if (fechaKey) {
+                                    fechaVigencia = fechasVigencia[fechaKey];
+                                }
+                            }
+                        }
+                    }
+
+                    // ✅ OPCIONAL: Solo asignar fecha si existe
+                    if (!fechaVigencia) {
+                        logger.info(`No se encontró fecha de vigencia para categoría ${categoria} en conductor ${conductorId}. Se guardará sin fecha de vigencia.`);
+                    }
+
+                    console.log('Fecha vigencia encontrada:', fechaVigencia);
+
+                    // Crear registro en la base de datos
+                    const documento = await Documento.create({
+                        id: documentId,
+                        conductor_id: conductorId, // ✅ CAMBIADO: conductor_id en lugar de vehiculo_id
+
+                        // ✅ Campos obligatorios del modelo
+                        categoria: categoria,
+                        nombre_original: fileInfo.originalname || `${categoria}.pdf`,
+                        nombre_archivo: `${documentId}${path.extname(fileInfo.originalname || '.pdf')}`,
+                        ruta_archivo: s3Key,
+                        size: fileInfo.size || fileContent.length,
+                        estado: 'vigente',
+                        mimetype: fileInfo.mimetype || 'application/octet-stream',
+
+                        // ✅ Campos específicos
+                        s3_key: s3Key,
+                        filename: fileInfo.originalname || `${categoria}.pdf`,
+                        fecha_vigencia: fechaVigencia ? new Date(fechaVigencia) : null, // ✅ OPCIONAL: Puede ser null
+                        upload_date: new Date(),
+
+                        // ✅ Metadata con información adicional
+                        metadata: {
+                            size: fileInfo.size || fileContent.length,
+                            bucket: BUCKET_NAME,
+                            originalPath: fileInfo.path,
+                            uploadSession: sessionId,
+                            fileExtension: path.extname(fileInfo.originalname || '.pdf'),
+                            processedAt: new Date(),
+                            s3Location: `s3://${BUCKET_NAME}/${s3Key}`,
+                            fechaVigenciaOriginal: fechaVigencia,
+                            documentType: 'conductor' // ✅ Identificador del tipo de documento
+                        }
+                    });
+
+                    documentosCreados.push(documento);
+                    logger.info(`Documento ${categoria} subido exitosamente a S3 para conductor ${conductorId}${fechaVigencia ? ` con vigencia hasta ${fechaVigencia}` : ' sin fecha de vigencia'}`);
+                } catch (parseError) {
+                    logger.error(`Error al parsear datos de Redis: ${parseError.message}`);
+                    continue;
+                }
+            } catch (error) {
+                logger.error(`Error al procesar documento para subida final: ${error.message}`);
+                continue;
+            }
+        }
+
+        // Limpiar directorio temporal después de procesar todos los documentos
+        await fs.rm(tempDir, { recursive: true, force: true });
+        logger.info(`Directorio temporal eliminado: ${tempDir}`);
+
+        // ✅ VALIDACIÓN FINAL: Verificar que se crearon documentos
+        if (documentosCreados.length === 0) {
+            logger.warn(`No se crearon documentos para conductor ${conductorId}. Verificar datos en Redis y fechas de vigencia.`);
+        } else {
+            logger.info(`Se crearon ${documentosCreados.length} documentos exitosamente para conductor ${conductorId}`);
+        }
+
+        return documentosCreados;
+    } catch (error) {
+        logger.error(`Error al subir documentos procesados para conductor: ${error.message}`);
+        // Intentar eliminar directorio temporal incluso si hay error
+        try {
+            await fs.rm(tempDir, { recursive: true, force: true });
+        } catch (cleanupError) {
+            logger.error(`Error al limpiar directorio temporal: ${cleanupError.message}`);
+        }
+        throw error;
+    }
+}
+/**
  * Obtiene los documentos asociados a un vehículo por su ID
  * @param {string} vehiculoId - ID del vehículo
  * @returns {Promise<Array>} - Array de documentos
@@ -366,6 +639,26 @@ async function getDocumentosByVehiculoId(vehiculoId) {
         return documentos;
     } catch (error) {
         logger.error(`Error al obtener documentos para vehículo ${vehiculoId}: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * Obtiene los documentos asociados a un conductor por su ID
+ * @param {string} conductorId - ID del conductor
+ * @returns {Promise<Array>} - Array de documentos
+ */
+async function getDocumentosByConductorId(conductorId) {
+    try {
+        const documentos = await Documento.findAll({
+            where: { conductor_id: conductorId },
+            order: [['upload_date', 'DESC']]
+        });
+
+        logger.info(`Documentos obtenidos para conductor ${conductorId}: ${documentos.length}`);
+        return documentos;
+    } catch (error) {
+        logger.error(`Error al obtener documentos para conductor ${conductorId}: ${error.message}`);
         throw error;
     }
 }
@@ -446,8 +739,10 @@ async function downloadFileFromS3(s3Key, filename, res) {
 
 module.exports = {
     saveTemporaryDocument,
-    uploadProcessedDocuments,
+    uploadProcessedDocumentsVehiculo,
+    uploadProcessedDocumentsConductor,
     getDocumentosByVehiculoId,
+    getDocumentosByConductorId,
     generateSignedUrl,
     downloadFileFromS3,
     getDocumentoById

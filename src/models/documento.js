@@ -11,9 +11,17 @@ module.exports = (sequelize) => {
     },
     vehiculo_id: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'vehiculos',
+        key: 'id'
+      }
+    },
+    conductor_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: 'conductores',
         key: 'id'
       }
     },
@@ -96,6 +104,13 @@ module.exports = (sequelize) => {
     Documento.belongsTo(models.Vehiculo, {
       foreignKey: 'vehiculo_id',
       as: 'vehiculo'
+    });
+
+        // Relación con Conductores (opcional)
+    Documento.belongsTo(models.Conductor, {
+      foreignKey: 'conductor_id',
+      as: 'conductor',
+      allowNull: true
     });
   };
 

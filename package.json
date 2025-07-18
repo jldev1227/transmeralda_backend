@@ -1,6 +1,7 @@
 {
   "name": "transmeralda-backend-ingreso",
   "version": "1.0.0",
+  "type": "commonjs",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -40,7 +41,10 @@
     "sequelize": "^6.37.6",
     "socket.io": "^4.8.1",
     "uuid": "^11.1.0",
-    "winston": "^3.17.0"
+    "winston": "^3.17.0",
+    "@azure-rest/ai-inference": "latest",
+    "@azure/core-auth": "latest",
+    "@azure/core-sse": "latest"
   },
   "devDependencies": {
     "@bull-board/api": "^6.7.10",
