@@ -1,8 +1,8 @@
 const ModelClient = require("@azure-rest/ai-inference").default;
 const { AzureKeyCredential } = require("@azure/core-auth");
 
-const endpoint = "https://lopezvidaljuliandavid5--resource.services.ai.azure.com/models";
-const modelName = "Ministral-3B-2";
+const endpoint = process.env.MINISTRAL_ENDPOINT || "https://ministral.openai.azure.com";
+const modelName = process.env.MINISTRAL_MODEL_NAME || "Ministral-3B-2"; // Asegúrate de que este modelo esté disponible en tu cuenta
 const API_KEY = process.env.MINISTRAL_API_KEY || "";
 
 // Límites más conservadores
