@@ -382,7 +382,7 @@ Extrae la siguiente información del contrato de trabajo:
 
 REGLAS IMPORTANTES:
 1. TODOS LOS VALORES DE TEXTO DEBEN ESTAR EN MAYÚSCULAS
-2. numero_identificacion es OBLIGATORIO - es el número de cédula del empleado (sin puntos ni espacios)
+2. numero_identificacion es OBLIGATORIO - es el número de cédula del empleado (puede venir con puntos o espacios, pero debes extraer solo el número sin símbolos)
 3. Para email, convierte todo a mayúsculas (ej: USUARIO@EMPRESA.COM)
 4. Para dirección, convierte toda la dirección a mayúsculas
 5. Para término de contrato, usa: INDEFINIDO, FIJO, TEMPORAL, etc.
