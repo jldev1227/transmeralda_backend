@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const liquidacionController = require('../controllers/liquidacionController');
-const { protect, hasRole, hasPermiso, isAdmin } = require('../middleware/auth');
+const { protect, hasRole, isAdmin } = require('../middleware/auth');
 
 // Rutas para obtener liquidaciones
 router.get('/conductores', protect, hasRole(['admin', 'gestor_nomina']), liquidacionController.obtenerLiquidaciones);
