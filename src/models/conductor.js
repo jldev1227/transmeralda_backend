@@ -171,14 +171,14 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true
     },
-    termino_contrato: {
-      type: DataTypes.STRING,
-      allowNull: true
-    },
-    fecha_terminacion: {
-      type: DataTypes.STRING,
-      allowNull: true
-    },
+    // termino_contrato: {
+    //   type: DataTypes.STRING,
+    //   allowNull: true
+    // },
+    // fecha_terminacion: {
+    //   type: DataTypes.STRING,
+    //   allowNull: true
+    // },
     licencia_conduccion: {
       type: DataTypes.JSONB,
       allowNull: true,
@@ -238,16 +238,16 @@ module.exports = (sequelize) => {
         }
       }
     },
-    tipo_sangre: {
-      type: DataTypes.ENUM('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'),
-      allowNull: true,
-      validate: {
-        isIn: {
-          args: [['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']],
-          msg: 'El tipo de sangre debe ser uno de: A+, A-, B+, B-, AB+, AB-, O+, O-'
-        }
-      }
-    },
+    // tipo_sangre: {
+    //   type: DataTypes.ENUM('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'),
+    //   allowNull: true,
+    //   validate: {
+    //     isIn: {
+    //       args: [['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']],
+    //       msg: 'El tipo de sangre debe ser uno de: A+, A-, B+, B-, AB+, AB-, O+, O-'
+    //     }
+    //   }
+    // },
     permisos: {
       type: DataTypes.JSONB,
       defaultValue: {
@@ -266,14 +266,14 @@ module.exports = (sequelize) => {
         key: 'id'
       }
     },
-    actualizado_por_id: {
-      type: DataTypes.UUID,
-      allowNull: true,
-      references: {
-        model: 'users',
-        key: 'id'
-      }
-    }
+    // actualizado_por_id: {
+    //   type: DataTypes.UUID,
+    //   allowNull: true,
+    //   references: {
+    //     model: 'users',
+    //     key: 'id'
+    //   }
+    // }
   }, {
     sequelize,
     modelName: 'Conductor',
@@ -368,11 +368,11 @@ module.exports = (sequelize) => {
         as: 'creadoPor'
       });
 
-      // ✅ ASOCIACIÓN PARA ACTUALIZADO_POR
-      Conductor.belongsTo(models.User, {
-        foreignKey: 'actualizado_por_id',
-        as: 'actualizadoPor'
-      });
+      // // ✅ ASOCIACIÓN PARA ACTUALIZADO_POR
+      // Conductor.belongsTo(models.User, {
+      //   foreignKey: 'actualizado_por_id',
+      //   as: 'actualizadoPor'
+      // });
     }
 
     if (models.Documento) {
