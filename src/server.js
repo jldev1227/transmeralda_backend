@@ -14,7 +14,7 @@ const { inicializarProcesadoresVehiculo } = require('./queues/vehiculo.js');
 const logger = require('./utils/logger');
 const { redisClient } = require('./config/redisClient.js');
 const eventEmitter = require('./utils/eventEmitter.js');
-const { inicializarProcesadoresConductor, inicializarProcesadoresConductorMinistral } = require('./queues/conductor.js');
+const { inicializarProcesadoresConductorMinistral } = require('./queues/conductor.js');
 
 // Inicializar app
 const app = express();
@@ -41,7 +41,7 @@ const allowedOrigins = [
   'https://flota.transmeralda.com',
   'http://flota.midominio.local:3000',
   'http://auth.midominio.local:3001',
-  "http://servicios.midominio.local:3000"
+  "http://recargos.midominio.local:3000"
 ];
 
 const corsOptions = {
@@ -66,9 +66,9 @@ const io = socketIO(server, {
   cors: {
     // Permitir todos los orígenes necesarios
     origin: [
-      "http://flota.midominio.local:3000",
-      "http://flota.midominio.local",
       "http://nomina.midominio.local:3000",
+      "http://flota.midominio.local",
+      "http://recargos.midominio.local:3000",
       "http://servicios.midominio.local:3000"
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -457,12 +457,14 @@ app.use('/api/empresas', require('./routes/empresaRoutes'));
 app.use('/api/municipios', require('./routes/municipioRoutes'));
 app.use('/api/conductores', require('./routes/conductoresRoutes.js'));
 app.use('/api/servicios', require('./routes/servicioRoutes.js'));
+app.use('/api/recargos', require('./routes/recargosRoutes.js'));
 app.use('/api/servicios-historico', require('./routes/servicioHistoricoRoutes.js'));
 app.use('/api/liquidaciones_servicios', require('./routes/liquidacionServiciosRoutes.js'));
 app.use('/api/documentos', require('./routes/documentoRoutes.js'));
 app.use('/api/documentos-conductor', require('./routes/documentosRequeridosConductorRoutes.js'));
 app.use('/api/export', require('./routes/exportRoutes'));
 app.use('/api/pdf', require('./routes/desprendibleNominaRoutes'));
+app.use('/api/firmas_desprendible', require('./routes/firmaDesprendibleRoutes'));
 
 // Ruta de verificación de salud
 app.get('/health', (req, res) => {
