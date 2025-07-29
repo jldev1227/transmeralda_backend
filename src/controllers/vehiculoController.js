@@ -660,7 +660,7 @@ const createVehiculoBasico = async (req, res) => {
     const vehiculoData = req.body;
 
     // Verificar campos mínimos obligatorios
-    const camposObligatorios = ['placa', 'marca', 'modelo', 'clase_vehiculo', 'linea'];
+    const camposObligatorios = ['placa', 'marca', 'modelo', 'clase_vehiculo'];
     const camposFaltantes = camposObligatorios.filter(campo => !vehiculoData[campo]);
 
     if (camposFaltantes.length > 0) {
@@ -683,9 +683,7 @@ const createVehiculoBasico = async (req, res) => {
     // Crear vehículo en la base de datos
     const nuevoVehiculo = await Vehiculo.create(datosNormalizados);
 
-    notifyUser(req.user.id, 'vehiculo:creado', {
-      vehiculo: nuevoVehiculo,
-    });
+    notifyUser(req.user.id, 'vehiculo:creado', nuevoVehiculo);
 
     const { id, nombre } = await User.findByPk(req.user.id);
 

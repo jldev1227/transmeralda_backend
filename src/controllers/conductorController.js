@@ -41,9 +41,6 @@ exports.crearConductorBasico = async (req, res) => {
     const camposBasicosRequeridos = [
       'nombre',
       'apellido',
-      'tipo_identificacion',
-      'numero_identificacion',
-      'telefono'
     ];
 
     // Validar campos obligatorios para conductores de planta
