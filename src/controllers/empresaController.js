@@ -1,6 +1,7 @@
 // controllers/empresaController.js
-const { Empresa } = require('../models');
+const { Empresa, User } = require('../models');
 const { Op } = require('sequelize');
+const { notificarGlobal, notifyUser } = require('../utils/notificar');
 
 // Obtener todas las empresas
 exports.getEmpresas = async (req, res) => {
@@ -151,11 +152,15 @@ exports.createEmpresa = async (req, res) => {
       paga_recargos
     });
 
-    // Emitir evento para todos los clientes conectados
-    const emitEmpresaEvent = req.app.get('emitEmpresaEvent');
-    if (emitEmpresaEvent) {
-      emitEmpresaEvent('empresa:creado', nuevaEmpresa);
-    }
+    const { id, nombre: usuarioNombre } = await User.findByPk(req.user.id);
+
+    notificarGlobal('empresa:creado-global', {
+      usuarioId: id,
+      usuarioNombre,
+      empresa: nuevaEmpresa,
+    });
+
+    notifyUser(id, 'empresa:creado', nuevaEmpresa)
 
     return res.status(201).json({
       success: true,

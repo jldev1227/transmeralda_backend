@@ -30,7 +30,6 @@ module.exports = (sequelize) => {
         }
       }
     },
-
     apellido: {
       type: DataTypes.STRING,
       allowNull: true, // ✅ Permitir NULL para procesamiento con IA
@@ -57,17 +56,6 @@ module.exports = (sequelize) => {
     numero_identificacion: {
       type: DataTypes.STRING,
       allowNull: true, // ✅ Permitir NULL temporalmente para procesamiento
-      unique: true,
-      validate: {
-        // Validar solo si no es null
-        identificacionValidation(value) {
-          if (value !== null && value !== undefined && value !== '') {
-            if (value.trim().length < 7) {
-              throw new Error('El número de identificación debe tener al menos 7 caracteres');
-            }
-          }
-        }
-      },
     },
     email: {
       type: DataTypes.STRING,
@@ -171,14 +159,14 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true
     },
-    // termino_contrato: {
-    //   type: DataTypes.STRING,
-    //   allowNull: true
-    // },
-    // fecha_terminacion: {
-    //   type: DataTypes.STRING,
-    //   allowNull: true
-    // },
+    termino_contrato: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    fecha_terminacion: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
     licencia_conduccion: {
       type: DataTypes.JSONB,
       allowNull: true,
@@ -238,16 +226,16 @@ module.exports = (sequelize) => {
         }
       }
     },
-    // tipo_sangre: {
-    //   type: DataTypes.ENUM('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'),
-    //   allowNull: true,
-    //   validate: {
-    //     isIn: {
-    //       args: [['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']],
-    //       msg: 'El tipo de sangre debe ser uno de: A+, A-, B+, B-, AB+, AB-, O+, O-'
-    //     }
-    //   }
-    // },
+    tipo_sangre: {
+      type: DataTypes.ENUM('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'),
+      allowNull: true,
+      validate: {
+        isIn: {
+          args: [['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']],
+          msg: 'El tipo de sangre debe ser uno de: A+, A-, B+, B-, AB+, AB-, O+, O-'
+        }
+      }
+    },
     permisos: {
       type: DataTypes.JSONB,
       defaultValue: {
@@ -266,14 +254,14 @@ module.exports = (sequelize) => {
         key: 'id'
       }
     },
-    // actualizado_por_id: {
-    //   type: DataTypes.UUID,
-    //   allowNull: true,
-    //   references: {
-    //     model: 'users',
-    //     key: 'id'
-    //   }
-    // }
+    actualizado_por_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    }
   }, {
     sequelize,
     modelName: 'Conductor',

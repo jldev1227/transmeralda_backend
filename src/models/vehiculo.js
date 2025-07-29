@@ -29,11 +29,7 @@ module.exports = (sequelize) => {
     },
     linea: {
       type: DataTypes.STRING,
-      allowNull: false,
-      validate: {
-        notNull: { msg: 'La línea es obligatoria' },
-        notEmpty: { msg: 'La línea no puede estar vacía' }
-      }
+      allowNull: true,
     },
     modelo: {
       type: DataTypes.STRING,
@@ -46,14 +42,6 @@ module.exports = (sequelize) => {
     color: {
       type: DataTypes.STRING,
       allowNull: true,
-      validate: {
-        notEmptyIfPresent(value) {
-          // Si es una string vacía, la convertimos a null automáticamente
-          if (value !== null && value !== undefined && value.trim() === '') {
-            this.setDataValue('color', null);
-          }
-        }
-      }
     },
     clase_vehiculo: {
       type: DataTypes.STRING,
