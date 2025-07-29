@@ -356,11 +356,11 @@ module.exports = (sequelize) => {
         as: 'creadoPor'
       });
 
-      // // ✅ ASOCIACIÓN PARA ACTUALIZADO_POR
-      // Conductor.belongsTo(models.User, {
-      //   foreignKey: 'actualizado_por_id',
-      //   as: 'actualizadoPor'
-      // });
+      // ✅ ASOCIACIÓN PARA ACTUALIZADO_POR
+      Conductor.belongsTo(models.User, {
+        foreignKey: 'actualizado_por_id',
+        as: 'actualizadoPor'
+      });
     }
 
     if (models.Documento) {
