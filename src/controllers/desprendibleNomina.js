@@ -574,6 +574,239 @@ emailQueue.process(async (job, done) => {
 });
 
 /**
+ * Construir URL pública de S3
+ * @param {string} fileName - Nombre del archivo en S3
+ * @param {string} folder - Carpeta en S3 (default: 'assets')
+ * @returns {string} URL pública completa
+ */
+function getS3PublicUrl(fileName, folder = 'assets') {
+  const bucketName = process.env.AWS_S3_BUCKET_NAME || 'transmeralda';
+  const region = process.env.AWS_REGION || 'us-east-2';
+
+  return `https://${bucketName}.s3.${region}.amazonaws.com/${folder}/${fileName}`;
+}
+
+// Función para crear el template HTML
+function createEmailTemplate(content, options = {}) {
+  const {
+    logoFileName = 'codi.png', // nombre del archivo en S3
+    companyName = 'Transportes y Servicios Esmeralda S.A.S',
+    showLogo = true
+  } = options;
+
+  // Construir URL del logo desde S3
+  const logoUrl = showLogo ? getS3PublicUrl(logoFileName) : null;
+
+  return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprobante de Nómina</title>
+    <!--[if mso]>
+    <noscript>
+        <xml>
+            <o:OfficeDocumentSettings>
+                <o:PixelsPerInch>96</o:PixelsPerInch>
+            </o:OfficeDocumentSettings>
+        </xml>
+    </noscript>
+    <![endif]-->
+    <style>
+        /* Reset */
+        body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+        table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+        img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+        
+        /* Estilos principales */
+        body {
+            margin: 0 !important;
+            padding: 0 !important;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, Arial, sans-serif !important;
+            background-color: #f8fafc !important;
+            line-height: 1.6;
+        }
+        
+        .email-wrapper {
+            width: 100%;
+            background-color: #f8fafc;
+            padding: 20px 0;
+        }
+        
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #059669, #047857);
+            padding: 30px 20px;
+            text-align: center;
+            color: white;
+        }
+        
+        .logo {
+            max-width: 250px;
+            height: auto;
+            margin-bottom: 15px;
+            display: inline-block;
+        }
+        
+        .header h1 {
+            margin: 10px 0 5px 0;
+            font-size: 24px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+        
+        .header p {
+            margin: 0;
+            font-size: 14px;
+            color: #e6fffa;
+        }
+        
+        .content {
+            padding: 40px 30px;
+            color: #374151;
+        }
+        
+        .content h2 {
+            color: #059669;
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 20px;
+            border-bottom: 2px solid #ecfdf5;
+            padding-bottom: 10px;
+        }
+        
+        .content p {
+            margin-bottom: 16px;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+        
+        .info-box {
+            background-color: #f0fdf4;
+            border-left: 4px solid #059669;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 6px;
+        }
+        
+        .info-box strong {
+            color: #047857;
+        }
+        
+        .button {
+            display: inline-block;
+            background: linear-gradient(135deg, #059669, #047857);
+            color: white !important;
+            padding: 14px 28px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .attachment-notice {
+            background-color: #fef3c7;
+            border: 1px solid #fcd34d;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        
+        .attachment-notice p {
+            margin: 0;
+            color: #92400e;
+        }
+        
+        .footer {
+            background-color: #f9fafb;
+            padding: 30px;
+            text-align: center;
+            border-top: 2px solid #e5e7eb;
+            color: #6b7280;
+            font-size: 13px;
+        }
+        
+        .footer p {
+            margin: 5px 0;
+        }
+        
+        .social-links {
+            margin: 20px 0;
+        }
+        
+        .social-links a {
+            display: inline-block;
+            margin: 0 10px;
+        }
+        
+        /* Responsive */
+        @media screen and (max-width: 600px) {
+            .email-container {
+                width: 100% !important;
+                margin: 0 !important;
+                border-radius: 0 !important;
+            }
+            
+            .content {
+                padding: 30px 20px !important;
+            }
+            
+            .header {
+                padding: 25px 15px !important;
+            }
+            
+            .header h1 {
+                font-size: 20px !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <div class="email-container">
+            <!-- Header con logo desde S3 -->
+            <div class="header">
+                ${logoUrl ? `
+                    <img src="${logoUrl}" alt="${companyName}" class="logo" />
+                ` : ''}
+                <h1>${companyName}</h1>
+                <p>NIT: 901528440-3</p>
+            </div>
+            
+            <!-- Contenido principal -->
+            <div class="content">
+                ${content}
+            </div>
+            
+            <!-- Footer -->
+            <div class="footer">
+                <p><strong>Este es un mensaje automático</strong></p>
+                <p>Por favor no responder directamente a este correo.</p>
+                <p>Si tiene alguna pregunta, contacte a su supervisor o al departamento de recursos humanos.</p>
+                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+                <p>&copy; 2025 ${companyName}. Todos los derechos reservados.</p>
+                <p style="font-size: 11px; color: #9ca3af;">
+                    Este correo electrónico y cualquier archivo adjunto son confidenciales y están destinados 
+                    únicamente para el uso del destinatario previsto.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>`;
+}
+
+/**
  * Función para enviar un correo electrónico
  * @param {Object} options - Opciones del correo
  * @returns {Promise<void>}
@@ -582,8 +815,8 @@ async function sendEmail(options) {
   try {
     // Configurar el transporte de correo
     const transporterConfig = {
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT),
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: parseInt(process.env.SMTP_PORT || '587'),
       secure: process.env.SMTP_SECURE === "true",
       auth: {
         user: process.env.SMTP_USER,
@@ -593,43 +826,57 @@ async function sendEmail(options) {
 
     const transporter = nodemailer.createTransport(transporterConfig);
 
-    // Verificar que todos los adjuntos son Buffers válidos
+    // Procesar adjuntos
     let validAttachments = [];
-
     if (options.attachments && Array.isArray(options.attachments)) {
-      validAttachments = options.attachments.filter((attachment) => {
-        if (
-          attachment.content &&
-          Buffer.isBuffer(attachment.content) &&
-          attachment.content.length > 0
-        ) {
-          return true;
+      validAttachments = options.attachments.map((attachment) => {
+        // Manejar diferentes tipos de contenido
+        let content = attachment.content;
+
+        // Si es un objeto serializado de Buffer
+        if (content && typeof content === 'object' && content.type === 'Buffer') {
+          content = Buffer.from(content.data || content);
         }
-        console.warn(`Omitiendo adjunto inválido: ${attachment.filename}`);
-        return false;
-      });
+
+        // Verificar que es un Buffer válido
+        if (Buffer.isBuffer(content) && content.length > 0) {
+          return {
+            filename: attachment.filename,
+            content: content,
+            contentType: attachment.contentType || 'application/pdf'
+          };
+        }
+
+        return null;
+      }).filter(Boolean);
     }
+
+    // Crear el contenido HTML personalizado
+    const htmlContent = createEmailTemplate(
+      options.htmlContent || options.text,
+      {
+        logoFileName: options.logoFileName || 'codi.png',
+        companyName: options.companyName || 'Transportes y Servicios Esmeralda S.A.S',
+        showLogo: options.showLogo !== false
+      }
+    );
 
     // Preparar opciones de correo
     const mailOptions = {
-      from: process.env.SMTP_USER || transporterConfig.auth.user,
+      from: `${options.fromName || 'Sistema de Nómina'} <${process.env.SMTP_USER}>`,
       to: options.to,
-      subject: options.subject,
-      text: options.text,
+      subject: options.subject || 'Comprobante de Nómina',
+      text: options.text || 'Por favor, visualice este correo en un cliente que soporte HTML.',
+      html: htmlContent,
       attachments: validAttachments,
     };
 
-    // Log para depuración
-    console.log(
-      `Enviando correo a ${options.to} con ${validAttachments.length} adjuntos`
-    );
-
     // Enviar el correo
     const result = await transporter.sendMail(mailOptions);
-    console.log(`Correo enviado a ${options.to}: ${result.messageId}`);
+
     return result;
   } catch (error) {
-    console.error(`Error al enviar correo a ${options.to}:`, error);
+    console.error(`❌ Error al enviar correo a ${options.to}:`, error);
     throw error;
   }
 }
