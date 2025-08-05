@@ -780,7 +780,6 @@ function createEmailTemplate(content, options = {}) {
                     <img src="${logoUrl}" alt="${companyName}" class="logo" />
                 ` : ''}
                 <h1>${companyName}</h1>
-                <p>NIT: 901528440-3</p>
             </div>
             
             <!-- Contenido principal -->
