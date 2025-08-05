@@ -1,5 +1,72 @@
 const { Servicio, Municipio, Conductor, Vehiculo, Empresa, ServicioHistorico } = require('../models');
 
+const verificarDisponibilidad = async (conductorId, vehiculoId, servicioIdExcluir = null) => {
+  const errores = [];
+
+  // Verificar si el conductor ya está en un servicio "en_curso"
+  if (conductorId) {
+    const whereCondition = {
+      conductor_id: conductorId,
+      estado: 'en_curso'
+    };
+
+    // Si estamos actualizando, excluir el servicio actual
+    if (servicioIdExcluir) {
+      whereCondition.id = { [require('sequelize').Op.ne]: servicioIdExcluir };
+    }
+
+    const conductorEnServicio = await Servicio.findOne({
+      where: whereCondition,
+      attributes: ['id', 'origen_especifico', 'destino_especifico'],
+      include: [
+        { model: Municipio, as: 'origen', attributes: ['nombre_municipio'] },
+        { model: Municipio, as: 'destino', attributes: ['nombre_municipio'] }
+      ]
+    });
+
+    if (conductorEnServicio) {
+      const ruta = `${conductorEnServicio.origen?.nombre_municipio || conductorEnServicio.origen_especifico} → ${conductorEnServicio.destino?.nombre_municipio || conductorEnServicio.destino_especifico}`;
+      errores.push({
+        tipo: 'conductor',
+        mensaje: `El conductor no está disponible porque ya se encuentra realizando un servicio en curso (Servicio #${conductorEnServicio.id}: ${ruta})`
+      });
+    }
+  }
+
+  // Verificar si el vehículo ya está en un servicio "en_curso"
+  if (vehiculoId) {
+    const whereCondition = {
+      vehiculo_id: vehiculoId,
+      estado: 'en_curso'
+    };
+
+    // Si estamos actualizando, excluir el servicio actual
+    if (servicioIdExcluir) {
+      whereCondition.id = { [require('sequelize').Op.ne]: servicioIdExcluir };
+    }
+
+    const vehiculoEnServicio = await Servicio.findOne({
+      where: whereCondition,
+      attributes: ['id', 'origen_especifico', 'destino_especifico'],
+      include: [
+        { model: Municipio, as: 'origen', attributes: ['nombre_municipio'] },
+        { model: Municipio, as: 'destino', attributes: ['nombre_municipio'] },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['placa'] }
+      ]
+    });
+
+    if (vehiculoEnServicio) {
+      const ruta = `${vehiculoEnServicio.origen?.nombre_municipio || vehiculoEnServicio.origen_especifico} → ${vehiculoEnServicio.destino?.nombre_municipio || vehiculoEnServicio.destino_especifico}`;
+      errores.push({
+        tipo: 'vehiculo',
+        mensaje: `El vehículo ${vehiculoEnServicio.vehiculo?.placa || 'seleccionado'} no está disponible porque ya se encuentra en un servicio en curso (Servicio #${vehiculoEnServicio.id}: ${ruta})`
+      });
+    }
+  }
+
+  return errores;
+};
+
 // Obtener todos los servicios
 exports.obtenerTodos = async (req, res) => {
   try {
@@ -87,7 +154,6 @@ exports.crear = async (req, res) => {
       observaciones
     } = req.body;
 
-
     // Validación adicional de datos, si es necesario
     if (!origen_id || !destino_id || !cliente_id) {
       return res.status(400).json({
@@ -112,6 +178,35 @@ exports.crear = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: 'El vehículo es requerido cuando el estado no es "solicitado"'
+        });
+      }
+    }
+
+    // ✅ NUEVA VALIDACIÓN: Verificar disponibilidad de conductor y vehículo
+    // Solo verificar si se están asignando conductor o vehículo
+    if (conductorId || vehiculoId) {
+      const erroresDisponibilidad = await verificarDisponibilidad(conductorId, vehiculoId);
+
+      if (erroresDisponibilidad.length > 0) {
+        // Generar mensaje dinámico basado en los tipos de conflictos
+        let mensajePrincipal;
+        const tieneErrorConductor = erroresDisponibilidad.some(error => error.tipo === 'conductor');
+        const tieneErrorVehiculo = erroresDisponibilidad.some(error => error.tipo === 'vehiculo');
+
+        if (tieneErrorConductor && tieneErrorVehiculo) {
+          mensajePrincipal = 'No se puede crear el servicio porque el conductor y el vehículo no se encuentran disponibles';
+        } else if (tieneErrorConductor) {
+          mensajePrincipal = 'No se puede crear el servicio porque el conductor no se encuentra disponible';
+        } else if (tieneErrorVehiculo) {
+          mensajePrincipal = 'No se puede crear el servicio porque el vehículo no se encuentra disponible';
+        } else {
+          mensajePrincipal = 'No se puede crear el servicio por conflictos de disponibilidad';
+        }
+
+        return res.status(400).json({
+          success: false,
+          message: mensajePrincipal,
+          errores: erroresDisponibilidad
         });
       }
     }
@@ -211,9 +306,9 @@ exports.crear = async (req, res) => {
       message: 'Servicio creado exitosamente',
       data: servicioCreado
     });
+
   } catch (error) {
     console.error('Error al crear el servicio:', error);
-
     // Manejo específico de errores de validación de Sequelize
     if (error.name === 'SequelizeValidationError') {
       return res.status(400).json({
@@ -225,7 +320,6 @@ exports.crear = async (req, res) => {
         }))
       });
     }
-
     return res.status(500).json({
       success: false,
       message: 'Error al crear el servicio',
@@ -233,6 +327,7 @@ exports.crear = async (req, res) => {
     });
   }
 };
+
 // Actualizar un servicio existente
 exports.actualizar = async (req, res) => {
   try {
@@ -259,7 +354,6 @@ exports.actualizar = async (req, res) => {
 
     // Verificar que el servicio exista
     const servicio = await Servicio.findByPk(id);
-
     if (!servicio) {
       return res.status(404).json({
         success: false,
@@ -267,12 +361,63 @@ exports.actualizar = async (req, res) => {
       });
     }
 
+    // ✅ NUEVA VALIDACIÓN: Verificar disponibilidad de conductor y vehículo al actualizar
+    // Determinar qué conductor y vehículo se van a asignar después de la actualización
+    let conductorFinalId = servicio.conductor_id; // Valor actual por defecto
+    let vehiculoFinalId = servicio.vehiculo_id; // Valor actual por defecto
+
+    // Actualizar los IDs finales basado en lo que viene en la petición
+    if (req.body.hasOwnProperty('conductor_id')) {
+      const conductorDesasociado = conductor_id === null || conductor_id === '' || conductor_id === undefined;
+      conductorFinalId = conductorDesasociado ? null : conductor_id;
+    }
+
+    if (req.body.hasOwnProperty('vehiculo_id')) {
+      const vehiculoDesasociado = vehiculo_id === null || vehiculo_id === '' || vehiculo_id === undefined;
+      vehiculoFinalId = vehiculoDesasociado ? null : vehiculo_id;
+    }
+
+    // Solo verificar disponibilidad si se están asignando conductor o vehículo
+    // y si han cambiado respecto a los valores actuales
+    const conductorCambio = conductorFinalId !== servicio.conductor_id;
+    const vehiculoCambio = vehiculoFinalId !== servicio.vehiculo_id;
+
+    if ((conductorCambio && conductorFinalId) || (vehiculoCambio && vehiculoFinalId)) {
+      const erroresDisponibilidad = await verificarDisponibilidad(
+        conductorCambio ? conductorFinalId : null, // Solo verificar si cambió
+        vehiculoCambio ? vehiculoFinalId : null,   // Solo verificar si cambió
+        id // Excluir el servicio actual de la validación
+      );
+
+      if (erroresDisponibilidad.length > 0) {
+        // Generar mensaje dinámico basado en los tipos de conflictos
+        let mensajePrincipal;
+        const tieneErrorConductor = erroresDisponibilidad.some(error => error.tipo === 'conductor');
+        const tieneErrorVehiculo = erroresDisponibilidad.some(error => error.tipo === 'vehiculo');
+
+        if (tieneErrorConductor && tieneErrorVehiculo) {
+          mensajePrincipal = 'No se puede actualizar el servicio porque el conductor y el vehículo no se encuentran disponibles';
+        } else if (tieneErrorConductor) {
+          mensajePrincipal = 'No se puede actualizar el servicio porque el conductor no se encuentra disponible';
+        } else if (tieneErrorVehiculo) {
+          mensajePrincipal = 'No se puede actualizar el servicio porque el vehículo no se encuentra disponible';
+        } else {
+          mensajePrincipal = 'No se puede actualizar el servicio por conflictos de disponibilidad';
+        }
+
+        return res.status(400).json({
+          success: false,
+          message: mensajePrincipal,
+          errores: erroresDisponibilidad
+        });
+      }
+    }
+
     // Si se cambiaron IDs de referencia, verificar que existan
     const promises = [];
     if (origen_id && origen_id !== servicio.origen_id) {
       promises.push(Municipio.findByPk(origen_id));
     }
-
     if (destino_id && destino_id !== servicio.destino_id) {
       promises.push(Municipio.findByPk(destino_id));
     }
@@ -323,53 +468,53 @@ exports.actualizar = async (req, res) => {
       // Manejo especial para observaciones: preservar cadenas vacías cuando se envían explícitamente
       observaciones: observaciones !== undefined ? observaciones : servicio.observaciones
     };
-    
+
     // Manejar conductor_id: si está presente en req.body pero es null/vacío, lo establecemos a null
     // para desasociar al conductor del servicio
     if (req.body.hasOwnProperty('conductor_id')) {
       // Si conductor_id está presente pero es null, vacío o undefined, asignar null
       const conductorDesasociado = conductor_id === null || conductor_id === '' || conductor_id === undefined;
       updateData.conductor_id = conductorDesasociado ? null : conductor_id;
-      
+
       // Agregar detalle especial para el registro histórico si se está desasociando un conductor
       if (conductorDesasociado && servicio.conductor_id) {
         if (!updateData.detalles) updateData.detalles = {};
         updateData.detalles.conductor_desasociado = true;
         updateData.detalles.conductor_id_anterior = servicio.conductor_id;
         updateData.detalles.descripcion_cambio_conductor = "Se desvinculó el conductor del servicio";
-        
+
         // Obtener información del conductor que se está desvinculando para el histórico
         try {
-            // Buscar los datos del conductor para tener información más completa en el histórico
-            const conductorAnterior = await Conductor.findByPk(servicio.conductor_id, {
-                attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono']
-            });
-            
-            let valorAnterior = `Conductor ID: ${servicio.conductor_id}`;
-            if (conductorAnterior) {
-                valorAnterior = `Conductor: ${conductorAnterior.nombre} ${conductorAnterior.apellido} (${conductorAnterior.tipo_identificacion}: ${conductorAnterior.numero_identificacion})`;
+          // Buscar los datos del conductor para tener información más completa en el histórico
+          const conductorAnterior = await Conductor.findByPk(servicio.conductor_id, {
+            attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono']
+          });
+
+          let valorAnterior = `Conductor ID: ${servicio.conductor_id}`;
+          if (conductorAnterior) {
+            valorAnterior = `Conductor: ${conductorAnterior.nombre} ${conductorAnterior.apellido} (${conductorAnterior.tipo_identificacion}: ${conductorAnterior.numero_identificacion})`;
+          }
+
+          // Crear un registro histórico específico para la desvinculación del conductor
+          await ServicioHistorico.create({
+            servicio_id: servicio.id,
+            usuario_id: req.user.id,
+            campo_modificado: 'desvinculacion_conductor',
+            valor_anterior: valorAnterior,
+            valor_nuevo: 'Sin conductor asignado',
+            tipo_operacion: 'actualizacion',
+            ip_usuario: req.ip || null,
+            navegador_usuario: req.headers['user-agent'] || null,
+            detalles: {
+              origen: 'API',
+              ruta: req.originalUrl,
+              metodo: req.method,
+              accion: 'Desvinculación de conductor',
+              conductor_id_anterior: servicio.conductor_id,
+              datos_conductor: conductorAnterior ? conductorAnterior.toJSON() : null
             }
-            
-            // Crear un registro histórico específico para la desvinculación del conductor
-            await ServicioHistorico.create({
-              servicio_id: servicio.id,
-              usuario_id: req.user.id,
-              campo_modificado: 'desvinculacion_conductor',
-              valor_anterior: valorAnterior,
-              valor_nuevo: 'Sin conductor asignado',
-              tipo_operacion: 'actualizacion',
-              ip_usuario: req.ip || null,
-              navegador_usuario: req.headers['user-agent'] || null,
-              detalles: {
-                origen: 'API',
-                ruta: req.originalUrl,
-                metodo: req.method,
-                accion: 'Desvinculación de conductor',
-                conductor_id_anterior: servicio.conductor_id,
-                datos_conductor: conductorAnterior ? conductorAnterior.toJSON() : null
-              }
-            });
-            console.log(`Registro histórico creado para la desvinculación del conductor en servicio ID: ${servicio.id}`);
+          });
+          console.log(`Registro histórico creado para la desvinculación del conductor en servicio ID: ${servicio.id}`);
         } catch (error) {
           console.error('Error al registrar la desvinculación del conductor en histórico:', error);
         }
@@ -377,53 +522,53 @@ exports.actualizar = async (req, res) => {
     } else {
       updateData.conductor_id = servicio.conductor_id;
     }
-    
+
     // Manejar vehiculo_id: si está presente en req.body pero es null/vacío, lo establecemos a null
     // para desasociar al vehículo del servicio
     if (req.body.hasOwnProperty('vehiculo_id')) {
       // Si vehiculo_id está presente pero es null, vacío o undefined, asignar null
       const vehiculoDesasociado = vehiculo_id === null || vehiculo_id === '' || vehiculo_id === undefined;
       updateData.vehiculo_id = vehiculoDesasociado ? null : vehiculo_id;
-      
+
       // Agregar detalle especial para el registro histórico si se está desasociando un vehículo
       if (vehiculoDesasociado && servicio.vehiculo_id) {
         if (!updateData.detalles) updateData.detalles = {};
         updateData.detalles.vehiculo_desasociado = true;
         updateData.detalles.vehiculo_id_anterior = servicio.vehiculo_id;
         updateData.detalles.descripcion_cambio_vehiculo = "Se desvinculó el vehículo del servicio";
-        
+
         // Obtener información del vehículo que se está desvinculando para el histórico
         try {
-            // Buscar los datos del vehículo para tener información más completa en el histórico
-            const vehiculoAnterior = await Vehiculo.findByPk(servicio.vehiculo_id, {
-                attributes: ['id', 'placa', 'marca', 'linea', 'modelo']
-            });
-            
-            let valorAnterior = `Vehículo ID: ${servicio.vehiculo_id}`;
-            if (vehiculoAnterior) {
-                valorAnterior = `Vehículo: ${vehiculoAnterior.placa} (${vehiculoAnterior.marca} ${vehiculoAnterior.linea} - ${vehiculoAnterior.modelo})`;
+          // Buscar los datos del vehículo para tener información más completa en el histórico
+          const vehiculoAnterior = await Vehiculo.findByPk(servicio.vehiculo_id, {
+            attributes: ['id', 'placa', 'marca', 'linea', 'modelo']
+          });
+
+          let valorAnterior = `Vehículo ID: ${servicio.vehiculo_id}`;
+          if (vehiculoAnterior) {
+            valorAnterior = `Vehículo: ${vehiculoAnterior.placa} (${vehiculoAnterior.marca} ${vehiculoAnterior.linea} - ${vehiculoAnterior.modelo})`;
+          }
+
+          // Crear un registro histórico específico para la desvinculación del vehículo
+          await ServicioHistorico.create({
+            servicio_id: servicio.id,
+            usuario_id: req.user.id,
+            campo_modificado: 'desvinculacion_vehiculo',
+            valor_anterior: valorAnterior,
+            valor_nuevo: 'Sin vehículo asignado',
+            tipo_operacion: 'actualizacion',
+            ip_usuario: req.ip || null,
+            navegador_usuario: req.headers['user-agent'] || null,
+            detalles: {
+              origen: 'API',
+              ruta: req.originalUrl,
+              metodo: req.method,
+              accion: 'Desvinculación de vehículo',
+              vehiculo_id_anterior: servicio.vehiculo_id,
+              datos_vehiculo: vehiculoAnterior ? vehiculoAnterior.toJSON() : null
             }
-            
-            // Crear un registro histórico específico para la desvinculación del vehículo
-            await ServicioHistorico.create({
-              servicio_id: servicio.id,
-              usuario_id: req.user.id,
-              campo_modificado: 'desvinculacion_vehiculo',
-              valor_anterior: valorAnterior,
-              valor_nuevo: 'Sin vehículo asignado',
-              tipo_operacion: 'actualizacion',
-              ip_usuario: req.ip || null,
-              navegador_usuario: req.headers['user-agent'] || null,
-              detalles: {
-                origen: 'API',
-                ruta: req.originalUrl,
-                metodo: req.method,
-                accion: 'Desvinculación de vehículo',
-                vehiculo_id_anterior: servicio.vehiculo_id,
-                datos_vehiculo: vehiculoAnterior ? vehiculoAnterior.toJSON() : null
-              }
-            });
-            console.log(`Registro histórico creado para la desvinculación del vehículo en servicio ID: ${servicio.id}`);
+          });
+          console.log(`Registro histórico creado para la desvinculación del vehículo en servicio ID: ${servicio.id}`);
         } catch (error) {
           console.error('Error al registrar la desvinculación del vehículo en histórico:', error);
         }
@@ -431,8 +576,8 @@ exports.actualizar = async (req, res) => {
     } else {
       updateData.vehiculo_id = servicio.vehiculo_id;
     }
-    
-    // Manejar específicamente el cambio en observaciones para el histórico
+
+      // Manejar específicamente el cambio en observaciones para el histórico
     if (req.body.hasOwnProperty('observaciones') && (
         // Caso 1: Cambio de observaciones vacías a observaciones con contenido
         ((servicio.observaciones === null || servicio.observaciones === '' || servicio.observaciones === undefined) && 
@@ -441,18 +586,18 @@ exports.actualizar = async (req, res) => {
         ((observaciones === null || observaciones === '' || observaciones === undefined) && 
          (servicio.observaciones !== null && servicio.observaciones !== '' && servicio.observaciones !== undefined))
     )) {
-        
+
       try {
         // Crear un registro histórico específico para el cambio de observaciones vacías a no vacías o viceversa
         const esVacioAnterior = !servicio.observaciones || servicio.observaciones.trim() === '';
         const esVacioNuevo = !observaciones || observaciones.trim() === '';
-        
+
         const valorAnterior = esVacioAnterior ? '(Sin observaciones)' : servicio.observaciones;
         const valorNuevo = esVacioNuevo ? '(Sin observaciones)' : observaciones;
-        
+
         // Solo registrar si hay un cambio real entre vacío y con valor o viceversa
         if (esVacioAnterior !== esVacioNuevo) {
-            
+
           await ServicioHistorico.create({
             servicio_id: servicio.id,
             usuario_id: req.user.id,
@@ -471,14 +616,14 @@ exports.actualizar = async (req, res) => {
                 'Adición de observaciones (campo vacío a campo con valor)'
             }
           });
-          
+
           console.log(`Registro histórico creado para el cambio de observaciones en servicio ID: ${servicio.id}`);
         }
       } catch (error) {
         console.error('Error al registrar cambio de observaciones en histórico:', error);
       }
     }
-    
+
     // Preparar opciones para el histórico
     const updateOptions = {
       user_id: req.user.id, // Pasar el ID del usuario para el histórico
@@ -490,12 +635,12 @@ exports.actualizar = async (req, res) => {
         metodo: req.method
       }
     };
-    
+
     // Agregar información de desasociación a los detalles si es necesario
     if (updateData.detalles) {
       updateOptions.detalles = { ...updateOptions.detalles, ...updateData.detalles };
     }
-    
+
     // Actualizar el servicio
     await servicio.update(updateData, updateOptions);
 
@@ -525,15 +670,15 @@ exports.actualizar = async (req, res) => {
       }
 
       // Notificar al conductor anterior que se le ha quitado el servicio (si había uno y ha cambiado o se ha eliminado)
-      if (conductorAnteriorId && 
-          (req.body.hasOwnProperty('conductor_id') && 
-            (updateData.conductor_id !== conductorAnteriorId || updateData.conductor_id === null))) {
-        
+      if (conductorAnteriorId &&
+        (req.body.hasOwnProperty('conductor_id') &&
+          (updateData.conductor_id !== conductorAnteriorId || updateData.conductor_id === null))) {
+
         // Mensaje específico para cuando se elimina completamente la asignación
-        const mensaje = updateData.conductor_id === null ? 
+        const mensaje = updateData.conductor_id === null ?
           'Este servicio ha sido desvinculado de tu cuenta' :
           'Este servicio ya no está asignado a usted';
-          
+
         emitServicioToUser(conductorAnteriorId, 'servicio:desasignado', {
           id: servicioActualizado.id,
           mensaje: mensaje
@@ -546,9 +691,9 @@ exports.actualizar = async (req, res) => {
       message: 'Servicio actualizado exitosamente',
       data: servicioActualizado
     });
+
   } catch (error) {
     console.error('Error al actualizar el servicio:', error);
-
     // Manejo específico de errores de validación de Sequelize
     if (error.name === 'SequelizeValidationError') {
       return res.status(400).json({
@@ -560,7 +705,6 @@ exports.actualizar = async (req, res) => {
         }))
       });
     }
-
     return res.status(500).json({
       success: false,
       message: 'Error al actualizar el servicio',
