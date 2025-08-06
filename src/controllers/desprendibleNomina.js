@@ -224,6 +224,22 @@ exports.checkJobStatus = async (req, res) => {
   }
 };
 
+const getMesyAño = (dateStr) => {
+  if (!dateStr) return "";
+  try {
+    const date = new Date(dateStr);
+    return date
+      .toLocaleDateString("es-CO", {
+        month: "long",
+        year: "numeric",
+      })
+      .toUpperCase();
+  } catch (e) {
+    console.error("Error formatting date:", e);
+    return "";
+  }
+};
+
 // Manejador para la cola de generación de PDFs
 pdfQueue.process(async (job, done) => {
   const { jobId, userId, liquidacionIds, emailConfig } = job.data;
@@ -294,14 +310,9 @@ pdfQueue.process(async (job, done) => {
           throw new Error("El PDF generado está vacío o es muy pequeño");
         }
 
-        console.log(
-          `PDF generado correctamente para liquidación ${liquidacion.id}, tamaño: ${pdfBuffer.length} bytes`
-        );
-
         pdfBuffers.push({
           data: pdfBuffer,
-          filename: `Liquidacion_${liquidacion.conductor?.nombre || ""}_${liquidacion.conductor?.apellido || ""
-            }_${liquidacion.id}.pdf`,
+          filename: `${liquidacion.conductor?.numero_identificacion || ""}_${liquidacion.id}_${getMesyAño(liquidacion.periodo_end)}.pdf`,
           conductorId: liquidacion.conductor?.id,
           email: liquidacion.conductor?.email,
         });
@@ -310,22 +321,6 @@ pdfQueue.process(async (job, done) => {
           `Error al generar PDF para liquidación ${liquidacion.id}:`,
           pdfError
         );
-        // // Generar un PDF de respaldo simple
-        // try {
-        //   const fallbackBuffer = await generateFallbackPDF(`Liquidación ${liquidacion.id}`);
-        //   pdfBuffers.push({
-        //     data: fallbackBuffer,
-        //     filename: `Liquidacion_${liquidacion.conductor?.nombre || ""}_${
-        //       liquidacion.conductor?.apellido || ""
-        //     }_${liquidacion.id}.pdf`,
-        //     conductorId: liquidacion.conductor?.id,
-        //     email: liquidacion.conductor?.email,
-        //   });
-        //   console.log(`PDF de respaldo generado para liquidación ${liquidacion.id}`);
-        // } catch (fallbackError) {
-        //   console.error(`Error al generar PDF de respaldo:`, fallbackError);
-        //   // Continuar con la siguiente liquidación
-        // }
       }
     }
 
@@ -343,6 +338,7 @@ pdfQueue.process(async (job, done) => {
         jobId,
         userId,
         pdfBuffers,
+        liquidacionIds,
         emailConfig,
       },
       {
@@ -379,7 +375,7 @@ pdfQueue.process(async (job, done) => {
 
 // Manejador para la cola de envío de correos
 emailQueue.process(async (job, done) => {
-  const { jobId, userId, pdfBuffers, emailConfig } = job.data;
+  const { jobId, userId, pdfBuffers, emailConfig, liquidacionIds } = job.data;
 
   try {
     // Obtener el estado del trabajo
@@ -391,140 +387,253 @@ emailQueue.process(async (job, done) => {
     // Actualizar progreso
     updateJobProgress(jobId, 65, userId); // 65%
 
-    // Verificar estructura del pdfBuffers
-    console.log(`Procesando ${pdfBuffers.length} buffers de PDF`);
+    // ===== OBTENER TODAS LAS LIQUIDACIONES CON CONDUCTORES Y RECARGOS =====
+    const liquidacionesCompletas = await Liquidacion.findAll({
+      where: {
+        id: liquidacionIds
+      },
+      include: [
+        {
+          model: Conductor,
+          as: 'conductor',
+          attributes: ['id', 'email', 'nombre', 'apellido']
+        },
+        {
+          model: Recargo,
+          as: "recargos"
+        }
+      ]
+    });
 
-    // Agrupar PDFs por dirección de correo electrónico
-    const emailAttachments = {};
+    if (liquidacionesCompletas.length === 0) {
+      throw new Error("No se encontraron liquidaciones para procesar");
+    }
 
-    for (const pdf of pdfBuffers) {
-      if (!pdf.email) {
-        console.log(`PDF sin email: ${pdf.filename}`);
+    // ===== CREAR MAPEO LIQUIDACIÓN -> DATOS COMPLETOS =====
+    const liquidacionToDatos = {};
+
+    liquidacionesCompletas.forEach(liquidacion => {
+      const recargosParex = liquidacion.recargos?.filter(
+        (recargo) => recargo.empresa_id === "cfb258a6-448c-4469-aa71-8eeafa4530ef"
+      ) || [];
+
+      const totalRecargosParex = recargosParex.reduce(
+        (sum, recargo) => sum + (recargo.valor || 0),
+        0
+      );
+
+      liquidacionToDatos[liquidacion.id] = {
+        email: liquidacion.conductor.email,
+        conductorId: liquidacion.conductor.id,
+        conductorNombre: `${liquidacion.conductor.nombre} ${liquidacion.conductor.apellido}`,
+        firmaDesprendible: totalRecargosParex > 0,
+        totalRecargos: totalRecargosParex,
+        recargosCount: recargosParex.length,
+        periodoEnd: liquidacion.periodo_end,
+        periodoStart: liquidacion.periodo_start
+      };
+    });
+
+    // ===== HELPER: Función para formatear período =====
+    const getMesyAño = (dateStr) => {
+      if (!dateStr) return "";
+      try {
+        const date = new Date(dateStr);
+        return date
+          .toLocaleDateString("es-CO", {
+            month: "long",
+            year: "numeric",
+          })
+          .toUpperCase();
+      } catch (e) {
+        console.error("Error formatting date:", e);
+        return "";
+      }
+    };
+
+    const emailData = {};
+    const pdfsNoCorrelacionados = [];
+
+    for (let pdfIndex = 0; pdfIndex < pdfBuffers.length; pdfIndex++) {
+      const pdf = pdfBuffers[pdfIndex];
+
+      // MÉTODO 1: Buscar por liquidación ID en el filename
+      let liquidacionIdFromFilename = null;
+      const liquidacionIdMatch = pdf.filename.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/);
+      if (liquidacionIdMatch) {
+        liquidacionIdFromFilename = liquidacionIdMatch[0];
+      }
+
+      // MÉTODO 2: Buscar por conductorId si está disponible
+      let liquidacionIdFromConductor = null;
+      if (pdf.conductorId) {
+        const liquidacionPorConductor = Object.entries(liquidacionToDatos).find(
+          ([id, datos]) => datos.conductorId === pdf.conductorId
+        );
+        if (liquidacionPorConductor) {
+          liquidacionIdFromConductor = liquidacionPorConductor[0];
+        }
+      }
+
+      // MÉTODO 3: Buscar por email si está disponible
+      let liquidacionIdFromEmail = null;
+      if (pdf.email) {
+        const liquidacionPorEmail = Object.entries(liquidacionToDatos).find(
+          ([id, datos]) => datos.email === pdf.email
+        );
+        if (liquidacionPorEmail) {
+          liquidacionIdFromEmail = liquidacionPorEmail[0];
+        }
+      }
+
+      // Decidir qué liquidación usar (prioridad: filename > conductorId > email)
+      const liquidacionId = liquidacionIdFromFilename || liquidacionIdFromConductor || liquidacionIdFromEmail;
+
+      if (!liquidacionId || !liquidacionToDatos[liquidacionId]) {
+        console.error(`❌ No se pudo correlacionar PDF: ${pdf.filename}`);
+        console.error(`   - ID del filename: ${liquidacionIdFromFilename}`);
+        console.error(`   - ID del conductor: ${liquidacionIdFromConductor}`);
+        console.error(`   - ID del email: ${liquidacionIdFromEmail}`);
+        pdfsNoCorrelacionados.push(pdf);
         continue;
       }
 
-      if (!emailAttachments[pdf.email]) {
-        emailAttachments[pdf.email] = [];
+      const datosLiquidacion = liquidacionToDatos[liquidacionId];
+      const email = datosLiquidacion.email;
+
+      // Inicializar estructura para el email si no existe
+      if (!emailData[email]) {
+        emailData[email] = {
+          conductorNombre: datosLiquidacion.conductorNombre,
+          liquidaciones: []
+        };
       }
 
       try {
-        // Verificar que el contenido es un Buffer válido o convertirlo
+        // Procesar PDF content
         let pdfContent;
 
         if (Buffer.isBuffer(pdf.data)) {
-          console.log(
-            `PDF ${pdf.filename} ya es un Buffer válido de ${pdf.data.length} bytes`
-          );
           pdfContent = pdf.data;
         } else if (typeof pdf.data === "string") {
-          console.log(`Convirtiendo PDF ${pdf.filename} de string a Buffer`);
           pdfContent = Buffer.from(pdf.data, "base64");
         } else if (pdf.data && typeof pdf.data === "object") {
-          console.log(
-            `PDF ${pdf.filename} contiene un objeto, intentando procesar...`
-          );
-
-          // Manejar el caso de objeto Buffer serializado { type: 'Buffer', data: [...] }
           if (pdf.data.type === "Buffer" && Array.isArray(pdf.data.data)) {
-            console.log(
-              `Reconstruyendo Buffer a partir de objeto serializado para ${pdf.filename}`
-            );
             pdfContent = Buffer.from(pdf.data.data);
           } else if (pdf.data.buffer && Buffer.isBuffer(pdf.data.buffer)) {
             pdfContent = pdf.data.buffer;
           } else {
-            console.warn(
-              `El PDF ${pdf.filename} no es un Buffer válido. Generando PDF de respaldo.`
-            );
             pdfContent = await generateFallbackPDF(pdf.filename);
           }
         } else {
-          console.warn(
-            `El PDF ${pdf.filename} no tiene datos válidos. Generando PDF de respaldo.`
-          );
           pdfContent = await generateFallbackPDF(pdf.filename);
         }
 
-        // Verificar que el contenido es válido antes de agregarlo
+        // Verificar que el contenido es válido
         if (Buffer.isBuffer(pdfContent) && pdfContent.length > 0) {
-          emailAttachments[pdf.email].push({
-            filename: pdf.filename,
-            content: pdfContent,
-            contentType: "application/pdf",
+          emailData[email].liquidaciones.push({
+            liquidacionId: liquidacionId,
+            firmaDesprendible: datosLiquidacion.firmaDesprendible,
+            totalRecargos: datosLiquidacion.totalRecargos,
+            periodoFormateado: getMesyAño(datosLiquidacion.periodoEnd),
+            attachment: {
+              filename: pdf.filename,
+              content: pdfContent,
+              contentType: "application/pdf",
+            }
           });
         } else {
-          console.error(
-            `No se pudo crear un Buffer válido para ${pdf.filename}`
-          );
+          console.error(`❌ Buffer inválido para ${pdf.filename}`);
         }
       } catch (attachmentError) {
-        console.error(
-          `Error al procesar adjunto ${pdf.filename}:`,
-          attachmentError
-        );
-        // Intentar generar un PDF de respaldo en caso de error
+        console.error(`❌ Error procesando ${pdf.filename}:`, attachmentError);
+
         try {
           const fallbackPdf = await generateFallbackPDF(pdf.filename);
-          emailAttachments[pdf.email].push({
-            filename: pdf.filename,
-            content: fallbackPdf,
-            contentType: "application/pdf",
+          emailData[email].liquidaciones.push({
+            liquidacionId: liquidacionId,
+            firmaDesprendible: datosLiquidacion.firmaDesprendible,
+            totalRecargos: datosLiquidacion.totalRecargos,
+            periodoFormateado: getMesyAño(datosLiquidacion.periodoEnd),
+            attachment: {
+              filename: pdf.filename,
+              content: fallbackPdf,
+              contentType: "application/pdf",
+            }
           });
-          console.log(`PDF de respaldo generado para ${pdf.filename}`);
         } catch (fallbackError) {
-          console.error(
-            `Error al generar PDF de respaldo para ${pdf.filename}:`,
-            fallbackError
-          );
+          console.error(`❌ Error generando respaldo para ${pdf.filename}:`, fallbackError);
         }
       }
     }
 
-    // Enviar correos electrónicos
-    const emails = Object.keys(emailAttachments);
-    console.log(`Enviando correos a ${emails.length} destinatarios`);
+    // ===== VERIFICAR COBERTURA COMPLETA =====
+    const emailsConPdfs = Object.keys(emailData);
+    const totalPdfsAsignados = Object.values(emailData).reduce(
+      (total, data) => total + data.liquidaciones.length, 0
+    );
 
-    for (let i = 0; i < emails.length; i++) {
-      const email = emails[i];
-      const attachments = emailAttachments[email];
+    // ===== EL RESTO DEL CÓDIGO DE ENVÍO PERMANECE IGUAL =====
 
-      console.log(
-        `Preparando envío a ${email} con ${attachments.length} adjuntos`
-      );
+    for (let i = 0; i < emailsConPdfs.length; i++) {
+      const email = emailsConPdfs[i];
+      const data = emailData[email];
 
-      // Verificar que hay adjuntos válidos
-      if (attachments.length === 0) {
-        console.warn(
-          `No hay adjuntos válidos para enviar a ${email}, omitiendo`
-        );
+      if (data.liquidaciones.length === 0) {
+        console.warn(`⚠️ No hay liquidaciones válidas para ${email}, omitiendo`);
         continue;
       }
 
-      // Log para depuración de los archivos adjuntos
-      attachments.forEach((att, idx) => {
-        console.log(
-          `  Adjunto ${idx + 1}: ${att.filename
-          }, tipo=${typeof att.content}, tamaño=${Buffer.isBuffer(att.content) ? att.content.length : "N/A"
-          } bytes`
-        );
-      });
-
-      // Actualizar progreso
-      const progress = Math.round(65 + (i / emails.length) * 35); // 65% - 100%
+      const progress = Math.round(65 + (i / emailsConPdfs.length) * 35);
       updateJobProgress(jobId, progress, userId);
 
-      // Enviar correo
+      const liquidacionesConFirma = data.liquidaciones.filter(liq => liq.firmaDesprendible);
+      const liquidacionesSinFirma = data.liquidaciones.filter(liq => !liq.firmaDesprendible);
+
+      let emailOptions = {
+        to: email,
+        subject: emailConfig.subject,
+        text: emailConfig.body,
+        liquidacionId: data.liquidaciones[0].liquidacionId,
+        firmaDesprendible: false,
+        attachments: [],
+        liquidacionesParaFirma: [],
+        hasAttachments: false,
+        mensajeContextual: ""
+      };
+
+      if (liquidacionesConFirma.length === 0) {
+        emailOptions.attachments = liquidacionesSinFirma.map(liq => liq.attachment);
+        emailOptions.hasAttachments = true;
+        emailOptions.mensajeContextual = `Encontrará adjuntos ${liquidacionesSinFirma.length} desprendible${liquidacionesSinFirma.length > 1 ? 's' : ''} de nómina.`;
+
+      } else if (liquidacionesSinFirma.length === 0) {
+        emailOptions.firmaDesprendible = true;
+        emailOptions.liquidacionesParaFirma = liquidacionesConFirma;
+
+        if (liquidacionesConFirma.length === 1) {
+          emailOptions.mensajeContextual = `Su desprendible de ${liquidacionesConFirma[0].periodoFormateado} requiere firma digital.`;
+        } else {
+          emailOptions.mensajeContextual = `Tiene ${liquidacionesConFirma.length} desprendibles que requieren firma digital.`;
+        }
+
+      } else {
+        emailOptions.attachments = liquidacionesSinFirma.map(liq => liq.attachment);
+        emailOptions.hasAttachments = true;
+        emailOptions.firmaDesprendible = true;
+        emailOptions.liquidacionesParaFirma = liquidacionesConFirma;
+
+        if (liquidacionesConFirma.length === 1) {
+          emailOptions.mensajeContextual = `Encontrará adjunto${liquidacionesSinFirma.length > 1 ? 's' : ''} ${liquidacionesSinFirma.length} desprendible${liquidacionesSinFirma.length > 1 ? 's' : ''}. Adicionalmente, su desprendible de ${liquidacionesConFirma[0].periodoFormateado} requiere firma digital.`;
+        } else {
+          emailOptions.mensajeContextual = `Encontrará adjuntos ${liquidacionesSinFirma.length} desprendible${liquidacionesSinFirma.length > 1 ? 's' : ''}. Adicionalmente, tiene ${liquidacionesConFirma.length} desprendibles que requieren firma digital.`;
+        }
+      }
+
       try {
-        await sendEmail({
-          to: email,
-          subject: emailConfig.subject,
-          text: emailConfig.body,
-          attachments,
-        });
-        console.log(`Correo enviado exitosamente a ${email}`);
+        await sendEmail(emailOptions);
       } catch (emailErr) {
-        console.error(`Error al enviar correo a ${email}:`, emailErr);
-        // Continuar con los otros correos a pesar del error
+        console.error(`❌ Error enviando email a ${email}:`, emailErr);
       }
     }
 
@@ -533,36 +642,28 @@ emailQueue.process(async (job, done) => {
     jobState.progress = 100;
     jobState.completedTime = new Date();
 
-    // Notificar al usuario
     notifyUser(userId, "job:completed", {
       jobId,
       result: {
-        totalEmails: emails.length,
-        totalAttachments: pdfBuffers.length,
+        totalEmails: emailsConPdfs.length,
+        totalAttachments: totalPdfsAsignados,
+        pdfsNoCorrelacionados: pdfsNoCorrelacionados.length
       },
     });
 
-    console.log(
-      `Trabajo ${jobId} completado: ${emails.length} correos enviados`
-    );
-
-    // Programar eliminación del trabajo después de un tiempo
     setTimeout(() => {
       activeJobs.delete(jobId);
-    }, 30 * 60 * 1000); // 30 minutos
+    }, 30 * 60 * 1000);
 
     return done(null, { success: true });
   } catch (error) {
-    console.error(`Error en envío de emails para trabajo ${jobId}:`, error);
+    console.error(`❌ Error en envío de emails para trabajo ${jobId}:`, error);
 
-    // Actualizar estado del trabajo
     const jobState = activeJobs.get(jobId);
     if (jobState) {
       jobState.status = "failed";
-      jobState.error =
-        error.message || "Error desconocido durante el envío de correos";
+      jobState.error = error.message || "Error desconocido durante el envío de correos";
 
-      // Notificar al usuario
       notifyUser(userId, "job:failed", {
         jobId,
         error: jobState.error,
@@ -589,30 +690,76 @@ function getS3PublicUrl(fileName, folder = 'assets') {
 // Función para crear el template HTML
 function createEmailTemplate(content, options = {}) {
   const {
-    logoFileName = 'codi.png', // nombre del archivo en S3
+    logoFileName = 'codi.png',
     companyName = 'Transportes y Servicios Esmeralda S.A.S',
-    showLogo = true
+    showLogo = true,
+    liquidacionId,
+    firmaDesprendible = false,
+    liquidacionesParaFirma = [],
+    hasAttachments = false,
+    mensajeContextual = ''
   } = options;
 
   // Construir URL del logo desde S3
   const logoUrl = showLogo ? getS3PublicUrl(logoFileName) : null;
 
-  return `
+  // Generar contenido dinámico según el tipo de envío
+  let desprendiblesSection = '';
+
+  if (firmaDesprendible && liquidacionesParaFirma.length > 0) {
+    if (liquidacionesParaFirma.length === 1) {
+      // Un solo enlace - usar botón actual
+      const liquidacion = liquidacionesParaFirma[0];
+      const desprendibleUrl = `${process.env.NOMINA_SYSTEM}/conductores/desprendible/${liquidacion.liquidacionId}`;
+
+      desprendiblesSection = `
+        <div class="desprendible-section">
+          <h3>📄 Desprendible de Nómina</h3>
+          <p>Haga clic en el siguiente botón para ver y firmar su desprendible de <strong>${liquidacion.periodoFormateado}</strong>:</p>
+          <a href="${desprendibleUrl}" class="button" target="_blank" rel="noopener">
+            Ver y Firmar Desprendible
+          </a>
+          <p style="font-size: 14px; margin-top: 15px; color: #6b7280;">
+            <strong>Importante:</strong> Este enlace le permitirá acceder a su desprendible de manera segura.
+          </p>
+        </div>
+      `;
+    } else {
+      // Múltiples enlaces - crear lista
+      const enlaces = liquidacionesParaFirma.map(liquidacion => {
+        const desprendibleUrl = `${process.env.NOMINA_SYSTEM}/conductores/desprendible/${liquidacion.liquidacionId}`;
+        return `
+          <div class="enlace-individual">
+            <h4>📄 ${liquidacion.periodoFormateado}</h4>
+            <a href="${desprendibleUrl}" class="button-small" target="_blank" rel="noopener">
+              Ver y Firmar Desprendible
+            </a>
+          </div>
+        `;
+      }).join('');
+
+      desprendiblesSection = `
+        <div class="desprendible-section">
+          <h3>📄 Desprendibles que Requieren Firma</h3>
+          <p>Tiene <strong>${liquidacionesParaFirma.length} desprendibles</strong> que requieren firma digital:</p>
+          <div class="enlaces-container">
+            ${enlaces}
+          </div>
+          <p style="font-size: 14px; margin-top: 20px; color: #6b7280;">
+            <strong>Importante:</strong> Cada enlace le permitirá acceder al desprendible correspondiente de manera segura.
+          </p>
+        </div>
+      `;
+    }
+  }
+
+  const template = `
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Comprobante de Nómina</title>
-    <!--[if mso]>
-    <noscript>
-        <xml>
-            <o:OfficeDocumentSettings>
-                <o:PixelsPerInch>96</o:PixelsPerInch>
-            </o:OfficeDocumentSettings>
-        </xml>
-    </noscript>
-    <![endif]-->
     <style>
         /* Reset */
         body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
@@ -664,12 +811,6 @@ function createEmailTemplate(content, options = {}) {
             color: #ffffff;
         }
         
-        .header p {
-            margin: 0;
-            font-size: 14px;
-            color: #e6fffa;
-        }
-        
         .content {
             padding: 40px 30px;
             color: #374151;
@@ -690,16 +831,18 @@ function createEmailTemplate(content, options = {}) {
             line-height: 1.6;
         }
         
-        .info-box {
-            background-color: #f0fdf4;
-            border-left: 4px solid #059669;
+        .mensaje-contextual {
+            background-color: #f0f9ff;
+            border-left: 4px solid #0284c7;
             padding: 20px;
-            margin: 20px 0;
+            margin: 25px 0;
             border-radius: 6px;
         }
         
-        .info-box strong {
-            color: #047857;
+        .mensaje-contextual p {
+            margin: 0;
+            color: #0369a1;
+            font-size: 16px;
         }
         
         .button {
@@ -712,6 +855,69 @@ function createEmailTemplate(content, options = {}) {
             font-weight: 600;
             margin: 20px 0;
             text-align: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(5, 150, 105, 0.3);
+        }
+        
+        .button:hover {
+            background: linear-gradient(135deg, #047857, #059669);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(5, 150, 105, 0.4);
+        }
+        
+        .button-small {
+            display: inline-block;
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            color: white !important;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 14px;
+            margin: 10px 0;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        
+        .desprendible-section {
+            background-color: #f0f9ff;
+            border: 2px solid #0284c7;
+            padding: 25px;
+            border-radius: 10px;
+            margin: 25px 0;
+            text-align: center;
+        }
+        
+        .desprendible-section h3 {
+            color: #0284c7;
+            margin: 0 0 15px 0;
+            font-size: 18px;
+        }
+        
+        .desprendible-section p {
+            color: #0369a1;
+            margin-bottom: 20px;
+        }
+        
+        .enlaces-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .enlace-individual {
+            background-color: #ffffff;
+            border: 1px solid #e0e7ff;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .enlace-individual h4 {
+            margin: 0 0 10px 0;
+            color: #1e40af;
+            font-size: 16px;
         }
         
         .attachment-notice {
@@ -740,15 +946,6 @@ function createEmailTemplate(content, options = {}) {
             margin: 5px 0;
         }
         
-        .social-links {
-            margin: 20px 0;
-        }
-        
-        .social-links a {
-            display: inline-block;
-            margin: 0 10px;
-        }
-        
         /* Responsive */
         @media screen and (max-width: 600px) {
             .email-container {
@@ -768,6 +965,14 @@ function createEmailTemplate(content, options = {}) {
             .header h1 {
                 font-size: 20px !important;
             }
+            
+            .desprendible-section {
+                padding: 20px 15px !important;
+            }
+            
+            .enlaces-container {
+                flex-direction: column;
+            }
         }
     </style>
 </head>
@@ -784,7 +989,28 @@ function createEmailTemplate(content, options = {}) {
             
             <!-- Contenido principal -->
             <div class="content">
+                <h2>Desprendibles de Nómina</h2>
                 ${content}
+                
+                ${mensajeContextual ? `
+                    <div class="mensaje-contextual">
+                        <p>${mensajeContextual}</p>
+                    </div>
+                ` : ''}
+                
+                ${hasAttachments && !firmaDesprendible ? `
+                    <div class="attachment-notice">
+                        <p><strong>📎 Archivos Adjuntos:</strong> Revise los desprendibles adjuntos en este correo.</p>
+                    </div>
+                ` : ''}
+                
+                ${desprendiblesSection}
+                
+                ${hasAttachments && firmaDesprendible ? `
+                    <div class="attachment-notice">
+                        <p><strong>📎 Archivos Adjuntos:</strong> Algunos desprendibles están adjuntos en este correo, otros requieren firma digital usando los enlaces anteriores.</p>
+                    </div>
+                ` : ''}
             </div>
             
             <!-- Footer -->
@@ -803,6 +1029,7 @@ function createEmailTemplate(content, options = {}) {
     </div>
 </body>
 </html>`;
+  return template;
 }
 
 /**
@@ -822,13 +1049,18 @@ async function sendEmail(options) {
         pass: process.env.SMTP_PASSWORD,
       },
     };
-
     const transporter = nodemailer.createTransport(transporterConfig);
 
-    // Procesar adjuntos
+    // ===== PROCESAMIENTO DE ADJUNTOS =====
     let validAttachments = [];
-    if (options.attachments && Array.isArray(options.attachments)) {
-      validAttachments = options.attachments.map((attachment) => {
+
+    if (options.firmaDesprendible && !options.hasAttachments) {
+      console.log("🚫 NO procesando adjuntos (solo enlaces de firma)");
+    } else if (!options.attachments || !Array.isArray(options.attachments)) {
+      console.log("⚠️ No hay adjuntos para procesar");
+    } else {
+      validAttachments = options.attachments.map((attachment, index) => {
+
         // Manejar diferentes tipos de contenido
         let content = attachment.content;
 
@@ -844,23 +1076,31 @@ async function sendEmail(options) {
             content: content,
             contentType: attachment.contentType || 'application/pdf'
           };
+        } else {
+          console.log(`❌ Adjunto ${index + 1} inválido:`, attachment.filename);
+          return null;
         }
-
-        return null;
       }).filter(Boolean);
     }
 
-    // Crear el contenido HTML personalizado
+    // ===== CREAR CONTENIDO HTML =====
+    const templateOptions = {
+      logoFileName: options.logoFileName || 'codi.png',
+      companyName: options.companyName || 'Transportes y Servicios Esmeralda S.A.S',
+      showLogo: options.showLogo !== false,
+      liquidacionId: options.liquidacionId,
+      firmaDesprendible: options.firmaDesprendible,
+      liquidacionesParaFirma: options.liquidacionesParaFirma || [],
+      hasAttachments: options.hasAttachments || false,
+      mensajeContextual: options.mensajeContextual || ''
+    };
+
     const htmlContent = createEmailTemplate(
       options.htmlContent || options.text,
-      {
-        logoFileName: options.logoFileName || 'codi.png',
-        companyName: options.companyName || 'Transportes y Servicios Esmeralda S.A.S',
-        showLogo: options.showLogo !== false
-      }
+      templateOptions
     );
 
-    // Preparar opciones de correo
+    // ===== PREPARAR Y ENVIAR EMAIL =====
     const mailOptions = {
       from: `${options.fromName || 'Sistema de Nómina'} <${process.env.SMTP_USER}>`,
       to: options.to,
@@ -876,6 +1116,11 @@ async function sendEmail(options) {
     return result;
   } catch (error) {
     console.error(`❌ Error al enviar correo a ${options.to}:`, error);
+    console.error("🔍 Error details:", {
+      message: error.message,
+      code: error.code,
+      stack: error.stack
+    });
     throw error;
   }
 }
@@ -1338,6 +1583,8 @@ async function generatePDF(liquidacion) {
             0
           );
 
+          if (totalQuantity <= 0) return
+
           if (bonificacionesGroup[bonificacion.name]) {
             bonificacionesGroup[bonificacion.name].quantity += totalQuantity;
             bonificacionesGroup[bonificacion.name].totalValue +=
@@ -1366,16 +1613,6 @@ async function generatePDF(liquidacion) {
             formatToCOP(bono.totalValue),
             { isLastRow: isLast }
           );
-        });
-      } else {
-        // Default bonificaciones
-        [
-          "Bono de alimentación",
-          "Bono día trabajado",
-          "Bono día trabajado doble",
-          "Bono festividades",
-        ].forEach((conceptName, index) => {
-          drawConceptRow(conceptName, "", "0", formatToCOP(0));
         });
       }
 
