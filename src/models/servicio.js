@@ -41,19 +41,11 @@ module.exports = (sequelize) => {
     },
     origen_especifico: {
       type: DataTypes.STRING,
-      allowNull: false,
-      validate: {
-        notNull: { msg: 'El origen específico es obligatorio' },
-        notEmpty: { msg: 'El origen específico no puede estar vacío' }
-      }
+      allowNull: true,
     },
     destino_especifico: {
       type: DataTypes.STRING,
-      allowNull: false,
-      validate: {
-        notNull: { msg: 'El destino específico es obligatorio' },
-        notEmpty: { msg: 'El destino específico no puede estar vacío' }
-      }
+      allowNull: true,
     },
     conductor_id: {
       type: DataTypes.UUID,
