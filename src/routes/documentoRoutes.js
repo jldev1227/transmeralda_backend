@@ -84,7 +84,7 @@ router.get('/documentos/:documentoId', protect, async (req, res) => {
  * @description Genera una URL firmada para acceder a un archivo en S3
  * @access Private
  */
-router.get('/url-firma', protect, async (req, res) => {
+router.get('/url-firma', async (req, res) => {
   try {
     const { key, expiresIn } = req.query;
 

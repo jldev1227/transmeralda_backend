@@ -10,7 +10,7 @@ router.get('/conductores', protect, hasRole(['admin', 'gestor_nomina']), liquida
 router.get('/conductores/configuracion', protect, liquidacionController.obtenerConfiguracion);
 
 // Ruta para obtener una liquidación por ID
-router.get('/conductores/:id', protect, liquidacionController.obtenerLiquidacionPorId);
+router.get('/conductores/:id', liquidacionController.obtenerLiquidacionPorId);
 
 // Ruta para crear una nueva liquidación
 router.post('/conductores', protect, liquidacionController.crearLiquidacion);
