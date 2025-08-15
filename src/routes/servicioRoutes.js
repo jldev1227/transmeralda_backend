@@ -6,7 +6,7 @@ const { protect, hasRole } = require('../middleware/auth'); // Asumiendo que tie
 // Rutas públicas (si las hay)
 
 // Rutas CRUD básicas
-router.get('/', servicioController.obtenerTodos);
+router.get('/', protect, servicioController.obtenerTodos);
 router.get('/buscar', servicioController.buscarServicios);
 router.get('/:id', servicioController.obtenerPorId);
 

@@ -226,36 +226,36 @@ module.exports = (sequelize) => {
         // Puedes agregar lógica adicional aquí, como cálculos automáticos
         // Por ejemplo, calcular la distancia o el valor basado en origen y destino
       },
-      
+
       // Registrar cambios después de actualizar un servicio
       afterUpdate: async (servicio, options) => {
         if (!options.user_id) {
           console.log('No user_id provided in options, skipping historical record update');
           return;
         }
-        
+
         try {
           const changed = servicio.changed();
           console.log('Changed fields:', changed);
-          
+
           if (!changed || changed.length === 0) {
             console.log('No fields changed, skipping historical record update');
             return;
           }
-          
+
           const historicosToCreate = [];
           const ServicioHistorico = sequelize.models.ServicioHistorico;
-          
+
           // Para cada campo modificado, crear un registro en el histórico
           for (const campo of changed) {
             // Ignorar campos que no queremos trackear como timestamps
             if (['updated_at', 'created_at'].includes(campo)) {
               continue;
             }
-            
+
             const valorAnterior = servicio.previous(campo)?.toString() || null;
             const valorNuevo = servicio.getDataValue(campo)?.toString() || null;
-            
+
             // Crear una copia segura de los detalles para evitar referencias circulares
             let detallesSeguros = null;
             if (options.detalles) {
@@ -271,7 +271,7 @@ module.exports = (sequelize) => {
                 console.log('No se pudieron serializar los detalles completos:', e.message);
               }
             }
-            
+
             historicosToCreate.push({
               servicio_id: servicio.id,
               usuario_id: options.user_id,
@@ -284,7 +284,7 @@ module.exports = (sequelize) => {
               detalles: detallesSeguros
             });
           }
-          
+
           // Crear los registros del histórico
           if (historicosToCreate.length > 0) {
             console.log(`Creating ${historicosToCreate.length} historical records for update`);
@@ -296,13 +296,13 @@ module.exports = (sequelize) => {
           // No lanzar error para no interrumpir la operación principal
         }
       },
-      
+
       // Registrar creación de servicio
       afterCreate: async (servicio, options) => {
         // Evitar la conversión a JSON de objetos que puedan tener referencias circulares
         console.log('Servicio afterCreate hook called with user_id:', options?.user_id);
         console.log('Servicio ID:', servicio.id);
-        
+
         if (!options.user_id) {
           console.log('No user_id provided in options, skipping historical record creation');
           return;
@@ -310,15 +310,15 @@ module.exports = (sequelize) => {
 
         try {
           const ServicioHistorico = sequelize.models.ServicioHistorico;
-          
+
           // Obtener una versión segura de los datos del servicio para JSON
           const servicioData = servicio.toJSON();
-          
+
           // Eliminar posibles referencias circulares o complejas que no sean necesarias para el histórico
           if (servicioData.sequelize) delete servicioData.sequelize;
           if (servicioData.options) delete servicioData.options;
           if (servicioData._previousDataValues) delete servicioData._previousDataValues;
-          
+
           // Crear una copia segura de los detalles para evitar referencias circulares
           let detallesSeguros = null;
           if (options.detalles) {
@@ -334,7 +334,7 @@ module.exports = (sequelize) => {
               console.log('No se pudieron serializar los detalles completos:', e.message);
             }
           }
-          
+
           const historico = await ServicioHistorico.create({
             servicio_id: servicio.id,
             usuario_id: options.user_id,
@@ -346,35 +346,35 @@ module.exports = (sequelize) => {
             navegador_usuario: options.navegador_usuario || null,
             detalles: detallesSeguros
           });
-          
+
           console.log('Histórico creado correctamente con ID:', historico.id);
         } catch (error) {
           console.error('Error al registrar histórico de creación:', error);
         }
       },
-      
+
       // Registrar eliminación (si es softDelete) o eliminación física
       afterDestroy: async (servicio, options) => {
         // Evitar la conversión a JSON de objetos que puedan tener referencias circulares
         console.log('Servicio afterDestroy hook called with user_id:', options?.user_id);
         console.log('Servicio ID:', servicio.id);
-        
+
         if (!options.user_id) {
           console.log('No user_id provided in options, skipping historical record for deletion');
           return;
         }
-        
+
         try {
           const ServicioHistorico = sequelize.models.ServicioHistorico;
-          
+
           // Obtener una versión segura de los datos del servicio para JSON
           const servicioData = servicio.toJSON();
-          
+
           // Eliminar posibles referencias circulares o complejas que no sean necesarias para el histórico
           if (servicioData.sequelize) delete servicioData.sequelize;
           if (servicioData.options) delete servicioData.options;
           if (servicioData._previousDataValues) delete servicioData._previousDataValues;
-          
+
           // Crear una copia segura de los detalles para evitar referencias circulares
           let detallesSeguros = null;
           if (options.detalles) {
@@ -390,7 +390,7 @@ module.exports = (sequelize) => {
               console.log('No se pudieron serializar los detalles completos:', e.message);
             }
           }
-          
+
           const historico = await ServicioHistorico.create({
             servicio_id: servicio.id,
             usuario_id: options.user_id,
@@ -402,7 +402,7 @@ module.exports = (sequelize) => {
             navegador_usuario: options.navegador_usuario || null,
             detalles: detallesSeguros
           });
-          
+
           console.log('Histórico de eliminación creado correctamente con ID:', historico.id);
         } catch (error) {
           console.error('Error al registrar histórico de eliminación:', error);
@@ -414,38 +414,43 @@ module.exports = (sequelize) => {
   // Definir las asociaciones cuando se inicialice el modelo
   Servicio.associate = (models) => {
     // Relaciones con otros modelos
-    Servicio.belongsTo(models.Municipio, { 
+    Servicio.belongsTo(models.Municipio, {
       as: 'origen',
       foreignKey: 'origen_id'
     });
-    
-    Servicio.belongsTo(models.Municipio, { 
+
+    Servicio.belongsTo(models.Municipio, {
       as: 'destino',
       foreignKey: 'destino_id'
     });
-    
-    Servicio.belongsTo(models.Conductor, { 
+
+    Servicio.belongsTo(models.Conductor, {
       as: 'conductor',
       foreignKey: 'conductor_id'
     });
-    
+
     // Asumiendo que tienes estos modelos
-    Servicio.belongsTo(models.Vehiculo, { 
+    Servicio.belongsTo(models.Vehiculo, {
       as: 'vehiculo',
       foreignKey: 'vehiculo_id'
     });
-    
-    Servicio.belongsTo(models.Empresa, { 
+
+    Servicio.belongsTo(models.Empresa, {
       as: 'cliente',
       foreignKey: 'cliente_id'
     });
 
-    Servicio.belongsToMany(models.LiquidacionServicio, { 
-      through: models.ServicioLiquidacion, 
+    Servicio.belongsToMany(models.LiquidacionServicio, {
+      through: models.ServicioLiquidacion,
       as: 'liquidaciones',
       foreignKey: 'servicio_id'
     });
+
+    Servicio.hasMany(models.ServicioHistorico, {
+      as: 'historicos',
+      foreignKey: 'servicio_id'
+    });
   };
-  
+
   return Servicio;
 };
