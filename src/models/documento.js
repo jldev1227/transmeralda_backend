@@ -103,10 +103,11 @@ module.exports = (sequelize) => {
   Documento.associate = (models) => {
     Documento.belongsTo(models.Vehiculo, {
       foreignKey: 'vehiculo_id',
-      as: 'vehiculo'
+      as: 'vehiculo',
+      allowNull: true
     });
 
-        // Relación con Conductores (opcional)
+    // Relación con Conductores (opcional)
     Documento.belongsTo(models.Conductor, {
       foreignKey: 'conductor_id',
       as: 'conductor',

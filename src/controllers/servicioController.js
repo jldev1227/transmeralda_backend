@@ -1,4 +1,4 @@
-const { Servicio, Municipio, Conductor, Vehiculo, Empresa, ServicioHistorico } = require('../models');
+const { Servicio, Municipio, Conductor, Vehiculo, Empresa, ServicioHistorico, Documento } = require('../models');
 
 const verificarDisponibilidad = async (conductorId, vehiculoId, servicioIdExcluir = null) => {
   const errores = [];
@@ -70,20 +70,88 @@ const verificarDisponibilidad = async (conductorId, vehiculoId, servicioIdExclui
 // Obtener todos los servicios
 exports.obtenerTodos = async (req, res) => {
   try {
+    const usuarioActualId = req.user?.id;
+
+    if (!usuarioActualId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Usuario no autenticado'
+      });
+    }
+
+    // Primero obtenemos todos los servicios
     const servicios = await Servicio.findAll({
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
+        {
+          model: Conductor,
+          as: 'conductor',
+          attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'],
+          include: [
+            {
+              model: Documento,
+              as: 'documentos',
+              attributes: [
+                'id',
+                'categoria',
+                'nombre_original',
+                'nombre_archivo',
+                'ruta_archivo',
+                's3_key',
+                'filename',
+                'mimetype',
+                'size',
+                'fecha_vigencia',
+                'estado',
+                'upload_date',
+                'metadata'
+              ]
+            }
+          ]
+        },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
     });
 
+    // Obtenemos los IDs de todos los servicios
+    const servicioIds = servicios.map(s => s.id);
+
+    // Consulta separada para obtener los creadores
+    const historicosCreacion = await ServicioHistorico.findAll({
+      where: {
+        servicio_id: servicioIds,
+        campo_modificado: 'creacion_servicio',
+        tipo_operacion: 'creacion'
+      },
+      attributes: ['servicio_id', 'usuario_id'],
+      order: [['created_at', 'ASC']]
+    });
+
+    // Crear un mapa de servicio_id -> creador_id
+    const mapaCreadores = {};
+    historicosCreacion.forEach(historico => {
+      if (!mapaCreadores[historico.servicio_id]) {
+        mapaCreadores[historico.servicio_id] = historico.usuario_id;
+      }
+    });
+
+    // Procesar los servicios para agregar el identificador de creador
+    const serviciosConCreador = servicios.map(servicio => {
+      const servicioData = servicio.toJSON();
+      const creadorId = mapaCreadores[servicio.id] || null;
+
+      servicioData.es_creador = creadorId === usuarioActualId;
+      servicioData.creador_id = creadorId;
+
+      return servicioData;
+    });
+
     return res.status(200).json({
       success: true,
-      data: servicios,
-      total: servicios.length
+      data: serviciosConCreador,
+      total: serviciosConCreador.length
     });
   } catch (error) {
     console.error('Error al obtener servicios:', error);
@@ -102,10 +170,10 @@ exports.obtenerPorId = async (req, res) => {
 
     const servicio = await Servicio.findByPk(id, {
       include: [
-        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
+        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
+        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
     });
@@ -279,10 +347,10 @@ exports.crear = async (req, res) => {
     // Obtener el servicio con sus relaciones
     const servicioCreado = await Servicio.findByPk(nuevoServicio.id, {
       include: [
-        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
+        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
+        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
     });
@@ -541,7 +609,7 @@ exports.actualizar = async (req, res) => {
         try {
           // Buscar los datos del vehículo para tener información más completa en el histórico
           const vehiculoAnterior = await Vehiculo.findByPk(servicio.vehiculo_id, {
-            attributes: ['id', 'placa', 'marca', 'linea', 'modelo']
+            attributes: ['id', 'placa', 'marca', 'linea', 'modelo', "color"]
           });
 
           let valorAnterior = `Vehículo ID: ${servicio.vehiculo_id}`;
@@ -577,14 +645,14 @@ exports.actualizar = async (req, res) => {
       updateData.vehiculo_id = servicio.vehiculo_id;
     }
 
-      // Manejar específicamente el cambio en observaciones para el histórico
+    // Manejar específicamente el cambio en observaciones para el histórico
     if (req.body.hasOwnProperty('observaciones') && (
-        // Caso 1: Cambio de observaciones vacías a observaciones con contenido
-        ((servicio.observaciones === null || servicio.observaciones === '' || servicio.observaciones === undefined) && 
-         (observaciones !== null && observaciones !== '' && observaciones !== undefined)) ||
-        // Caso 2: Cambio de observaciones con contenido a observaciones vacías
-        ((observaciones === null || observaciones === '' || observaciones === undefined) && 
-         (servicio.observaciones !== null && servicio.observaciones !== '' && servicio.observaciones !== undefined))
+      // Caso 1: Cambio de observaciones vacías a observaciones con contenido
+      ((servicio.observaciones === null || servicio.observaciones === '' || servicio.observaciones === undefined) &&
+        (observaciones !== null && observaciones !== '' && observaciones !== undefined)) ||
+      // Caso 2: Cambio de observaciones con contenido a observaciones vacías
+      ((observaciones === null || observaciones === '' || observaciones === undefined) &&
+        (servicio.observaciones !== null && servicio.observaciones !== '' && servicio.observaciones !== undefined))
     )) {
 
       try {
@@ -611,8 +679,8 @@ exports.actualizar = async (req, res) => {
               origen: 'API',
               ruta: req.originalUrl,
               metodo: req.method,
-              accion: esVacioNuevo ? 
-                'Eliminación de observaciones' : 
+              accion: esVacioNuevo ?
+                'Eliminación de observaciones' :
                 'Adición de observaciones (campo vacío a campo con valor)'
             }
           });
@@ -647,10 +715,10 @@ exports.actualizar = async (req, res) => {
     // Obtener el servicio actualizado con sus relaciones
     const servicioActualizado = await Servicio.findByPk(id, {
       include: [
-        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
+        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
+        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
     });
@@ -827,7 +895,7 @@ exports.buscarServicios = async (req, res) => {
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
         { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea"] },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ],
       order: [['fecha_solicitud', 'DESC']]
