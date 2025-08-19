@@ -886,8 +886,39 @@ const normalizarNumeroIdentificacion = (numero) => {
   return numero.toString().replace(/[^\d]/g, '');
 };
 
+const calcularSimilitudDocumento = (numero1, numero2) => {
+  // Convertir a strings para manejar consistentemente
+  const str1 = numero1.toString();
+  const str2 = numero2.toString();
+  
+  // Si alguno está vacío, no hay similitud
+  if (!str1 || !str2) return 0;
+  
+  // Calcular similitud basada en coincidencia de substring
+  const numeroMasCorto = str1.length <= str2.length ? str1 : str2;
+  const numeroMasLargo = str1.length > str2.length ? str1 : str2;
+  
+  // Verificar si el número corto está completamente contenido en el largo
+  if (numeroMasLargo.includes(numeroMasCorto)) {
+    // Calcular porcentaje basado en la longitud del número más largo
+    return (numeroMasCorto.length / numeroMasLargo.length) * 100;
+  }
+  
+  // Si no hay contención completa, calcular similitud por caracteres coincidentes
+  let coincidencias = 0;
+  const longitudMinima = Math.min(str1.length, str2.length);
+  
+  for (let i = 0; i < longitudMinima; i++) {
+    if (str1[i] === str2[i]) {
+      coincidencias++;
+    }
+  }
+  
+  return (coincidencias / Math.max(str1.length, str2.length)) * 100;
+};
+
 // ✅ FUNCIÓN PARA VALIDAR COINCIDENCIA DE DOCUMENTOS
-const validarCoincidenciaDocumento = (numeroExistente, numeroExtraido, categoria) => {
+const validarCoincidenciaDocumento = (numeroExistente, numeroExtraido, categoria, umbralSimilitud = 80) => {
   const numeroExistenteNormalizado = normalizarNumeroIdentificacion(numeroExistente);
   const numeroExtraidoNormalizado = normalizarNumeroIdentificacion(numeroExtraido);
 
@@ -898,8 +929,39 @@ const validarCoincidenciaDocumento = (numeroExistente, numeroExtraido, categoria
     numeroExtraidoNormalizado: numeroExtraidoNormalizado
   });
 
-  return numeroExistenteNormalizado === numeroExtraidoNormalizado;
+  // Validación exacta primero
+  const coincidenciaExacta = numeroExistenteNormalizado === numeroExtraidoNormalizado;
+  
+  if (coincidenciaExacta) {
+    logger.info(`✅ Coincidencia exacta encontrada para ${categoria}`);
+    return true
+  }
+
+  // Si no hay coincidencia exacta, verificar similitud
+  const porcentajeSimilitud = calcularSimilitudDocumento(
+    numeroExistenteNormalizado, 
+    numeroExtraidoNormalizado
+  );
+
+  const esCoincidenciaPorSimilitud = porcentajeSimilitud >= umbralSimilitud;
+
+  if (esCoincidenciaPorSimilitud) {
+    logger.info(`✅ Coincidencia por similitud encontrada para ${categoria}:`, {
+      porcentajeSimilitud: porcentajeSimilitud.toFixed(2) + '%',
+      umbralRequerido: umbralSimilitud + '%'
+    });
+    
+    return true
+  }
+
+  logger.warn(`⚠️ Coincidencia insuficiente para ${categoria}:`, {
+    porcentajeSimilitud: porcentajeSimilitud.toFixed(2) + '%',
+    umbralRequerido: umbralSimilitud + '%'
+  });
+
+  return false
 };
+
 
 // ✅ PROCESADOR PARA ACTUALIZACIÓN DE CONDUCTORES CON MINISTRAL
 conductorActualizacionQueueMinistral.process('actualizar-conductor-ministral', async (job) => {
