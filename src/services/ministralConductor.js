@@ -333,7 +333,7 @@ IMPORTANTE: En la licencia de conducción aparecen DOS números importantes:
 
 {
   "numero_identificacion": "número de cédula del titular de la licencia (campo OBLIGATORIO)",
-  "numero_licencia": "número de la licencia de conducción",
+  "numero_licencia": "número de la licencia de conducción (igual al numero_identificacion) no debe tener puntos ni espacios, ni guiones",
   "categorias": [
     {
       "categoria": "categoría de la licencia EN MAYÚSCULAS (A1, A2, B1, B2, B3, C1, C2, C3)",
@@ -349,7 +349,7 @@ IMPORTANTE: En la licencia de conducción aparecen DOS números importantes:
 REGLAS IMPORTANTES:
 1. TODOS LOS VALORES DE TEXTO DEBEN ESTAR EN MAYÚSCULAS
 2. numero_identificacion es OBLIGATORIO - es el número de cédula del titular (sin puntos ni espacios)
-3. numero_licencia es diferente al numero_identificacion
+3. numero_licencia es igual al numero_identificacion
 4. Para categorias, incluye todas las categorías encontradas en el documento
 5. Las categorías deben estar en MAYÚSCULAS (A1, A2, B1, B2, B3, C1, C2, C3)
 6. Si no encuentras algún campo, déjalo como string vacío "" o array vacío []
