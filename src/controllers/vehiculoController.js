@@ -1075,14 +1075,16 @@ const buscarVehiculosPorPlaca = async (req, res) => {
 const getVehiculosBasicos = async (req, res) => {
   try {
     const vehiculos = await Vehiculo.findAll({
-      attributes: ['id', 'placa', 'linea', 'modelo'], // Solo selecciona estos campos
+      attributes: ['id', 'placa', 'marca', 'linea', 'modelo'], // Solo selecciona estos campos
       raw: true // Obtiene solo los datos planos, sin instancias de Sequelize
     });
+
+    const vehiculosOrdenados = vehiculos.sort((a, b) => a.placa.localeCompare(b.placa))
 
     return res.status(200).json({
       success: true,
       count: vehiculos.length,
-      data: vehiculos
+      data: vehiculosOrdenados
     });
   } catch (error) {
     console.error('Error al obtener vehículos básicos:', error);

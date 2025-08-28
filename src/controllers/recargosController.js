@@ -249,9 +249,6 @@ class RecargoController {
       if (totalHoras < 0) totalHoras += 24; // Cruzó medianoche
       totalHoras = redondear(totalHoras);
 
-      console.log(`📊 Calculando para día ${dia}:`);
-      console.log(`   Horas: ${horaInicial}:00 - ${horaFinal}:00 (${totalHoras}h total)`);
-
       // Calcular todos los tipos usando las fórmulas exactas del frontend
       const horaExtraNocturna = calcularHoraExtraNocturna(dia, mes, año, horaFinal, totalHoras, diasFestivos);
       const horaExtraDiurna = calcularHoraExtraDiurna(dia, mes, año, totalHoras, diasFestivos) - horaExtraNocturna;
@@ -326,7 +323,6 @@ class RecargoController {
           }, { transaction });
 
           detallesCreados.push(detalle);
-          console.log(`   ✓ ${mapping.codigo} (${mapping.nombre}): ${horas} horas`);
         }
       }
 
@@ -334,8 +330,6 @@ class RecargoController {
       await diaLaboral.update({
         total_horas: parseFloat(resultadosCalculo.totalHoras.toFixed(4))
       }, { transaction });
-
-      console.log(`✅ Recargos calculados para día ${dia}:`, recargos);
 
       return {
         total_horas: resultadosCalculo.totalHoras,
@@ -347,8 +341,6 @@ class RecargoController {
 
     // ===== FUNCIÓN COMPLETA PARA CALCULAR TOTALES =====
     const calcularTotalesRecargoDesdeDetalles = async (recargoId, transaction) => {
-      console.log(`🔍 Calculando totales para recargo: ${recargoId}`);
-
       const query = `
       SELECT 
         SUM(dlp.total_horas) as total_horas,
@@ -380,8 +372,6 @@ class RecargoController {
         transaction
       });
 
-      console.log(`📊 Resultados de la consulta:`, resultados);
-
       const totales = {
         total_horas: 0,
         total_dias: 0,
@@ -395,8 +385,6 @@ class RecargoController {
       };
 
       resultados.forEach(row => {
-        console.log(`   Procesando: ${row.codigo} = ${row.total_horas_tipo || row.total_horas}`);
-
         if (row.codigo === 'TOTAL') {
           totales.total_horas = parseFloat(row.total_horas) || 0;
           totales.total_dias = parseInt(row.total_dias) || 0;
@@ -404,7 +392,6 @@ class RecargoController {
           // Mapear códigos a campos de totales
           switch (row.codigo) {
             case 'HED':
-              console.log(row.total_horas_tipo, "como se calcula al crear")
               totales.total_hed = parseFloat(row.total_horas_tipo) || 0;
               break;
             case 'HEN':
@@ -425,8 +412,6 @@ class RecargoController {
           }
         }
       });
-
-      console.log(`✅ Totales calculados:`, totales);
       return totales;
     };
 
@@ -445,8 +430,6 @@ class RecargoController {
       if (req.body.recargo_data) {
         data = JSON.parse(req.body.recargo_data);
       }
-
-      console.log('📦 Datos recibidos:', JSON.stringify(data, null, 2));
 
       // Validaciones básicas
       if (!data.conductor_id || !data.vehiculo_id || !data.empresa_id || !data.dias_laborales) {
@@ -474,19 +457,15 @@ class RecargoController {
         mes: parseInt(data.mes),
         año: parseInt(data.año),
         observaciones: data.observaciones || null,
-        estado: 'activo',
+        estado: 'pendiente',
         creado_por_id: userId,
         actualizado_por_id: userId
       }, { transaction });
-
-      console.log('✅ Recargo creado:', recargo.id);
 
       const diasCreados = [];
 
       // ✅ PROCESAR CADA DÍA LABORAL CON CÁLCULOS DEL FRONTEND
       for (const [index, diaOriginal] of data.dias_laborales.entries()) {
-        console.log(`🔹 Procesando día ${index + 1}:`, diaOriginal);
-
         const horaInicio = parseFloat(diaOriginal.horaInicio);
         const horaFin = parseFloat(diaOriginal.horaFin);
 
@@ -504,7 +483,6 @@ class RecargoController {
         const esDomingoCalculado = fecha.getDay() === 0;
         const esFestivoCalculado = Boolean(diaOriginal.esFestivo);
 
-        console.log("Festivo original del body")
         // ✅ CREAR DÍA LABORAL
         const diaCreado = await DiaLaboralPlanilla.create({
           recargo_planilla_id: recargo.id,
@@ -531,7 +509,6 @@ class RecargoController {
           ...resultadoCalculo
         });
 
-        console.log(`✅ Día ${diaOriginal.dia} creado con ${resultadoCalculo.detalles_creados.length} recargos`);
       }
 
       // ✅ CALCULAR Y ACTUALIZAR TOTALES
@@ -542,8 +519,6 @@ class RecargoController {
         total_horas_trabajadas: totalesRecargo.total_horas || diasCreados.reduce((sum, d) => sum + d.total_horas, 0),
         actualizado_por_id: userId
       }, { transaction });
-
-      console.log(`✅ Recargo actualizado con totales:`, totalesRecargo);
 
       await transaction.commit();
 
@@ -581,24 +556,17 @@ class RecargoController {
     try {
       const data = req.body;
 
-      console.log('🔍 Datos originales:', data);
-
       if (data.dias_laborales && data.dias_laborales[0]) {
         const primerDia = data.dias_laborales[0];
 
-        console.log('🔄 Probando conversión...');
         const horaInicio = this.convertirHoraDecimalATime(primerDia.hora_inicio);
         const horaFin = this.convertirHoraDecimalATime(primerDia.hora_fin);
-
-        console.log(`Resultado: ${primerDia.hora_inicio} -> ${horaInicio}`);
-        console.log(`Resultado: ${primerDia.hora_fin} -> ${horaFin}`);
 
         // Calcular horas
         const inicioDecimal = parseFloat(primerDia.hora_inicio);
         const finDecimal = parseFloat(primerDia.hora_fin);
         const totalHoras = finDecimal - inicioDecimal;
 
-        console.log(`Total horas: ${totalHoras}`);
       }
 
       return res.json({
@@ -661,7 +629,6 @@ class RecargoController {
      * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, 0, IF(F9>10,F9-10,0))
      */
     const calcularHoraExtraDiurna = (dia, mes, año, totalHoras, diasFestivos = []) => {
-      console.log("DIA:", dia, "TOTAL HORAS", totalHoras)
       // Si es domingo o festivo, no hay horas extra diurnas normales
       if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
         return 0;
@@ -791,9 +758,6 @@ class RecargoController {
       if (totalHoras < 0) totalHoras += 24; // Cruzó medianoche
       totalHoras = redondear(totalHoras);
 
-      console.log(`📊 Calculando para día ${dia}:`);
-      console.log(`   Horas: ${horaInicial}:00 - ${horaFinal}:00 (${totalHoras}h total)`);
-
       // Calcular todos los tipos usando las fórmulas exactas del frontend
       const horaExtraNocturna = calcularHoraExtraNocturna(dia, mes, año, horaFinal, totalHoras, diasFestivos);
       const horaExtraDiurna = calcularHoraExtraDiurna(dia, mes, año, totalHoras, diasFestivos) - horaExtraNocturna;
@@ -812,17 +776,12 @@ class RecargoController {
         esDomingoOFestivo: esDomingoOFestivo(dia, mes, año, diasFestivos),
       };
 
-      console.log(`   Resultados:`, resultados);
       return resultados;
     };
 
     // ===== FUNCIÓN CORREGIDA PARA CREAR RECARGOS =====
     const calcularYCrearRecargos = async (diaLaboral, transaction) => {
       const { hora_inicio, hora_fin, es_domingo, es_festivo, dia, mes, año } = diaLaboral;
-
-      console.log(`🧮 Calculando recargos para día ${dia}:`);
-      console.log(`   Horas: ${hora_inicio}:00 - ${hora_fin}:00`);
-      console.log(`   Domingo: ${es_domingo}, Festivo: ${es_festivo}`);
 
       // Usar la función exacta del frontend
       const resultadosCalculo = calcularTodasLasHoras({
@@ -833,8 +792,6 @@ class RecargoController {
         horaFinal: hora_fin,
         diasFestivos: es_festivo ? [parseInt(dia)] : []
       });
-
-      console.log(resultadosCalculo, "RESULTADOS CALCULADOS")
 
       // Obtener tipos de recargos de la base de datos
       const tiposRecargos = await TipoRecargo.findAll({
@@ -875,7 +832,6 @@ class RecargoController {
           }, { transaction });
 
           detallesCreados.push(detalle);
-          console.log(`   ✓ ${mapping.codigo} (${mapping.nombre}): ${horas} horas`);
         }
       }
 
@@ -883,8 +839,6 @@ class RecargoController {
       await diaLaboral.update({
         total_horas: parseFloat(resultadosCalculo.totalHoras.toFixed(4))
       }, { transaction });
-
-      console.log(`✅ Recargos calculados para día ${dia}:`, recargos);
 
       return {
         total_horas: resultadosCalculo.totalHoras,
@@ -896,8 +850,6 @@ class RecargoController {
 
     // ===== FUNCIÓN COMPLETA PARA CALCULAR TOTALES =====
     const calcularTotalesRecargoDesdeDetalles = async (recargoId, transaction) => {
-      console.log(`🔍 Calculando totales para recargo: ${recargoId}`);
-
       const query = `
       SELECT 
         SUM(dlp.total_horas) as total_horas,
@@ -929,8 +881,6 @@ class RecargoController {
         transaction
       });
 
-      console.log(`📊 Resultados de la consulta:`, resultados);
-
       const totales = {
         total_horas_trabajadas: 0,
         total_dias_laborados: 0,
@@ -944,8 +894,6 @@ class RecargoController {
       };
 
       resultados.forEach(row => {
-        console.log(`   Procesando: ${row.codigo} = ${row.total_horas_tipo || row.total_horas}`);
-
         if (row.codigo === 'TOTAL') {
           totales.total_horas_trabajadas = parseFloat(row.total_horas) || 0;
           totales.total_dias_laborados = parseInt(row.total_dias) || 0;
@@ -973,8 +921,6 @@ class RecargoController {
           }
         }
       });
-
-      console.log(`✅ Totales calculados:`, totales);
       return totales;
     };
 
@@ -1023,8 +969,6 @@ class RecargoController {
         data = req.body;
       }
 
-      console.log('📦 Datos recibidos para actualización:', JSON.stringify(data, null, 2));
-
       // Manejar archivo si existe
       if (req.file) {
         archivoInfo = {
@@ -1039,7 +983,6 @@ class RecargoController {
           try {
             const archivoAnterior = path.join(__dirname, '../../', recargoExistente.archivo_planilla_url);
             await fs.unlink(archivoAnterior);
-            console.log('🗑️ Archivo anterior eliminado');
           } catch (error) {
             console.log('⚠️ No se pudo eliminar archivo anterior:', error.message);
           }
@@ -1068,9 +1011,6 @@ class RecargoController {
         recargo: recargoExistente.toJSON(),
         dias_laborales: recargoExistente.dias_laborales
       };
-
-      // ELIMINAR DÍAS LABORALES Y DETALLES DE RECARGOS EXISTENTES
-      console.log('🗑️ Eliminando días laborales existentes...');
 
       // Primero eliminar los detalles de recargos
       const diasExistentes = await DiaLaboralPlanilla.findAll({
@@ -1112,8 +1052,6 @@ class RecargoController {
       const diasCreados = [];
 
       for (const [index, diaOriginal] of data.dias_laborales.entries()) {
-        console.log(`🔹 Procesando día ${index + 1}:`, diaOriginal);
-
         const horaInicio = parseFloat(diaOriginal.horaInicio);
         const horaFin = parseFloat(diaOriginal.horaFin);
 
@@ -1156,8 +1094,6 @@ class RecargoController {
           ...diaCreado.toJSON(),
           ...resultadoCalculo
         });
-
-        console.log(`✅ Día ${diaOriginal.dia} actualizado con ${resultadoCalculo.detalles_creados.length} recargos`);
       }
 
       // CALCULAR Y ACTUALIZAR TOTALES
@@ -1323,7 +1259,6 @@ class RecargoController {
       const where = {
         mes: parseInt(mes),
         año: parseInt(año),
-        estado: 'activo' // Solo activos para canvas
       };
 
       if (empresa_id && this.isValidUUID(empresa_id)) {
@@ -1443,7 +1378,6 @@ class RecargoController {
       const recargo = await RecargoPlanilla.findOne({
         where: {
           id,
-          estado: 'activo' // Solo activos como en canvas
         },
         attributes: [
           'id', 'numero_planilla', 'mes', 'año',
