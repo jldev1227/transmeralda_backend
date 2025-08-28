@@ -227,7 +227,6 @@ const obtenerRecargosPlanillaPorPeriodo = async (conductorId, periodoStart, peri
     // ✅ CONSTRUIR WHERE CLAUSE PARA AÑOS Y MESES
     const whereClause = {
       conductor_id: conductorId,
-      estado: 'activo',
       [Op.or]: []
     };
     // Agregar condiciones para todos los meses del período
