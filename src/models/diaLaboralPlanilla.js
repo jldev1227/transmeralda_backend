@@ -2,16 +2,63 @@ const { Model, DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
   class DiaLaboralPlanilla extends Model {
-    // Método para calcular si es día laboral
-    esDiaLaboral() {
-      return this.total_horas > 0;
+    // Calcular totales de recargos dinámicamente
+    async calcularTotalesRecargos() {
+      const detalles = await this.getDetallesRecargos({
+        include: [{
+          model: sequelize.models.TipoRecargo,
+          as: 'tipoRecargo'
+        }]
+      });
+
+      const totales = {};
+
+      detalles.forEach(detalle => {
+        const codigo = detalle.tipoRecargo.codigo;
+        totales[codigo.toLowerCase()] = parseFloat(detalle.horas) || 0;
+      });
+
+      return totales;
     }
 
-    // Método para obtener tipo de día
-    getTipoDia() {
-      if (this.es_festivo) return 'festivo';
-      if (this.es_domingo) return 'domingo';
-      return 'normal';
+    // Obtener recargo por tipo
+    async obtenerRecargoPorTipo(codigoTipo) {
+      const detalle = await this.getDetallesRecargos({
+        include: [{
+          model: sequelize.models.TipoRecargo,
+          as: 'tipoRecargo',
+          where: { codigo: codigoTipo }
+        }]
+      });
+
+      return detalle.length > 0 ? parseFloat(detalle[0].horas) : 0;
+    }
+
+    // Establecer horas para un tipo específico
+    async establecerRecargo(codigoTipo, horas) {
+      const tipoRecargo = await sequelize.models.TipoRecargo.findOne({
+        where: { codigo: codigoTipo, activo: true }
+      });
+
+      if (!tipoRecargo) {
+        throw new Error(`Tipo de recargo ${codigoTipo} no encontrado`);
+      }
+
+      const [detalle, created] = await sequelize.models.DetalleRecargosDia.findOrCreate({
+        where: {
+          dia_laboral_id: this.id,
+          tipo_recargo_id: tipoRecargo.id
+        },
+        defaults: {
+          horas: horas
+        }
+      });
+
+      if (!created) {
+        await detalle.update({ horas: horas });
+      }
+
+      return detalle;
     }
   }
 
@@ -36,201 +83,67 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       allowNull: false,
       validate: {
-        min: {
-          args: [1],
-          msg: 'El día debe ser mayor a 0'
-        },
-        max: {
-          args: [31],
-          msg: 'El día debe ser menor o igual a 31'
-        },
+        min: { args: [1], msg: 'El día debe ser mayor a 0' },
+        max: { args: [31], msg: 'El día no puede ser mayor a 31' }
       },
-      comment: 'Día del mes (1-31)',
     },
     hora_inicio: {
-      type: DataTypes.DECIMAL(4, 2),
-      allowNull: false,
+      type: DataTypes.DECIMAL(4, 1),
+      allowNull: true,
       validate: {
-        min: {
-          args: [0],
-          msg: 'La hora de inicio no puede ser negativa'
-        },
-        max: {
-          args: [24],
-          msg: 'La hora de inicio no puede ser mayor a 24'
-        },
+        min: { args: [0], msg: 'La hora de inicio no puede ser negativa' },
+        max: { args: [24], msg: 'La hora de inicio no puede ser mayor a 24' }
       },
-      get() {
-        const value = this.getDataValue('hora_inicio');
-        return value === null ? null : parseFloat(value);
-      },
-      comment: 'Hora de inicio en formato decimal (ej: 8.5 = 8:30)',
     },
     hora_fin: {
-      type: DataTypes.DECIMAL(4, 2),
-      allowNull: false,
+      type: DataTypes.DECIMAL(4, 1),
+      allowNull: true,
       validate: {
-        min: {
-          args: [0],
-          msg: 'La hora de fin no puede ser negativa'
-        },
-        max: {
-          args: [24],
-          msg: 'La hora de fin no puede ser mayor a 24'
-        },
+        min: { args: [0], msg: 'La hora de fin no puede ser negativa' },
+        max: { args: [24], msg: 'La hora de fin no puede ser mayor a 24' }
       },
-      get() {
-        const value = this.getDataValue('hora_fin');
-        return value === null ? null : parseFloat(value);
-      },
-      comment: 'Hora de fin en formato decimal (ej: 17.5 = 17:30)',
     },
     total_horas: {
-      type: DataTypes.DECIMAL(4, 2),
+      type: DataTypes.DECIMAL(6, 1),
       allowNull: false,
+      defaultValue: 0,
       validate: {
-        min: {
-          args: [0],
-          msg: 'El total de horas no puede ser negativo'
-        },
-        max: {
-          args: [24],
-          msg: 'El total de horas no puede ser mayor a 24'
-        },
+        min: { args: [0], msg: 'Las horas totales no pueden ser negativas' }
       },
       get() {
         const value = this.getDataValue('total_horas');
-        return value === null ? null : parseFloat(value);
+        return value === null ? 0 : parseFloat(value);
       },
-      comment: 'Total de horas trabajadas en el día',
     },
-    hed: {
-      type: DataTypes.DECIMAL(4, 2),
-      allowNull: true,
+    horas_ordinarias: {
+      type: DataTypes.DECIMAL(6, 1),
       defaultValue: 0,
-      validate: {
-        min: {
-          args: [0],
-          msg: 'Las HED no pueden ser negativas'
-        }
-      },
       get() {
-        const value = this.getDataValue('hed');
-        return value === null ? null : parseFloat(value);
+        const value = this.getDataValue('horas_ordinarias');
+        return value === null ? 0 : parseFloat(value);
       },
-      comment: 'Horas Extra Diurnas del día',
-    },
-    hen: {
-      type: DataTypes.DECIMAL(4, 2),
-      allowNull: true,
-      defaultValue: 0,
-      validate: {
-        min: {
-          args: [0],
-          msg: 'Las HEN no pueden ser negativas'
-        }
-      },
-      get() {
-        const value = this.getDataValue('hen');
-        return value === null ? null : parseFloat(value);
-      },
-      comment: 'Horas Extra Nocturnas del día',
-    },
-    hefd: {
-      type: DataTypes.DECIMAL(4, 2),
-      allowNull: true,
-      defaultValue: 0,
-      validate: {
-        min: {
-          args: [0],
-          msg: 'Las HEFD no pueden ser negativas'
-        }
-      },
-      get() {
-        const value = this.getDataValue('hefd');
-        return value === null ? null : parseFloat(value);
-      },
-      comment: 'Horas Extra Festivas Diurnas del día',
-    },
-    hefn: {
-      type: DataTypes.DECIMAL(4, 2),
-      allowNull: true,
-      defaultValue: 0,
-      validate: {
-        min: {
-          args: [0],
-          msg: 'Las HEFN no pueden ser negativas'
-        }
-      },
-      get() {
-        const value = this.getDataValue('hefn');
-        return value === null ? null : parseFloat(value);
-      },
-      comment: 'Horas Extra Festivas Nocturnas del día',
-    },
-    rn: {
-      type: DataTypes.DECIMAL(4, 2),
-      allowNull: true,
-      defaultValue: 0,
-      validate: {
-        min: {
-          args: [0],
-          msg: 'El RN no puede ser negativo'
-        }
-      },
-      get() {
-        const value = this.getDataValue('rn');
-        return value === null ? null : parseFloat(value);
-      },
-      comment: 'Recargo Nocturno del día',
-    },
-    rd: {
-      type: DataTypes.DECIMAL(4, 2),
-      allowNull: true,
-      defaultValue: 0,
-      validate: {
-        min: {
-          args: [0],
-          msg: 'El RD no puede ser negativo'
-        }
-      },
-      get() {
-        const value = this.getDataValue('rd');
-        return value === null ? null : parseFloat(value);
-      },
-      comment: 'Recargo Dominical del día',
     },
     es_festivo: {
       type: DataTypes.BOOLEAN,
-      allowNull: false,
       defaultValue: false,
-      comment: 'Indica si el día es festivo',
+      allowNull: false,
     },
     es_domingo: {
       type: DataTypes.BOOLEAN,
-      allowNull: false,
       defaultValue: false,
-      comment: 'Indica si el día es domingo',
+      allowNull: false,
     },
     observaciones: {
       type: DataTypes.TEXT,
       allowNull: true,
-      validate: {
-        len: {
-          args: [0, 500],
-          msg: 'Las observaciones no pueden exceder 500 caracteres'
-        }
-      },
-      comment: 'Observaciones específicas del día',
     },
-    // Campos de auditoría
     creado_por_id: {
       type: DataTypes.UUID,
       allowNull: true,
       references: {
         model: 'users',
         key: 'id'
-      }
+      },
     },
     actualizado_por_id: {
       type: DataTypes.UUID,
@@ -238,7 +151,7 @@ module.exports = (sequelize) => {
       references: {
         model: 'users',
         key: 'id'
-      }
+      },
     },
   }, {
     sequelize,
@@ -249,76 +162,39 @@ module.exports = (sequelize) => {
     paranoid: true,
     indexes: [
       {
-        fields: ['recargo_planilla_id'],
-        name: 'idx_dias_laborales_recargo',
-      },
-      {
-        fields: ['dia'],
-        name: 'idx_dias_laborales_dia',
-      },
-      {
-        fields: ['es_festivo'],
-        name: 'idx_dias_laborales_festivo',
-      },
-      {
-        fields: ['es_domingo'],
-        name: 'idx_dias_laborales_domingo',
-      },
-    ],
-    hooks: {
-      beforeValidate: (diaLaboral) => {
-        // Convertir observaciones vacías a null
-        if (diaLaboral.observaciones !== null && diaLaboral.observaciones !== undefined && diaLaboral.observaciones.trim() === '') {
-          diaLaboral.observaciones = null;
-        }
-      },
-
-      beforeSave: (diaLaboral, options) => {
-        // Calcular total de horas automáticamente
-        if (diaLaboral.hora_inicio !== null && diaLaboral.hora_fin !== null) {
-          diaLaboral.total_horas = parseFloat(diaLaboral.hora_fin) - parseFloat(diaLaboral.hora_inicio);
-        }
-      },
-
-      beforeCreate: async (diaLaboral, options) => {
-        if (options && options.user_id) {
-          diaLaboral.creado_por_id = options.user_id;
-          diaLaboral.actualizado_por_id = options.user_id;
-        }
-      },
-
-      beforeUpdate: async (diaLaboral, options) => {
-        if (options && options.user_id) {
-          diaLaboral.actualizado_por_id = options.user_id;
-        }
-      },
-    }
+        fields: ['recargo_planilla_id', 'dia'],
+        unique: true,
+        name: 'idx_dia_laboral_planilla_dia'
+      }
+    ]
   });
 
   DiaLaboralPlanilla.associate = (models) => {
-    // Relación con recargo
     if (models.RecargoPlanilla) {
       DiaLaboralPlanilla.belongsTo(models.RecargoPlanilla, {
         foreignKey: 'recargo_planilla_id',
-        as: 'recargo',
-        onDelete: 'CASCADE',
-        onUpdate: 'CASCADE',
+        as: 'recargoPlanilla'
       });
     }
-
-    // Relaciones de auditoría
-    if (models.User) {
-      DiaLaboralPlanilla.belongsTo(models.User, {
+    if (models.DetalleRecargosDia) {
+      DiaLaboralPlanilla.hasMany(models.DetalleRecargosDia, {
+        foreignKey: 'dia_laboral_id',
+        as: 'detallesRecargos',
+        onDelete: 'CASCADE'
+      });
+    }
+    if (models.Usuario) {
+      DiaLaboralPlanilla.belongsTo(models.Usuario, {
         foreignKey: 'creado_por_id',
         as: 'creadoPor'
       });
-
-      DiaLaboralPlanilla.belongsTo(models.User, {
+      DiaLaboralPlanilla.belongsTo(models.Usuario, {
         foreignKey: 'actualizado_por_id',
         as: 'actualizadoPor'
       });
     }
   };
+
 
   return DiaLaboralPlanilla;
 };

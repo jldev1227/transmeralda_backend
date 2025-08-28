@@ -21,7 +21,7 @@ router.post('/', protect, uploadMiddleware, controller.crear.bind(controller));
  * @access  Private
  * @query   conductor_id, vehiculo_id, empresa_id, mes, año, estado, numero_planilla, page, limit
  */
-router.get('/', protect, controller.obtener);
+router.get('/', protect, controller.obtenerParaCanvas);
 
 /**
  * @route   GET /api/recargos/:id
@@ -105,6 +105,14 @@ router.get('/stats/resumen', protect, async (req, res) => {
     });
   }
 });
+
+/**
+ * @route   PUT /api/recargos/:id
+ * @desc    Actualizarun recargo
+ * @access  Private
+ * @body    { recarrgo }
+ */
+router.put('/:id', protect, uploadMiddleware, controller.actualizar.bind(controller))
 
 /**
  * @route   PUT /api/recargos/:id/estado

@@ -1,11 +1,21 @@
-// src/controllers/recargoController.js
-const { RecargoPlanilla, DiaLaboralPlanilla, HistorialRecargoPlanilla, Conductor, Vehiculo, Empresa } = require('../models');
-const { Op } = require('sequelize');
+// src/controllers/recargosController.js - ADAPTADO PARA HORAS DECIMALES
+const db = require('../models');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
 
-// Configuración de multer para archivos
+const {
+  RecargoPlanilla,
+  DiaLaboralPlanilla,
+  DetalleRecargosDia,
+  HistorialRecargoPlanilla,
+  TipoRecargo,
+  Conductor,
+  Vehiculo,
+  Empresa,
+  sequelize
+} = db;
+
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
     const uploadPath = path.join(__dirname, '../../uploads/planillas');
@@ -53,189 +63,504 @@ const upload = multer({
 
 class RecargoController {
 
-  // Crear nuevo recargo
+  convertirHoraDecimalATime(horaDecimal) {
+    const numero = parseFloat(horaDecimal);
+    if (isNaN(numero) || numero < 0 || numero >= 24) {
+      return null;
+    }
+
+    const horas = Math.floor(numero);
+    const minutosDecimal = numero - horas;
+    const minutos = Math.round(minutosDecimal * 60);
+
+    return `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}:00`;
+  }
+
   async crear(req, res) {
-    const transaction = await RecargoPlanilla.sequelize.transaction();
+    const transaction = await sequelize.transaction();
+
+    const HORAS_LIMITE = {
+      JORNADA_NORMAL: 10,      // ¡IMPORTANTE: 10 horas, no 8!
+      INICIO_NOCTURNO: 21,
+      FIN_NOCTURNO: 6,
+    };
+
+    /**
+     * Verifica si un día específico es domingo
+     */
+    const esDomingo = (dia, mes, año) => {
+      const fecha = new Date(año, mes - 1, dia);
+      return fecha.getDay() === 0; // 0 = domingo
+    };
+
+    /**
+     * Verifica si un día está en la lista de días festivos
+     */
+    const esDiaFestivo = (dia, diasFestivos = []) => {
+      return diasFestivos.includes(dia);
+    };
+
+    /**
+     * Verifica si un día es domingo O festivo
+     */
+    const esDomingoOFestivo = (dia, mes, año, diasFestivos = []) => {
+      return esDomingo(dia, mes, año) || esDiaFestivo(dia, diasFestivos);
+    };
+
+    /**
+     * Redondea un número a la cantidad de decimales especificada
+     */
+    const redondear = (numero, decimales = 2) => {
+      const factor = Math.pow(10, decimales);
+      return Math.round(numero * factor) / factor;
+    };
+
+    /**
+     * Calcula las Horas Extra Diurnas
+     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, 0, IF(F9>10,F9-10,0))
+     */
+    const calcularHoraExtraDiurna = (dia, mes, año, totalHoras, diasFestivos = []) => {
+      // Si es domingo o festivo, no hay horas extra diurnas normales
+      if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
+        return 0;
+      }
+
+      // Si trabajó más de 10 horas, calcular extra diurna
+      if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL) {
+        return redondear(totalHoras - HORAS_LIMITE.JORNADA_NORMAL);
+      }
+
+      return 0;
+    };
+
+    /**
+     * Calcula las Horas Extra Nocturnas
+     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, 0, IF(AND(F9>10,E9>21),E9-21,0))
+     */
+    const calcularHoraExtraNocturna = (dia, mes, año, horaFinal, totalHoras, diasFestivos = []) => {
+      // Si es domingo o festivo, no hay horas extra nocturnas normales
+      if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
+        return 0;
+      }
+
+      // Si trabajó más de 10 horas Y terminó después de las 21:00
+      if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL && horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
+        return redondear(horaFinal - HORAS_LIMITE.INICIO_NOCTURNO);
+      }
+
+      return 0;
+    };
+
+    /**
+     * Calcula las Horas Extra Festivas Diurnas
+     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, IF(F9>10,F9-10,0),0)
+     */
+    const calcularHoraExtraFestivaDiurna = (dia, mes, año, totalHoras, diasFestivos = []) => {
+      // Solo si es domingo o festivo
+      if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
+        if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL) {
+          return redondear(totalHoras - HORAS_LIMITE.JORNADA_NORMAL);
+        }
+      }
+
+      return 0;
+    };
+
+    /**
+     * Calcula las Horas Extra Festivas Nocturnas
+     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, IF(AND(F9>10,E9>21),E9-21,0), 0)
+     */
+    const calcularHoraExtraFestivaNocturna = (dia, mes, año, horaFinal, totalHoras, diasFestivos = []) => {
+      // Solo si es domingo o festivo
+      if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
+        // Si trabajó más de 10 horas Y terminó después de las 21:00
+        if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL && horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
+          return redondear(horaFinal - HORAS_LIMITE.INICIO_NOCTURNO);
+        }
+      }
+
+      return 0;
+    };
+
+    /**
+     * Calcula el Recargo Nocturno
+     * Fórmula del frontend: =IF(C9<>"",IF(AND(D9<>"",E9<>""),(IF(D9<6,6-D9)+IF(E9>21,IF((D9>21),E9-D9,E9-21))),0),0)
+     */
+    const calcularRecargoNocturno = (dia, horaInicial, horaFinal) => {
+      // Si no hay día registrado, retornar 0
+      if (!dia) {
+        return 0;
+      }
+
+      // Si no hay horas registradas, retornar 0
+      if (!horaInicial || !horaFinal) {
+        return 0;
+      }
+
+      let recargoNocturno = 0;
+
+      // Recargo por iniciar antes de las 6:00 AM
+      if (horaInicial < HORAS_LIMITE.FIN_NOCTURNO) {
+        recargoNocturno += HORAS_LIMITE.FIN_NOCTURNO - horaInicial;
+      }
+
+      // Recargo por terminar después de las 21:00 (9:00 PM)
+      if (horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
+        if (horaInicial > HORAS_LIMITE.INICIO_NOCTURNO) {
+          // Si también inició después de las 21:00, es toda la jornada
+          recargoNocturno += horaFinal - horaInicial;
+        } else {
+          // Solo las horas después de las 21:00
+          recargoNocturno += horaFinal - HORAS_LIMITE.INICIO_NOCTURNO;
+        }
+      }
+
+      return redondear(recargoNocturno);
+    };
+
+    /**
+     * Calcula el Recargo Dominical
+     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, IF(F9<=10,F9,10), 0)
+     */
+    const calcularRecargoDominical = (dia, mes, año, totalHoras, diasFestivos = []) => {
+      // Solo si es domingo o festivo
+      if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
+        // Si trabajó 10 horas o menos, todas son recargo dominical
+        // Si trabajó más de 10, solo las primeras 10 son recargo dominical
+        return redondear(
+          totalHoras <= HORAS_LIMITE.JORNADA_NORMAL
+            ? totalHoras
+            : HORAS_LIMITE.JORNADA_NORMAL
+        );
+      }
+
+      return 0;
+    };
+
+    /**
+     * Función principal que calcula todos los tipos de horas y recargos
+     * BASADA EXACTAMENTE EN EL FRONTEND
+     */
+    const calcularTodasLasHoras = (parametros) => {
+      const { dia, mes, año, horaInicial, horaFinal, diasFestivos = [] } = parametros;
+
+      // Calcular total de horas trabajadas
+      let totalHoras = horaFinal - horaInicial;
+      if (totalHoras < 0) totalHoras += 24; // Cruzó medianoche
+      totalHoras = redondear(totalHoras);
+
+      console.log(`📊 Calculando para día ${dia}:`);
+      console.log(`   Horas: ${horaInicial}:00 - ${horaFinal}:00 (${totalHoras}h total)`);
+
+      // Calcular todos los tipos usando las fórmulas exactas del frontend
+      const horaExtraNocturna = calcularHoraExtraNocturna(dia, mes, año, horaFinal, totalHoras, diasFestivos);
+      const horaExtraDiurna = calcularHoraExtraDiurna(dia, mes, año, totalHoras, diasFestivos) - horaExtraNocturna;
+      const horaExtraFestivaNocturna = calcularHoraExtraFestivaNocturna(dia, mes, año, horaFinal, totalHoras, diasFestivos)
+
+      const resultados = {
+        totalHoras,
+        horaExtraDiurna: horaExtraDiurna, // No puede ser negativo
+        horaExtraNocturna,
+        horaExtraFestivaNocturna,
+        horaExtraFestivaDiurna: calcularHoraExtraFestivaDiurna(dia, mes, año, totalHoras, diasFestivos) - horaExtraFestivaNocturna,
+        recargoNocturno: calcularRecargoNocturno(dia, horaInicial, horaFinal),
+        recargoDominical: calcularRecargoDominical(dia, mes, año, totalHoras, diasFestivos),
+        esDomingo: dia.esDomingo,
+        esFestivo: dia.esFestivo,
+        esDomingoOFestivo: esDomingoOFestivo(dia, mes, año, diasFestivos),
+      };
+
+      return resultados;
+    };
+
+    // ===== FUNCIÓN CORREGIDA PARA CREAR RECARGOS =====
+    const calcularYCrearRecargos = async (diaLaboral, transaction) => {
+      const { hora_inicio, hora_fin, es_domingo, es_festivo, dia, mes, año } = diaLaboral;
+
+      // Usar la función exacta del frontend
+      const resultadosCalculo = calcularTodasLasHoras({
+        dia: parseInt(dia),
+        mes: mes || new Date().getMonth() + 1, // Default si no tienes el mes
+        año: año || new Date().getFullYear(),   // Default si no tienes el año
+        horaInicial: hora_inicio,
+        horaFinal: hora_fin,
+        diasFestivos: es_festivo ? [parseInt(dia)] : []
+      });
+
+      // Obtener tipos de recargos de la base de datos
+      const tiposRecargos = await TipoRecargo.findAll({
+        where: { activo: true },
+        transaction
+      });
+
+      const tiposMap = {};
+      tiposRecargos.forEach(tipo => {
+        tiposMap[tipo.codigo] = tipo;
+      });
+
+      const recargos = {};
+      const detallesCreados = [];
+
+      // Mapear resultados a códigos de base de datos
+      const mappingRecargos = [
+        { campo: 'horaExtraDiurna', codigo: 'HED', nombre: 'Horas Extra Diurnas' },
+        { campo: 'horaExtraNocturna', codigo: 'HEN', nombre: 'Horas Extra Nocturnas' },
+        { campo: 'horaExtraFestivaDiurna', codigo: 'HEFD', nombre: 'Horas Extra Festivas Diurnas' },
+        { campo: 'horaExtraFestivaNocturna', codigo: 'HEFN', nombre: 'Horas Extra Festivas Nocturnas' },
+        { campo: 'recargoNocturno', codigo: 'RN', nombre: 'Recargo Nocturno' },
+        { campo: 'recargoDominical', codigo: 'RD', nombre: 'Recargo Dominical/Festivo' }
+      ];
+
+      // Crear recargos basados en los resultados
+      for (const mapping of mappingRecargos) {
+        const horas = resultadosCalculo[mapping.campo];
+
+        if (horas > 0 && tiposMap[mapping.codigo]) {
+          recargos[mapping.codigo] = horas;
+
+          const detalle = await DetalleRecargosDia.create({
+            dia_laboral_id: diaLaboral.id,
+            tipo_recargo_id: tiposMap[mapping.codigo].id,
+            horas: parseFloat(horas.toFixed(4)),
+            calculado_automaticamente: true
+          }, { transaction });
+
+          detallesCreados.push(detalle);
+          console.log(`   ✓ ${mapping.codigo} (${mapping.nombre}): ${horas} horas`);
+        }
+      }
+
+      // Actualizar total_horas del día
+      await diaLaboral.update({
+        total_horas: parseFloat(resultadosCalculo.totalHoras.toFixed(4))
+      }, { transaction });
+
+      console.log(`✅ Recargos calculados para día ${dia}:`, recargos);
+
+      return {
+        total_horas: resultadosCalculo.totalHoras,
+        recargos,
+        detalles_creados: detallesCreados,
+        debug_info: resultadosCalculo
+      };
+    };
+
+    // ===== FUNCIÓN COMPLETA PARA CALCULAR TOTALES =====
+    const calcularTotalesRecargoDesdeDetalles = async (recargoId, transaction) => {
+      console.log(`🔍 Calculando totales para recargo: ${recargoId}`);
+
+      const query = `
+      SELECT 
+        SUM(dlp.total_horas) as total_horas,
+        COUNT(DISTINCT dlp.id) as total_dias,
+        tr.codigo,
+        SUM(drd.horas) as total_horas_tipo
+      FROM dias_laborales_planillas dlp
+      LEFT JOIN detalles_recargos_dias drd ON dlp.id = drd.dia_laboral_id
+      LEFT JOIN tipos_recargos tr ON drd.tipo_recargo_id = tr.id
+      WHERE dlp.recargo_planilla_id = :recargoId
+        AND dlp.deleted_at IS NULL
+      GROUP BY tr.codigo
+
+      UNION ALL
+
+      SELECT 
+        SUM(dlp.total_horas) as total_horas,
+        COUNT(DISTINCT dlp.id) as total_dias,
+        'TOTAL' as codigo,
+        NULL as total_horas_tipo
+      FROM dias_laborales_planillas dlp
+      WHERE dlp.recargo_planilla_id = :recargoId
+        AND dlp.deleted_at IS NULL
+    `;
+
+      const resultados = await sequelize.query(query, {
+        replacements: { recargoId },
+        type: sequelize.QueryTypes.SELECT,
+        transaction
+      });
+
+      console.log(`📊 Resultados de la consulta:`, resultados);
+
+      const totales = {
+        total_horas: 0,
+        total_dias: 0,
+        // Inicializar todos los tipos de recargo
+        total_hed: 0,
+        total_hen: 0,
+        total_hefd: 0,
+        total_hefn: 0,
+        total_rn: 0,
+        total_rd: 0,
+      };
+
+      resultados.forEach(row => {
+        console.log(`   Procesando: ${row.codigo} = ${row.total_horas_tipo || row.total_horas}`);
+
+        if (row.codigo === 'TOTAL') {
+          totales.total_horas = parseFloat(row.total_horas) || 0;
+          totales.total_dias = parseInt(row.total_dias) || 0;
+        } else if (row.codigo && row.total_horas_tipo) {
+          // Mapear códigos a campos de totales
+          switch (row.codigo) {
+            case 'HED':
+              console.log(row.total_horas_tipo, "como se calcula al crear")
+              totales.total_hed = parseFloat(row.total_horas_tipo) || 0;
+              break;
+            case 'HEN':
+              totales.total_hen = parseFloat(row.total_horas_tipo) || 0;
+              break;
+            case 'HEFD':
+              totales.total_hefd = parseFloat(row.total_horas_tipo) || 0;
+              break;
+            case 'HEFN':
+              totales.total_hefn = parseFloat(row.total_horas_tipo) || 0;
+              break;
+            case 'RN':
+              totales.total_rn = parseFloat(row.total_horas_tipo) || 0;
+              break;
+            case 'RD':
+              totales.total_rd = parseFloat(row.total_horas_tipo) || 0;
+              break;
+          }
+        }
+      });
+
+      console.log(`✅ Totales calculados:`, totales);
+      return totales;
+    };
 
     try {
-      console.log('📋 Iniciando creación de recargo...');
-
-      // Obtener userId del middleware de autenticación
-      const userId = req.user?.id || req.body.user_id || null;
-
-      console.log(userId ? `Usuario autenticado: ${userId}` : 'Usuario no autenticado');
-
+      const userId = req.user?.id;
       if (!userId) {
+        await transaction.rollback();
         return res.status(401).json({
           success: false,
           message: 'Usuario no autenticado'
         });
       }
 
-      // Determinar si es FormData o JSON
-      let data;
-      let archivoInfo = null;
-
-      console.log(req.file ? '📎 Recibido FormData con archivo' : '📝 Recibido JSON sin archivo');
-
-      if (req.file) {
-        // Es FormData con archivo
-        console.log('📎 Procesando FormData con archivo...');
-
+      // Obtener datos
+      let data = req.body;
+      if (req.body.recargo_data) {
         data = JSON.parse(req.body.recargo_data);
-
-        // Información del archivo adjunto
-        archivoInfo = {
-          archivo_planilla_url: `/uploads/planillas/${req.file.filename}`,
-          archivo_planilla_nombre: req.file.originalname,
-          archivo_planilla_tipo: req.file.mimetype,
-          archivo_planilla_tamaño: req.file.size
-        };
-
-        console.log('📎 Archivo guardado:', req.file.filename);
-
-      } else {
-        // Es JSON normal
-        console.log('📝 Procesando datos JSON...');
-        data = req.body;
       }
 
-      console.log("[async] Datos recibidos:", data);
+      console.log('📦 Datos recibidos:', JSON.stringify(data, null, 2));
 
-      // Validar datos requeridos
-      const validacionError = this.validarDatos(data);
-      if (validacionError) {
+      // Validaciones básicas
+      if (!data.conductor_id || !data.vehiculo_id || !data.empresa_id || !data.dias_laborales) {
         await transaction.rollback();
         return res.status(400).json({
           success: false,
-          message: validacionError
+          message: 'Faltan campos requeridos'
         });
       }
 
-      // Verificar que existan las entidades relacionadas
-      const verificacionError = await this.verificarEntidades(data, transaction);
-      if (verificacionError) {
+      if (!Array.isArray(data.dias_laborales) || data.dias_laborales.length === 0) {
         await transaction.rollback();
         return res.status(400).json({
           success: false,
-          message: verificacionError
+          message: 'Debe incluir al menos un día laboral'
         });
       }
 
-      // Verificar duplicados
-      const duplicadoError = await this.verificarDuplicados(data, transaction);
-      if (duplicadoError) {
-        await transaction.rollback();
-        return res.status(409).json({
-          success: false,
-          message: duplicadoError
-        });
-      }
-
-      // Procesar días laborales
-      const diasProcesados = this.procesarDiasLaborales(data.dias_laborales);
-
-      // Calcular totales
-      const totales = this.calcularTotales(diasProcesados);
-
-      console.log('🧮 Totales calculados:', totales);
-
-      // Preparar datos del recargo
-      const datosRecargo = {
+      // ✅ CREAR RECARGO PRINCIPAL
+      const recargo = await RecargoPlanilla.create({
         conductor_id: data.conductor_id,
         vehiculo_id: data.vehiculo_id,
         empresa_id: data.empresa_id,
         numero_planilla: data.numero_planilla || null,
         mes: parseInt(data.mes),
         año: parseInt(data.año),
-        ...totales,
-        ...archivoInfo,
         observaciones: data.observaciones || null,
-        estado: 'activo'
-      };
-
-      // Crear el recargo principal
-      console.log('💾 Creando recargo principal...');
-      const recargo = await RecargoPlanilla.create(datosRecargo, {
-        user_id: userId,
-        transaction
-      });
-
-      console.log('✅ Recargo creado con ID:', recargo.id);
-
-      // Crear los días laborales
-      console.log('📅 Creando días laborales...');
-      const diasCreados = [];
-
-      for (const dia of diasProcesados) {
-        const diaCreado = await DiaLaboralPlanilla.create({
-          recargo_planilla_id: recargo.id,
-          ...dia
-        }, {
-          user_id: userId,
-          transaction
-        });
-        diasCreados.push(diaCreado);
-      }
-
-      console.log(`✅ ${diasCreados.length} días laborales creados`);
-
-      // Crear registro en historial
-      console.log('📜 Creando registro de historial...');
-      await HistorialRecargoPlanilla.create({
-        recargo_planilla_id: recargo.id,
-        accion: 'creacion',
-        version_nueva: 1,
-        datos_nuevos: {
-          recargo: recargo.toJSON(),
-          dias_laborales: diasCreados.map(d => d.toJSON())
-        },
-        realizado_por_id: userId,
-        ip_usuario: req.ip,
-        user_agent: req.get('User-Agent'),
-        fecha_accion: new Date()
+        estado: 'activo',
+        creado_por_id: userId,
+        actualizado_por_id: userId
       }, { transaction });
 
-      // Confirmar transacción
-      await transaction.commit();
-      console.log('🎉 Recargo registrado exitosamente');
+      console.log('✅ Recargo creado:', recargo.id);
 
-      // Obtener recargo completo para respuesta
-      const recargoCompleto = await RecargoPlanilla.findByPk(recargo.id, {
-        include: [
-          {
-            model: DiaLaboralPlanilla,
-            as: 'dias_laborales'
-          },
-          {
-            model: Conductor,
-            as: 'conductor',
-            attributes: ['id', 'nombre', 'apellido', 'numero_identificacion']
-          },
-          {
-            model: Vehiculo,
-            as: 'vehiculo',
-            attributes: ['id', 'placa', 'marca', 'modelo']
-          },
-          {
-            model: Empresa,
-            as: 'empresa',
-            attributes: ['id', 'nombre', 'nit']
-          }
-        ]
-      });
+      const diasCreados = [];
+
+      // ✅ PROCESAR CADA DÍA LABORAL CON CÁLCULOS DEL FRONTEND
+      for (const [index, diaOriginal] of data.dias_laborales.entries()) {
+        console.log(`🔹 Procesando día ${index + 1}:`, diaOriginal);
+
+        const horaInicio = parseFloat(diaOriginal.horaInicio);
+        const horaFin = parseFloat(diaOriginal.horaFin);
+
+        // Validaciones...
+        if (isNaN(horaInicio) || isNaN(horaFin)) {
+          await transaction.rollback();
+          return res.status(400).json({
+            success: false,
+            message: `Error: Horas inválidas en día ${diaOriginal.dia}`
+          });
+        }
+
+        // Determinar si es domingo o festivo
+        const fecha = new Date(parseInt(data.año), parseInt(data.mes) - 1, parseInt(diaOriginal.dia));
+        const esDomingoCalculado = fecha.getDay() === 0;
+        const esFestivoCalculado = Boolean(diaOriginal.esFestivo);
+
+        console.log("Festivo original del body")
+        // ✅ CREAR DÍA LABORAL
+        const diaCreado = await DiaLaboralPlanilla.create({
+          recargo_planilla_id: recargo.id,
+          dia: parseInt(diaOriginal.dia),
+          hora_inicio: horaInicio,
+          hora_fin: horaFin,
+          total_horas: 0, // Se calculará automáticamente
+          es_domingo: esDomingoCalculado,
+          es_festivo: esFestivoCalculado,
+          observaciones: diaOriginal.observaciones || null,
+          creado_por_id: userId,
+          actualizado_por_id: userId
+        }, { transaction });
+
+        // Agregar mes y año al día creado para los cálculos
+        diaCreado.mes = parseInt(data.mes);
+        diaCreado.año = parseInt(data.año);
+
+        // ✅ CALCULAR Y CREAR RECARGOS USANDO LÓGICA DEL FRONTEND
+        const resultadoCalculo = await calcularYCrearRecargos(diaCreado, transaction);
+
+        diasCreados.push({
+          ...diaCreado.toJSON(),
+          ...resultadoCalculo
+        });
+
+        console.log(`✅ Día ${diaOriginal.dia} creado con ${resultadoCalculo.detalles_creados.length} recargos`);
+      }
+
+      // ✅ CALCULAR Y ACTUALIZAR TOTALES
+      const totalesRecargo = await calcularTotalesRecargoDesdeDetalles(recargo.id, transaction);
+
+      await recargo.update({
+        total_dias_laborados: diasCreados.length,
+        total_horas_trabajadas: totalesRecargo.total_horas || diasCreados.reduce((sum, d) => sum + d.total_horas, 0),
+        actualizado_por_id: userId
+      }, { transaction });
+
+      console.log(`✅ Recargo actualizado con totales:`, totalesRecargo);
+
+      await transaction.commit();
 
       return res.status(201).json({
         success: true,
         message: 'Recargo registrado exitosamente',
         data: {
-          recargo: recargoCompleto,
-          resumen: {
-            total_horas: totales.total_horas_trabajadas,
-            total_dias: diasCreados.length,
-            archivo_adjunto: !!archivoInfo,
-            version: 1
-          }
+          recargo_id: recargo.id,
+          numero_planilla: recargo.numero_planilla,
+          total_dias: diasCreados.length,
+          totales: totalesRecargo,
+          dias_creados: diasCreados.map(d => ({
+            id: d.id,
+            dia: d.dia,
+            total_horas: d.total_horas,
+            recargos: d.recargos
+          }))
         }
       });
 
@@ -243,11 +568,664 @@ class RecargoController {
       await transaction.rollback();
       console.error('❌ Error creando recargo:', error);
 
-      // Eliminar archivo si se subió pero falló la creación
+      return res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  // ✅ ENDPOINT DEBUG SIMPLE
+  async debugSimple(req, res) {
+    try {
+      const data = req.body;
+
+      console.log('🔍 Datos originales:', data);
+
+      if (data.dias_laborales && data.dias_laborales[0]) {
+        const primerDia = data.dias_laborales[0];
+
+        console.log('🔄 Probando conversión...');
+        const horaInicio = this.convertirHoraDecimalATime(primerDia.hora_inicio);
+        const horaFin = this.convertirHoraDecimalATime(primerDia.hora_fin);
+
+        console.log(`Resultado: ${primerDia.hora_inicio} -> ${horaInicio}`);
+        console.log(`Resultado: ${primerDia.hora_fin} -> ${horaFin}`);
+
+        // Calcular horas
+        const inicioDecimal = parseFloat(primerDia.hora_inicio);
+        const finDecimal = parseFloat(primerDia.hora_fin);
+        const totalHoras = finDecimal - inicioDecimal;
+
+        console.log(`Total horas: ${totalHoras}`);
+      }
+
+      return res.json({
+        success: true,
+        debug: 'Ver logs en consola'
+      });
+
+    } catch (error) {
+      console.error('❌ Error en debug:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  // Actualizar recargo existente
+  // Actualizar recargo existente
+  async actualizar(req, res) {
+    const transaction = await sequelize.transaction();
+
+    const HORAS_LIMITE = {
+      JORNADA_NORMAL: 10,      // ¡IMPORTANTE: 10 horas, no 8!
+      INICIO_NOCTURNO: 21,
+      FIN_NOCTURNO: 6,
+    };
+
+    /**
+     * Verifica si un día específico es domingo
+     */
+    const esDomingo = (dia, mes, año) => {
+      const fecha = new Date(año, mes - 1, dia);
+      return fecha.getDay() === 0; // 0 = domingo
+    };
+
+    /**
+     * Verifica si un día está en la lista de días festivos
+     */
+    const esDiaFestivo = (dia, diasFestivos = []) => {
+      return diasFestivos.includes(dia);
+    };
+
+    /**
+     * Verifica si un día es domingo O festivo
+     */
+    const esDomingoOFestivo = (dia, mes, año, diasFestivos = []) => {
+      return esDomingo(dia, mes, año) || esDiaFestivo(dia, diasFestivos);
+    };
+
+    /**
+     * Redondea un número a la cantidad de decimales especificada
+     */
+    const redondear = (numero, decimales = 2) => {
+      const factor = Math.pow(10, decimales);
+      return Math.round(numero * factor) / factor;
+    };
+
+    /**
+     * Calcula las Horas Extra Diurnas
+     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, 0, IF(F9>10,F9-10,0))
+     */
+    const calcularHoraExtraDiurna = (dia, mes, año, totalHoras, diasFestivos = []) => {
+      console.log("DIA:", dia, "TOTAL HORAS", totalHoras)
+      // Si es domingo o festivo, no hay horas extra diurnas normales
+      if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
+        return 0;
+      }
+
+      // Si trabajó más de 10 horas, calcular extra diurna
+      if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL) {
+        return redondear(totalHoras - HORAS_LIMITE.JORNADA_NORMAL);
+      }
+
+      return 0;
+    };
+
+    /**
+     * Calcula las Horas Extra Nocturnas
+     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, 0, IF(AND(F9>10,E9>21),E9-21,0))
+     */
+    const calcularHoraExtraNocturna = (dia, mes, año, horaFinal, totalHoras, diasFestivos = []) => {
+      // Si es domingo o festivo, no hay horas extra nocturnas normales
+      if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
+        return 0;
+      }
+
+      // Si trabajó más de 10 horas Y terminó después de las 21:00
+      if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL && horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
+        return redondear(horaFinal - HORAS_LIMITE.INICIO_NOCTURNO);
+      }
+
+      return 0;
+    };
+
+    /**
+     * Calcula las Horas Extra Festivas Diurnas
+     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, IF(F9>10,F9-10,0),0)
+     */
+    const calcularHoraExtraFestivaDiurna = (dia, mes, año, totalHoras, diasFestivos = []) => {
+      // Solo si es domingo o festivo
+      if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
+        if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL) {
+          return redondear(totalHoras - HORAS_LIMITE.JORNADA_NORMAL);
+        }
+      }
+
+      return 0;
+    };
+
+    /**
+     * Calcula las Horas Extra Festivas Nocturnas
+     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, IF(AND(F9>10,E9>21),E9-21,0), 0)
+     */
+    const calcularHoraExtraFestivaNocturna = (dia, mes, año, horaFinal, totalHoras, diasFestivos = []) => {
+      // Solo si es domingo o festivo
+      if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
+        // Si trabajó más de 10 horas Y terminó después de las 21:00
+        if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL && horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
+          return redondear(horaFinal - HORAS_LIMITE.INICIO_NOCTURNO);
+        }
+      }
+
+      return 0;
+    };
+
+    /**
+     * Calcula el Recargo Nocturno
+     * Fórmula del frontend: =IF(C9<>"",IF(AND(D9<>"",E9<>""),(IF(D9<6,6-D9)+IF(E9>21,IF((D9>21),E9-D9,E9-21))),0),0)
+     */
+    const calcularRecargoNocturno = (dia, horaInicial, horaFinal) => {
+      // Si no hay día registrado, retornar 0
+      if (!dia) {
+        return 0;
+      }
+
+      // Si no hay horas registradas, retornar 0
+      if (!horaInicial || !horaFinal) {
+        return 0;
+      }
+
+      let recargoNocturno = 0;
+
+      // Recargo por iniciar antes de las 6:00 AM
+      if (horaInicial < HORAS_LIMITE.FIN_NOCTURNO) {
+        recargoNocturno += HORAS_LIMITE.FIN_NOCTURNO - horaInicial;
+      }
+
+      // Recargo por terminar después de las 21:00 (9:00 PM)
+      if (horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
+        if (horaInicial > HORAS_LIMITE.INICIO_NOCTURNO) {
+          // Si también inició después de las 21:00, es toda la jornada
+          recargoNocturno += horaFinal - horaInicial;
+        } else {
+          // Solo las horas después de las 21:00
+          recargoNocturno += horaFinal - HORAS_LIMITE.INICIO_NOCTURNO;
+        }
+      }
+
+      return redondear(recargoNocturno);
+    };
+
+    /**
+     * Calcula el Recargo Dominical
+     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, IF(F9<=10,F9,10), 0)
+     */
+    const calcularRecargoDominical = (dia, mes, año, totalHoras, diasFestivos = []) => {
+      // Solo si es domingo o festivo
+      if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
+        // Si trabajó 10 horas o menos, todas son recargo dominical
+        // Si trabajó más de 10, solo las primeras 10 son recargo dominical
+        return redondear(
+          totalHoras <= HORAS_LIMITE.JORNADA_NORMAL
+            ? totalHoras
+            : HORAS_LIMITE.JORNADA_NORMAL
+        );
+      }
+
+      return 0;
+    };
+
+    /**
+     * Función principal que calcula todos los tipos de horas y recargos
+     * BASADA EXACTAMENTE EN EL FRONTEND
+     */
+    const calcularTodasLasHoras = (parametros) => {
+      const { dia, mes, año, horaInicial, horaFinal, diasFestivos = [] } = parametros;
+
+      // Calcular total de horas trabajadas
+      let totalHoras = horaFinal - horaInicial;
+      if (totalHoras < 0) totalHoras += 24; // Cruzó medianoche
+      totalHoras = redondear(totalHoras);
+
+      console.log(`📊 Calculando para día ${dia}:`);
+      console.log(`   Horas: ${horaInicial}:00 - ${horaFinal}:00 (${totalHoras}h total)`);
+
+      // Calcular todos los tipos usando las fórmulas exactas del frontend
+      const horaExtraNocturna = calcularHoraExtraNocturna(dia, mes, año, horaFinal, totalHoras, diasFestivos);
+      const horaExtraDiurna = calcularHoraExtraDiurna(dia, mes, año, totalHoras, diasFestivos) - horaExtraNocturna;
+      const horaExtraFestivaNocturna = calcularHoraExtraFestivaNocturna(dia, mes, año, horaFinal, totalHoras, diasFestivos)
+
+      const resultados = {
+        totalHoras,
+        horaExtraDiurna: horaExtraDiurna, // No puede ser negativo
+        horaExtraNocturna,
+        horaExtraFestivaNocturna,
+        horaExtraFestivaDiurna: calcularHoraExtraFestivaDiurna(dia, mes, año, totalHoras, diasFestivos) - horaExtraFestivaNocturna,
+        recargoNocturno: calcularRecargoNocturno(dia, horaInicial, horaFinal),
+        recargoDominical: calcularRecargoDominical(dia, mes, año, totalHoras, diasFestivos),
+        esDomingo: esDomingo(dia, mes, año),
+        esFestivo: diasFestivos.includes(dia),
+        esDomingoOFestivo: esDomingoOFestivo(dia, mes, año, diasFestivos),
+      };
+
+      console.log(`   Resultados:`, resultados);
+      return resultados;
+    };
+
+    // ===== FUNCIÓN CORREGIDA PARA CREAR RECARGOS =====
+    const calcularYCrearRecargos = async (diaLaboral, transaction) => {
+      const { hora_inicio, hora_fin, es_domingo, es_festivo, dia, mes, año } = diaLaboral;
+
+      console.log(`🧮 Calculando recargos para día ${dia}:`);
+      console.log(`   Horas: ${hora_inicio}:00 - ${hora_fin}:00`);
+      console.log(`   Domingo: ${es_domingo}, Festivo: ${es_festivo}`);
+
+      // Usar la función exacta del frontend
+      const resultadosCalculo = calcularTodasLasHoras({
+        dia: parseInt(dia),
+        mes: mes || new Date().getMonth() + 1,
+        año: año || new Date().getFullYear(),
+        horaInicial: hora_inicio,
+        horaFinal: hora_fin,
+        diasFestivos: es_festivo ? [parseInt(dia)] : []
+      });
+
+      console.log(resultadosCalculo, "RESULTADOS CALCULADOS")
+
+      // Obtener tipos de recargos de la base de datos
+      const tiposRecargos = await TipoRecargo.findAll({
+        where: { activo: true },
+        transaction
+      });
+
+      const tiposMap = {};
+      tiposRecargos.forEach(tipo => {
+        tiposMap[tipo.codigo] = tipo;
+      });
+
+      const recargos = {};
+      const detallesCreados = [];
+
+      // Mapear resultados a códigos de base de datos
+      const mappingRecargos = [
+        { campo: 'horaExtraDiurna', codigo: 'HED', nombre: 'Horas Extra Diurnas' },
+        { campo: 'horaExtraNocturna', codigo: 'HEN', nombre: 'Horas Extra Nocturnas' },
+        { campo: 'horaExtraFestivaDiurna', codigo: 'HEFD', nombre: 'Horas Extra Festivas Diurnas' },
+        { campo: 'horaExtraFestivaNocturna', codigo: 'HEFN', nombre: 'Horas Extra Festivas Nocturnas' },
+        { campo: 'recargoNocturno', codigo: 'RN', nombre: 'Recargo Nocturno' },
+        { campo: 'recargoDominical', codigo: 'RD', nombre: 'Recargo Dominical/Festivo' }
+      ];
+
+      // Crear recargos basados en los resultados
+      for (const mapping of mappingRecargos) {
+        const horas = resultadosCalculo[mapping.campo];
+
+        if (horas !== 0 && tiposMap[mapping.codigo]) {
+          recargos[mapping.codigo] = horas;
+
+          const detalle = await DetalleRecargosDia.create({
+            dia_laboral_id: diaLaboral.id,
+            tipo_recargo_id: tiposMap[mapping.codigo].id,
+            horas: parseFloat(horas.toFixed(4)),
+            calculado_automaticamente: true
+          }, { transaction });
+
+          detallesCreados.push(detalle);
+          console.log(`   ✓ ${mapping.codigo} (${mapping.nombre}): ${horas} horas`);
+        }
+      }
+
+      // Actualizar total_horas del día
+      await diaLaboral.update({
+        total_horas: parseFloat(resultadosCalculo.totalHoras.toFixed(4))
+      }, { transaction });
+
+      console.log(`✅ Recargos calculados para día ${dia}:`, recargos);
+
+      return {
+        total_horas: resultadosCalculo.totalHoras,
+        recargos,
+        detalles_creados: detallesCreados,
+        debug_info: resultadosCalculo
+      };
+    };
+
+    // ===== FUNCIÓN COMPLETA PARA CALCULAR TOTALES =====
+    const calcularTotalesRecargoDesdeDetalles = async (recargoId, transaction) => {
+      console.log(`🔍 Calculando totales para recargo: ${recargoId}`);
+
+      const query = `
+      SELECT 
+        SUM(dlp.total_horas) as total_horas,
+        COUNT(DISTINCT dlp.id) as total_dias,
+        tr.codigo,
+        SUM(drd.horas) as total_horas_tipo
+      FROM dias_laborales_planillas dlp
+      LEFT JOIN detalles_recargos_dias drd ON dlp.id = drd.dia_laboral_id
+      LEFT JOIN tipos_recargos tr ON drd.tipo_recargo_id = tr.id
+      WHERE dlp.recargo_planilla_id = :recargoId
+        AND dlp.deleted_at IS NULL
+      GROUP BY tr.codigo
+
+      UNION ALL
+
+      SELECT 
+        SUM(dlp.total_horas) as total_horas,
+        COUNT(DISTINCT dlp.id) as total_dias,
+        'TOTAL' as codigo,
+        NULL as total_horas_tipo
+      FROM dias_laborales_planillas dlp
+      WHERE dlp.recargo_planilla_id = :recargoId
+        AND dlp.deleted_at IS NULL
+    `;
+
+      const resultados = await sequelize.query(query, {
+        replacements: { recargoId },
+        type: sequelize.QueryTypes.SELECT,
+        transaction
+      });
+
+      console.log(`📊 Resultados de la consulta:`, resultados);
+
+      const totales = {
+        total_horas_trabajadas: 0,
+        total_dias_laborados: 0,
+        // Inicializar todos los tipos de recargo
+        total_hed: 0,
+        total_hen: 0,
+        total_hefd: 0,
+        total_hefn: 0,
+        total_rn: 0,
+        total_rd: 0,
+      };
+
+      resultados.forEach(row => {
+        console.log(`   Procesando: ${row.codigo} = ${row.total_horas_tipo || row.total_horas}`);
+
+        if (row.codigo === 'TOTAL') {
+          totales.total_horas_trabajadas = parseFloat(row.total_horas) || 0;
+          totales.total_dias_laborados = parseInt(row.total_dias) || 0;
+        } else if (row.codigo && row.total_horas_tipo) {
+          // Mapear códigos a campos de totales
+          switch (row.codigo) {
+            case 'HED':
+              totales.total_hed = parseFloat(row.total_horas_tipo) || 0;
+              break;
+            case 'HEN':
+              totales.total_hen = parseFloat(row.total_horas_tipo) || 0;
+              break;
+            case 'HEFD':
+              totales.total_hefd = parseFloat(row.total_horas_tipo) || 0;
+              break;
+            case 'HEFN':
+              totales.total_hefn = parseFloat(row.total_horas_tipo) || 0;
+              break;
+            case 'RN':
+              totales.total_rn = parseFloat(row.total_horas_tipo) || 0;
+              break;
+            case 'RD':
+              totales.total_rd = parseFloat(row.total_horas_tipo) || 0;
+              break;
+          }
+        }
+      });
+
+      console.log(`✅ Totales calculados:`, totales);
+      return totales;
+    };
+
+    try {
+      const { id } = req.params;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        await transaction.rollback();
+        return res.status(401).json({
+          success: false,
+          message: 'Usuario no autenticado'
+        });
+      }
+
+      // Buscar recargo existente
+      const recargoExistente = await RecargoPlanilla.findByPk(id, {
+        include: [{ model: DiaLaboralPlanilla, as: 'dias_laborales' }],
+        transaction
+      });
+
+      if (!recargoExistente) {
+        await transaction.rollback();
+        return res.status(404).json({
+          success: false,
+          message: 'Recargo no encontrado'
+        });
+      }
+
+      // Verificar si es editable
+      if (!recargoExistente.esEditable()) {
+        await transaction.rollback();
+        return res.status(400).json({
+          success: false,
+          message: 'El recargo no puede ser editado en su estado actual'
+        });
+      }
+
+      // Procesar datos de manera consistente con crear
+      let data;
+      let archivoInfo = null;
+
+      if (req.body.recargo_data) {
+        data = JSON.parse(req.body.recargo_data);
+      } else {
+        data = req.body;
+      }
+
+      console.log('📦 Datos recibidos para actualización:', JSON.stringify(data, null, 2));
+
+      // Manejar archivo si existe
+      if (req.file) {
+        archivoInfo = {
+          archivo_planilla_url: `/uploads/planillas/${req.file.filename}`,
+          archivo_planilla_nombre: req.file.originalname,
+          archivo_planilla_tipo: req.file.mimetype,
+          archivo_planilla_tamaño: req.file.size
+        };
+
+        // Eliminar archivo anterior si existe
+        if (recargoExistente.archivo_planilla_url) {
+          try {
+            const archivoAnterior = path.join(__dirname, '../../', recargoExistente.archivo_planilla_url);
+            await fs.unlink(archivoAnterior);
+            console.log('🗑️ Archivo anterior eliminado');
+          } catch (error) {
+            console.log('⚠️ No se pudo eliminar archivo anterior:', error.message);
+          }
+        }
+      }
+
+      // Validaciones básicas (igual que crear)
+      if (!data.conductor_id || !data.vehiculo_id || !data.empresa_id || !data.dias_laborales) {
+        await transaction.rollback();
+        return res.status(400).json({
+          success: false,
+          message: 'Faltan campos requeridos'
+        });
+      }
+
+      if (!Array.isArray(data.dias_laborales) || data.dias_laborales.length === 0) {
+        await transaction.rollback();
+        return res.status(400).json({
+          success: false,
+          message: 'Debe incluir al menos un día laboral'
+        });
+      }
+
+      // Guardar datos anteriores para historial
+      const datosAnteriores = {
+        recargo: recargoExistente.toJSON(),
+        dias_laborales: recargoExistente.dias_laborales
+      };
+
+      // ELIMINAR DÍAS LABORALES Y DETALLES DE RECARGOS EXISTENTES
+      console.log('🗑️ Eliminando días laborales existentes...');
+
+      // Primero eliminar los detalles de recargos
+      const diasExistentes = await DiaLaboralPlanilla.findAll({
+        where: { recargo_planilla_id: id },
+        transaction
+      });
+
+      for (const dia of diasExistentes) {
+        await DetalleRecargosDia.destroy({
+          where: { dia_laboral_id: dia.id },
+          force: true, // Eliminación física
+          transaction
+        });
+      }
+
+      // Luego eliminar los días laborales
+      await DiaLaboralPlanilla.destroy({
+        where: { recargo_planilla_id: id },
+        force: true, // Eliminación física
+        transaction
+      });
+
+      // ACTUALIZAR DATOS DEL RECARGO PRINCIPAL
+      const datosActualizacion = {
+        conductor_id: data.conductor_id,
+        vehiculo_id: data.vehiculo_id,
+        empresa_id: data.empresa_id,
+        numero_planilla: data.numero_planilla || null,
+        mes: parseInt(data.mes),
+        año: parseInt(data.año),
+        observaciones: data.observaciones || null,
+        actualizado_por_id: userId,
+        ...archivoInfo
+      };
+
+      await recargoExistente.update(datosActualizacion, { transaction });
+
+      // CREAR NUEVOS DÍAS LABORALES CON LA MISMA LÓGICA QUE CREAR
+      const diasCreados = [];
+
+      for (const [index, diaOriginal] of data.dias_laborales.entries()) {
+        console.log(`🔹 Procesando día ${index + 1}:`, diaOriginal);
+
+        const horaInicio = parseFloat(diaOriginal.horaInicio);
+        const horaFin = parseFloat(diaOriginal.horaFin);
+
+        // Validaciones
+        if (isNaN(horaInicio) || isNaN(horaFin)) {
+          await transaction.rollback();
+          return res.status(400).json({
+            success: false,
+            message: `Error: Horas inválidas en día ${diaOriginal.dia}`
+          });
+        }
+
+        // Determinar si es domingo o festivo
+        const fecha = new Date(parseInt(data.año), parseInt(data.mes) - 1, parseInt(diaOriginal.dia));
+        const esDomingoCalculado = fecha.getDay() === 0;
+        const esFestivoCalculado = Boolean(diaOriginal.esFestivo);
+
+        // CREAR DÍA LABORAL
+        const diaCreado = await DiaLaboralPlanilla.create({
+          recargo_planilla_id: id,
+          dia: parseInt(diaOriginal.dia),
+          hora_inicio: horaInicio,
+          hora_fin: horaFin,
+          total_horas: 0, // Se calculará automáticamente
+          es_domingo: esDomingoCalculado,
+          es_festivo: esFestivoCalculado,
+          observaciones: diaOriginal.observaciones || null,
+          creado_por_id: userId,
+          actualizado_por_id: userId
+        }, { transaction });
+
+        // Agregar mes y año al día creado para los cálculos
+        diaCreado.mes = parseInt(data.mes);
+        diaCreado.año = parseInt(data.año);
+
+        // CALCULAR Y CREAR RECARGOS USANDO LÓGICA DEL FRONTEND
+        const resultadoCalculo = await calcularYCrearRecargos(diaCreado, transaction);
+
+        diasCreados.push({
+          ...diaCreado.toJSON(),
+          ...resultadoCalculo
+        });
+
+        console.log(`✅ Día ${diaOriginal.dia} actualizado con ${resultadoCalculo.detalles_creados.length} recargos`);
+      }
+
+      // CALCULAR Y ACTUALIZAR TOTALES
+      const totalesRecargo = await calcularTotalesRecargoDesdeDetalles(id, transaction);
+
+      await recargoExistente.update({
+        ...totalesRecargo,
+        actualizado_por_id: userId
+      }, { transaction });
+
+      // Crear registro en historial
+      await HistorialRecargoPlanilla.create({
+        recargo_planilla_id: id,
+        accion: 'actualizacion',
+        version_anterior: recargoExistente.version - 1,
+        version_nueva: recargoExistente.version,
+        datos_anteriores: datosAnteriores,
+        datos_nuevos: {
+          recargo: recargoExistente.toJSON(),
+          dias_laborales: diasCreados
+        },
+        realizado_por_id: userId,
+        ip_usuario: req.ip,
+        user_agent: req.get('User-Agent'),
+        fecha_accion: new Date()
+      }, { transaction });
+
+      await transaction.commit();
+
+      // Obtener recargo actualizado con todas las relaciones
+      const recargoActualizado = await RecargoPlanilla.findByPk(id, {
+        include: [
+          { model: DiaLaboralPlanilla, as: 'dias_laborales' },
+          { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion'] },
+          { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'marca', 'modelo'] },
+          { model: Empresa, as: 'empresa', attributes: ['id', 'nombre', 'nit'] }
+        ]
+      });
+
+      return res.json({
+        success: true,
+        message: 'Recargo actualizado exitosamente',
+        data: {
+          recargo: recargoActualizado,
+          resumen: {
+            total_horas: totalesRecargo.total_horas_trabajadas,
+            total_dias: diasCreados.length,
+            archivo_adjunto: !!archivoInfo,
+            version: recargoActualizado.version,
+            totales: totalesRecargo,
+            dias_actualizados: diasCreados.map(d => ({
+              id: d.id,
+              dia: d.dia,
+              total_horas: d.total_horas,
+              recargos: d.recargos
+            }))
+          }
+        }
+      });
+
+    } catch (error) {
+      await transaction.rollback();
+      console.error('❌ Error actualizando recargo:', error);
+
+      // Eliminar archivo nuevo si se subió pero falló
       if (req.file) {
         try {
           await fs.unlink(req.file.path);
-          console.log('🗑️ Archivo eliminado por error en transacción');
         } catch (unlinkError) {
           console.error('⚠️ Error eliminando archivo:', unlinkError);
         }
@@ -261,87 +1239,197 @@ class RecargoController {
     }
   }
 
-  // Obtener recargos con filtros
-  async obtener(req, res) {
+  // Eliminar recargo (soft delete)
+  async eliminar(req, res) {
+    const transaction = await sequelize.transaction();
+
     try {
-      const {
-        conductor_id,
-        vehiculo_id,
-        empresa_id,
-        mes,
-        año,
-        estado,
-        numero_planilla,
-        page = 1,
-        limit = 10,
-        include_deleted = false
-      } = req.query;
+      const { id } = req.params;
+      const userId = req.user?.id;
 
-      const where = {};
-
-      // Aplicar filtros
-      if (conductor_id) where.conductor_id = conductor_id;
-      if (vehiculo_id) where.vehiculo_id = vehiculo_id;
-      if (empresa_id) where.empresa_id = empresa_id;
-      if (mes) where.mes = parseInt(mes);
-      if (año) where.año = parseInt(año);
-      if (estado) where.estado = estado;
-      if (numero_planilla) {
-        where.numero_planilla = {
-          [Op.iLike]: `%${numero_planilla}%`
-        };
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: 'Usuario no autenticado'
+        });
       }
 
-      const options = {
+      const recargo = await RecargoPlanilla.findByPk(id, { transaction });
+
+      if (!recargo) {
+        await transaction.rollback();
+        return res.status(404).json({
+          success: false,
+          message: 'Recargo no encontrado'
+        });
+      }
+
+      // Verificar si se puede eliminar
+      if (!recargo.esEditable()) {
+        await transaction.rollback();
+        return res.status(400).json({
+          success: false,
+          message: 'El recargo no puede ser eliminado en su estado actual'
+        });
+      }
+
+      // Crear registro en historial antes de eliminar
+      await HistorialRecargoPlanilla.create({
+        recargo_planilla_id: id,
+        accion: 'eliminacion',
+        version_anterior: recargo.version,
+        datos_anteriores: { recargo: recargo.toJSON() },
+        realizado_por_id: userId,
+        ip_usuario: req.ip,
+        user_agent: req.get('User-Agent'),
+        fecha_accion: new Date()
+      }, { transaction });
+
+      // Soft delete
+      await recargo.destroy({ transaction });
+
+      await transaction.commit();
+
+      return res.json({
+        success: true,
+        message: 'Recargo eliminado exitosamente'
+      });
+
+    } catch (error) {
+      await transaction.rollback();
+      console.error('❌ Error eliminando recargo:', error);
+
+      return res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  // ✅ ENDPOINT ESPECIALIZADO PARA CANVAS (ULTRA RÁPIDO)
+  async obtenerParaCanvas(req, res) {
+    try {
+      const { mes, año, empresa_id } = req.query;
+
+      // Validaciones básicas
+      if (!mes || !año) {
+        return res.status(400).json({
+          success: false,
+          message: 'Mes y año son requeridos para el canvas'
+        });
+      }
+
+      const where = {
+        mes: parseInt(mes),
+        año: parseInt(año),
+        estado: 'activo' // Solo activos para canvas
+      };
+
+      if (empresa_id && this.isValidUUID(empresa_id)) {
+        where.empresa_id = empresa_id;
+      }
+
+      // ✅ CONSULTA ULTRA OPTIMIZADA PARA CANVAS
+      const recargos = await RecargoPlanilla.findAll({
         where,
+        attributes: [
+          'id', 'numero_planilla', 'mes', 'año',
+          'total_horas_trabajadas', 'total_dias_laborados',
+          'created_at'
+        ],
         include: [
-          {
-            model: DiaLaboralPlanilla,
-            as: 'dias_laborales'
-          },
           {
             model: Conductor,
             as: 'conductor',
-            attributes: ['id', 'nombre', 'apellido', 'numero_identificacion']
+            attributes: ['id', 'nombre', 'apellido']
           },
           {
             model: Vehiculo,
             as: 'vehiculo',
-            attributes: ['id', 'placa', 'marca', 'modelo']
+            attributes: ['id', 'placa']
           },
           {
             model: Empresa,
             as: 'empresa',
             attributes: ['id', 'nombre', 'nit']
+          },
+          {
+            model: DiaLaboralPlanilla,
+            as: 'dias_laborales',
+            attributes: ['id', 'dia', 'hora_inicio', 'hora_fin', 'total_horas', 'es_domingo', 'es_festivo'],
+            include: [
+              {
+                model: DetalleRecargosDia,
+                as: 'detallesRecargos',
+                attributes: ['id', 'horas'],
+                include: [
+                  {
+                    model: TipoRecargo,
+                    as: 'tipoRecargo',
+                    attributes: ['id', 'codigo', 'nombre', 'porcentaje']
+                  }
+                ]
+              }
+            ],
+            order: [['dia', 'ASC']]
           }
         ],
-        order: [['created_at', 'DESC']],
-        limit: parseInt(limit),
-        offset: (parseInt(page) - 1) * parseInt(limit),
-        paranoid: include_deleted !== 'true'
-      };
+        order: [['numero_planilla', 'ASC']],
+        raw: false,
+        nest: true
+      });
 
-      const { count, rows } = await RecargoPlanilla.findAndCountAll(options);
+      // ✅ PROCESAR DATOS CON RECARGOS NORMALIZADOS
+      const canvasData = recargos.map(recargo => {
+        return {
+          id: recargo.id,
+          planilla: recargo.numero_planilla,
+          conductor: recargo.conductor,
+          vehiculo: recargo.vehiculo,
+          empresa: recargo.empresa,
+          total_horas: recargo.total_horas_trabajadas,
+          total_dias: recargo.total_dias_laborados,
+
+          // ✅ DÍAS CON RECARGOS DESDE DETALLES NORMALIZADOS
+          dias_laborales: recargo.dias_laborales?.map(dia => {
+            // Convertir detalles a formato esperado
+            const recargosDelDia = { hed: 0, hen: 0, hefd: 0, hefn: 0, rn: 0, rd: 0 };
+
+            dia.detallesRecargos?.forEach(detalle => {
+              const codigo = detalle.tipoRecargo.codigo.toLowerCase();
+              recargosDelDia[codigo] = parseFloat(detalle.horas) || 0;
+            });
+
+            return {
+              id: dia.id,
+              dia: dia.dia,
+              hora_inicio: dia.hora_inicio,
+              hora_fin: dia.hora_fin,
+              total_horas: dia.total_horas,
+              es_especial: dia.es_domingo || dia.es_festivo,
+              es_domingo: dia.es_domingo,
+              es_festivo: dia.es_festivo,
+              ...recargosDelDia // hed, hen, hefd, hefn, rn, rd
+            };
+          }) || []
+        };
+      });
 
       return res.json({
         success: true,
         data: {
-          recargos: rows,
-          pagination: {
-            total: count,
-            page: parseInt(page),
-            limit: parseInt(limit),
-            totalPages: Math.ceil(count / parseInt(limit))
-          }
+          mes: parseInt(mes),
+          año: parseInt(año),
+          total_recargos: canvasData.length,
+          recargos: canvasData
         }
       });
-
     } catch (error) {
-      console.error('❌ Error obteniendo recargos:', error);
+      console.error('❌ Error obteniendo datos para canvas:', error);
       return res.status(500).json({
         success: false,
-        message: 'Error obteniendo recargos',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: 'Error obteniendo datos para canvas'
       });
     }
   }
@@ -351,31 +1439,56 @@ class RecargoController {
     try {
       const { id } = req.params;
 
-      const recargo = await RecargoPlanilla.findByPk(id, {
+      // ✅ CONSULTA ULTRA OPTIMIZADA IGUAL QUE CANVAS (filtrada por ID)
+      const recargo = await RecargoPlanilla.findOne({
+        where: {
+          id,
+          estado: 'activo' // Solo activos como en canvas
+        },
+        attributes: [
+          'id', 'numero_planilla', 'mes', 'año',
+          'total_horas_trabajadas', 'total_dias_laborados',
+          'created_at'
+        ],
         include: [
           {
-            model: DiaLaboralPlanilla,
-            as: 'dias_laborales'
-          },
-          {
             model: Conductor,
-            as: 'conductor'
+            as: 'conductor',
+            attributes: ['id', 'nombre', 'apellido', 'numero_identificacion']
           },
           {
             model: Vehiculo,
-            as: 'vehiculo'
+            as: 'vehiculo',
+            attributes: ['id', 'placa']
           },
           {
             model: Empresa,
-            as: 'empresa'
+            as: 'empresa',
+            attributes: ['id', 'nombre', 'nit']
           },
           {
-            model: HistorialRecargoPlanilla,
-            as: 'historial',
-            limit: 10,
-            order: [['fecha_accion', 'DESC']]
+            model: DiaLaboralPlanilla,
+            as: 'dias_laborales',
+            attributes: ['id', 'dia', 'hora_inicio', 'hora_fin', 'total_horas', 'es_domingo', 'es_festivo'],
+            include: [
+              {
+                model: DetalleRecargosDia,
+                as: 'detallesRecargos',
+                attributes: ['id', 'horas'],
+                include: [
+                  {
+                    model: TipoRecargo,
+                    as: 'tipoRecargo',
+                    attributes: ['id', 'codigo', 'nombre', 'porcentaje']
+                  }
+                ]
+              }
+            ],
+            order: [['dia', 'ASC']]
           }
-        ]
+        ],
+        raw: false,
+        nest: true
       });
 
       if (!recargo) {
@@ -385,13 +1498,52 @@ class RecargoController {
         });
       }
 
+      // ✅ PROCESAR DATOS CON LA MISMA LÓGICA QUE CANVAS
+      const recargoData = {
+        id: recargo.id,
+        planilla: recargo.numero_planilla,
+        conductor: recargo.conductor,
+        vehiculo: recargo.vehiculo,
+        empresa: recargo.empresa,
+        total_horas: recargo.total_horas_trabajadas,
+        total_dias: recargo.total_dias_laborados,
+
+        // ✅ DÍAS CON RECARGOS DESDE DETALLES NORMALIZADOS
+        dias_laborales: recargo.dias_laborales?.map(dia => {
+          // Convertir detalles a formato esperado
+          const recargosDelDia = { hed: 0, hen: 0, hefd: 0, hefn: 0, rn: 0, rd: 0 };
+
+          dia.detallesRecargos?.forEach(detalle => {
+            const codigo = detalle.tipoRecargo.codigo.toLowerCase();
+            recargosDelDia[codigo] = parseFloat(detalle.horas) || 0;
+          });
+
+          return {
+            id: dia.id,
+            dia: dia.dia,
+            hora_inicio: dia.hora_inicio,
+            hora_fin: dia.hora_fin,
+            total_horas: dia.total_horas,
+            es_especial: dia.es_domingo || dia.es_festivo,
+            es_domingo: dia.es_domingo,
+            es_festivo: dia.es_festivo,
+            ...recargosDelDia // hed, hen, hefd, hefn, rn, rd
+          };
+        }) || []
+      };
+
       return res.json({
         success: true,
-        data: recargo
+        data: {
+          mes: recargo.mes,
+          año: recargo.año,
+          total_recargos: 1, // Siempre será 1 porque es un solo recargo
+          recargo: recargoData // Mismo formato que en canvas
+        }
       });
 
     } catch (error) {
-      console.error('❌ Error obteniendo recargo:', error);
+      console.error('❌ Error obteniendo recargo por ID:', error);
       return res.status(500).json({
         success: false,
         message: 'Error obteniendo recargo',
@@ -410,6 +1562,21 @@ class RecargoController {
       }
     }
 
+    // Validar UUIDs
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    if (!uuidRegex.test(data.conductor_id)) {
+      return 'El ID del conductor no es válido';
+    }
+
+    if (!uuidRegex.test(data.vehiculo_id)) {
+      return 'El ID del vehículo no es válido';
+    }
+
+    if (!uuidRegex.test(data.empresa_id)) {
+      return 'El ID de la empresa no es válido';
+    }
+
     // Validar mes y año
     const mes = parseInt(data.mes);
     const año = parseInt(data.año);
@@ -422,29 +1589,92 @@ class RecargoController {
       return 'El año debe estar entre 2000 y 2100';
     }
 
+    // Validar número de planilla si existe
+    if (data.numero_planilla && data.numero_planilla.length > 50) {
+      return 'El número de planilla no puede exceder 50 caracteres';
+    }
+
     // Validar días laborales
     if (!Array.isArray(data.dias_laborales) || data.dias_laborales.length === 0) {
       return 'Debe incluir al menos un día laboral';
     }
 
+    if (data.dias_laborales.length > 31) {
+      return 'No puede haber más de 31 días laborales';
+    }
+
+    // Validar cada día laboral
+    const diasUnicos = new Set();
+
     for (const dia of data.dias_laborales) {
-      if (!dia.dia || !dia.horaInicio || !dia.horaFin) {
+      // ⚠️ CAMBIO: Ahora busca los nombres estándar de la base de datos
+      // Acepta tanto el formato frontend (horaInicio/horaFin) como backend (hora_inicio/hora_fin)
+      const horaInicio = dia.hora_inicio || dia.horaInicio;
+      const horaFin = dia.hora_fin || dia.horaFin;
+
+      if (!dia.dia || !horaInicio || !horaFin) {
         return 'Todos los días laborales deben tener día, hora de inicio y hora de fin';
       }
 
-      const horaInicio = parseFloat(dia.horaInicio);
-      const horaFin = parseFloat(dia.horaFin);
+      const numeroDia = parseInt(dia.dia);
 
-      if (horaInicio >= horaFin) {
-        return `Día ${dia.dia}: La hora de fin debe ser mayor que la hora de inicio`;
+      // Verificar día único
+      if (diasUnicos.has(numeroDia)) {
+        return `El día ${numeroDia} está duplicado`;
+      }
+      diasUnicos.add(numeroDia);
+
+      // Validar rango de día
+      if (numeroDia < 1 || numeroDia > 31) {
+        return `Día ${numeroDia}: Debe estar entre 1 y 31`;
       }
 
-      if (horaInicio < 0 || horaInicio > 24 || horaFin < 0 || horaFin > 24) {
-        return `Día ${dia.dia}: Las horas deben estar entre 0 y 24`;
+      // Validar formato de horas
+      const validacionHoras = this.validarFormatoHoras(horaInicio, horaFin, numeroDia);
+      if (validacionHoras) {
+        return validacionHoras;
       }
     }
 
     return null; // Sin errores
+  }
+
+  // Método auxiliar para validar horas
+  validarFormatoHoras(horaInicio, horaFin, dia) {
+    try {
+      // Convertir a formato estándar para validación
+      const inicio = this.convertirATimeFormat(horaInicio);
+      const fin = this.convertirATimeFormat(horaFin);
+
+      // Validar formato TIME
+      const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/;
+
+      if (!timeRegex.test(inicio)) {
+        return `Día ${dia}: Formato de hora de inicio inválido`;
+      }
+
+      if (!timeRegex.test(fin)) {
+        return `Día ${dia}: Formato de hora de fin inválido`;
+      }
+
+      // Validar que hora fin > hora inicio
+      const inicioDate = new Date(`1970-01-01T${inicio}`);
+      const finDate = new Date(`1970-01-01T${fin}`);
+
+      if (finDate <= inicioDate) {
+        return `Día ${dia}: La hora de fin debe ser mayor que la hora de inicio`;
+      }
+
+      // Validar duración máxima (24 horas)
+      const duracion = (finDate - inicioDate) / (1000 * 60 * 60);
+      if (duracion > 24) {
+        return `Día ${dia}: La jornada no puede exceder 24 horas`;
+      }
+
+      return null;
+    } catch (error) {
+      return `Día ${dia}: Error validando horas - ${error.message}`;
+    }
   }
 
   async verificarEntidades(data, transaction) {
@@ -496,17 +1726,45 @@ class RecargoController {
     }
   }
 
+  convertirATimeFormat(hora) {
+    if (typeof hora === 'string' && hora.includes(':')) {
+      // Ya está en formato HH:MM
+      return hora.length === 5 ? `${hora}:00` : hora;
+    }
+
+    // Convertir de decimal a HH:MM:SS
+    const horas = Math.floor(parseFloat(hora));
+    const minutos = Math.round((parseFloat(hora) - horas) * 60);
+
+    return `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}:00`;
+  }
+
+  calcularDiferenciaHoras(horaInicio, horaFin) {
+    const inicio = new Date(`1970-01-01T${horaInicio}`);
+    const fin = new Date(`1970-01-01T${horaFin}`);
+    const diferencia = (fin - inicio) / (1000 * 60 * 60); // Convertir a horas
+    return Math.max(0, diferencia);
+  }
+
   procesarDiasLaborales(diasLaborales) {
     return diasLaborales.map(dia => {
-      const horaInicio = parseFloat(dia.horaInicio);
-      const horaFin = parseFloat(dia.horaFin);
-      const totalHoras = horaFin - horaInicio;
+      // Convertir horas a formato decimal (números)
+      const horaInicio = this.convertirADecimal(dia.horaInicio);
+      const horaFin = this.convertirADecimal(dia.horaFin);
+      const totalHoras = horaFin - horaInicio >= 0 ? horaFin - horaInicio : (horaFin + 24) - horaInicio;
+
+      // Generar fecha completa del día
+      const fecha = new Date(parseInt(dia.año || new Date().getFullYear()),
+        parseInt(dia.mes || new Date().getMonth()),
+        parseInt(dia.dia));
 
       return {
         dia: parseInt(dia.dia),
-        hora_inicio: horaInicio,
-        hora_fin: horaFin,
-        total_horas: totalHoras,
+        fecha: fecha.toISOString().split('T')[0], // YYYY-MM-DD
+        hora_inicio: horaInicio, // Formato decimal (ej: 10.0)
+        hora_fin: horaFin,       // Formato decimal (ej: 13.0)
+        total_horas: parseFloat(totalHoras.toFixed(4)),
+        horas_ordinarias: Math.min(totalHoras, 8), // Máximo 8 horas ordinarias
         hed: parseFloat(dia.hed || 0),
         hen: parseFloat(dia.hen || 0),
         hefd: parseFloat(dia.hefd || 0),
@@ -515,9 +1773,35 @@ class RecargoController {
         rd: parseFloat(dia.rd || 0),
         es_festivo: Boolean(dia.es_festivo),
         es_domingo: Boolean(dia.es_domingo),
+        es_dia_laborable: !Boolean(dia.es_festivo) && !Boolean(dia.es_domingo),
         observaciones: dia.observaciones || null
       };
     });
+  }
+
+  // Función auxiliar para convertir a decimal
+  convertirADecimal(hora) {
+    if (typeof hora === 'number') {
+      return parseFloat(hora);
+    }
+
+    if (typeof hora === 'string') {
+      // Si viene como "10.00" o "10"
+      if (hora.includes('.')) {
+        return parseFloat(hora);
+      }
+      // Si viene como "10:00" o "10:00:00"
+      if (hora.includes(':')) {
+        const partes = hora.split(':');
+        const horas = parseInt(partes[0]);
+        const minutos = parseInt(partes[1] || 0);
+        return horas + (minutos / 60);
+      }
+      // Si viene como string numérico "10"
+      return parseFloat(hora);
+    }
+
+    return 0;
   }
 
   calcularTotales(diasLaborales) {

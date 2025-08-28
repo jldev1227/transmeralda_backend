@@ -95,14 +95,16 @@ exports.getEmpresaById = async (req, res) => {
 // Obtener datos básicos de empresa
 exports.getEmpresasBasicos = async (req, res) => {
   try {
-    const empresasBasicos = await Empresa.findAll({
-      attributes: ['id', 'nit', 'nombre'],
+    const empresas = await Empresa.findAll({
+      attributes: ['id', 'nombre', 'nit'],
       order: [['nombre', 'ASC']]
     });
 
+    const empresasOrdenados = empresas.sort((a, b) => a.nombre.localeCompare(b.nombre))
+
     return res.status(200).json({
       success: true,
-      data: empresasBasicos
+      data: empresasOrdenados
     });
   } catch (error) {
     console.error('Error al obtener datos básicos de empresas:', error);
