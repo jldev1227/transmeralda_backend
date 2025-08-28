@@ -7,7 +7,7 @@ module.exports = (sequelize) => {
     
     // Verificar si el recargo es editable
     esEditable() {
-      return this.estado === 'activo' || this.estado === 'borrador';
+      return this.estado === 'pendiente' || this.estado === 'liquidada';
     }
   }
 
@@ -198,8 +198,8 @@ module.exports = (sequelize) => {
 
     // CONTROL DE ESTADO
     estado: {
-      type: DataTypes.ENUM('borrador', 'activo', 'procesado', 'anulado'),
-      defaultValue: 'activo',
+      type: DataTypes.ENUM( 'pendiente', 'liquidada', 'facturada'),
+      defaultValue: 'pendiente',
       allowNull: false,
       comment: 'Estado actual del recargo',
     },
