@@ -10,30 +10,36 @@ const {
   Anticipo,
   Empresa,
   ConfiguracionLiquidacion,
+  RecargoPlanilla,
+  DiaLaboralPlanilla,
+  DetalleRecargosDia,
+  TipoRecargo,
+  ConfiguracionSalario
 } = require("../models");
+const { Op } = require("sequelize")
 
 // Obtener todas las liquidaciones
 exports.obtenerLiquidaciones = async (req, res) => {
   try {
     const liquidaciones = await Liquidacion.findAll({
       include: [
-      { model: Conductor, as: "conductor" },
-      { model: Vehiculo, as: "vehiculos" },
-      { model: Bonificacion, as: "bonificaciones" },
-      { model: Mantenimiento, as: "mantenimientos" },
-      { model: Pernote, as: "pernotes" },
-      { model: Recargo, as: "recargos", include: [{ model: Empresa, as: "empresa" }] },
-      { model: Anticipo, as: "anticipos" },
-      {
-        model: User,
-        as: "creadoPor",
-        attributes: ["id", "nombre", "correo"],
-      },
-      {
-        model: User,
-        as: "liquidadoPor",
-        attributes: ["id", "nombre", "correo"],
-      },
+        { model: Conductor, as: "conductor" },
+        { model: Vehiculo, as: "vehiculos" },
+        { model: Bonificacion, as: "bonificaciones" },
+        { model: Mantenimiento, as: "mantenimientos" },
+        { model: Pernote, as: "pernotes" },
+        { model: Recargo, as: "recargos", include: [{ model: Empresa, as: "empresa" }] },
+        { model: Anticipo, as: "anticipos" },
+        {
+          model: User,
+          as: "creadoPor",
+          attributes: ["id", "nombre", "correo"],
+        },
+        {
+          model: User,
+          as: "liquidadoPor",
+          attributes: ["id", "nombre", "correo"],
+        },
       ],
     });
 
@@ -60,11 +66,11 @@ exports.obtenerLiquidacionPorId = async (req, res) => {
     if (id === "configuracion") {
       return res.status(400).json({
         success: false,
-        message:
-          "Ruta no válida. Utilice /liquidaciones/configuracion en su lugar.",
+        message: "Ruta no válida. Utilice /liquidaciones/configuracion en su lugar.",
       });
     }
 
+    // ✅ PASO 1: Obtener la liquidación base
     const liquidacion = await Liquidacion.findByPk(id, {
       include: [
         { model: Conductor, as: "conductor" },
@@ -157,17 +163,268 @@ exports.obtenerLiquidacionPorId = async (req, res) => {
       });
     }
 
+    // ✅ PASO 2: Obtener configuraciones de salario
+    const configuracionesSalario = await obtenerConfiguracionesSalario(liquidacion.periodo_start, liquidacion.periodo_end);
+
+    // ✅ PASO 3: Obtener recargos planilla del conductor en el período
+    const recargosDelPeriodo = await obtenerRecargosPlanillaPorPeriodo(
+      liquidacion.conductor.id,
+      liquidacion.periodo_start,
+      liquidacion.periodo_end
+    );
+
+    console.log(`🔍 Encontrados ${recargosDelPeriodo.length} recargos planilla para el período`);
+
+    // ✅ PASO 4: Procesar y filtrar días dentro del período con configuración salarial
+    const recargosProcessados = await procesarRecargosPorPeriodoConSalarios(
+      recargosDelPeriodo,
+      liquidacion.periodo_start,
+      liquidacion.periodo_end,
+      configuracionesSalario
+    );
+
+    // ✅ PASO 5: Agregar los recargos planilla y configuraciones a la respuesta
+    const liquidacionCompleta = {
+      ...liquidacion.toJSON(),
+      configuraciones_salario: configuracionesSalario,
+      recargos_planilla: {
+        periodo_start: liquidacion.periodo_start,
+        periodo_end: liquidacion.periodo_end,
+        total_recargos: recargosProcessados.length,
+        total_dias_laborados: recargosProcessados.reduce((total, recargo) =>
+          total + recargo.dias_laborales.length, 0),
+        total_horas_trabajadas: recargosProcessados.reduce((total, recargo) =>
+          total + (parseFloat(recargo.total_horas) || 0), 0),
+        recargos: recargosProcessados
+      }
+    };
+
     res.status(200).json({
       success: true,
-      data: liquidacion,
+      data: liquidacionCompleta,
     });
+
   } catch (error) {
-    console.error("Error al obtener liquidación:", error);
+    console.error("❌ Error al obtener liquidación:", error);
     res.status(500).json({
       success: false,
       message: "Error al obtener liquidación",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
+  }
+};
+
+const obtenerRecargosPlanillaPorPeriodo = async (conductorId, periodoStart, periodoEnd) => {
+  try {
+    // Convertir fechas de período a objetos Date para comparación
+    const fechaInicio = new Date(periodoStart);
+    const fechaFin = new Date(periodoEnd);
+    // Extraer años y meses del período para optimizar la consulta
+    const añoInicio = fechaInicio.getFullYear();
+    const mesInicio = fechaInicio.getMonth() + 1;
+    const añoFin = fechaFin.getFullYear();
+    const mesFin = fechaFin.getMonth() + 1;
+    // ✅ CONSTRUIR WHERE CLAUSE PARA AÑOS Y MESES
+    const whereClause = {
+      conductor_id: conductorId,
+      estado: 'activo',
+      [Op.or]: []
+    };
+    // Agregar condiciones para todos los meses del período
+    for (let año = añoInicio; año <= añoFin; año++) {
+      const mesInicial = año === añoInicio ? mesInicio : 1;
+      const mesFinal = año === añoFin ? mesFin : 12;
+      for (let mes = mesInicial; mes <= mesFinal; mes++) {
+        whereClause[Op.or].push({
+          año: año,
+          mes: mes
+        });
+      }
+    }
+    // ✅ CONSULTA OPTIMIZADA SIMILAR A CANVAS
+    const recargos = await RecargoPlanilla.findAll({
+      where: whereClause,
+      attributes: [
+        'id', 'numero_planilla', 'mes', 'año',
+        'total_horas_trabajadas', 'total_dias_laborados',
+        'created_at'
+      ],
+      include: [
+        {
+          model: Conductor,
+          as: 'conductor',
+          attributes: ['id', 'nombre', 'apellido']
+        },
+        {
+          model: Vehiculo,
+          as: 'vehiculo',
+          attributes: ['id', 'placa']
+        },
+        {
+          model: Empresa,
+          as: 'empresa',
+          attributes: ['id', 'nombre', 'nit']
+        },
+        {
+          model: DiaLaboralPlanilla,
+          as: 'dias_laborales',
+          attributes: ['id', 'dia', 'hora_inicio', 'hora_fin', 'total_horas', 'es_domingo', 'es_festivo'],
+          include: [
+            {
+              model: DetalleRecargosDia,
+              as: 'detallesRecargos',
+              attributes: ['id', 'horas'],
+              include: [
+                {
+                  model: TipoRecargo,
+                  as: 'tipoRecargo',
+                  attributes: ['id', 'codigo', 'nombre', 'porcentaje', 'adicional']
+                }
+              ]
+            }
+          ],
+          order: [['dia', 'ASC']]
+        }
+      ],
+      order: [['año', 'DESC'], ['mes', 'DESC'], ['numero_planilla', 'ASC']],
+      raw: false,
+      nest: true
+    });
+    return recargos;
+  } catch (error) {
+    console.error('❌ Error obteniendo recargos planilla por período:', error);
+    throw error;
+  }
+};
+
+const obtenerConfiguracionesSalario = async (periodoStart, periodoEnd) => {
+  try {
+    const fechaInicio = new Date(periodoStart);
+    const fechaFin = new Date(periodoEnd);
+
+    const configuraciones = await ConfiguracionSalario.findAll({
+      where: {
+        activo: true,
+        vigencia_desde: {
+          [Op.lte]: fechaFin
+        },
+        [Op.or]: [
+          { vigencia_hasta: null },
+          { vigencia_hasta: { [Op.gte]: fechaInicio } }
+        ]
+      },
+      include: [
+        {
+          model: Empresa,
+          as: 'empresa',
+          attributes: ['id', 'nombre', 'nit'],
+          required: false
+        }
+      ],
+      order: [['vigencia_desde', 'DESC'], ['empresa_id', 'ASC']],
+      raw: false,
+      nest: true
+    });
+
+    return configuraciones;
+  } catch (error) {
+    console.error('❌ Error obteniendo configuraciones de salario:', error);
+    throw error;
+  }
+};
+
+// ✅ FUNCIÓN MEJORADA: Procesar recargos con cálculo de valores usando configuración salarial
+const procesarRecargosPorPeriodoConSalarios = async (recargos, periodoStart, periodoEnd, configuracionesSalario) => {
+  try {
+    console.log(`📊 Procesando ${recargos.length} recargos para el período con cálculo salarial`);
+
+    const fechaInicio = new Date(periodoStart);
+    const fechaFin = new Date(periodoEnd);
+
+    return recargos.map(recargo => {
+      // Buscar configuración salarial aplicable para esta empresa
+      const configSalario = configuracionesSalario.find(config =>
+        config.empresa_id === recargo.empresa.id || config.empresa_id === null
+      );
+
+      // ✅ FILTRAR DÍAS LABORALES DENTRO DEL PERÍODO
+      const diasDentroDelPeriodo = recargo.dias_laborales?.filter(dia => {
+        const fechaDia = new Date(recargo.año, recargo.mes - 1, dia.dia);
+        return fechaDia >= fechaInicio && fechaDia <= fechaFin;
+      }) || [];
+
+      console.log(`📅 Recargo ${recargo.numero_planilla}: ${diasDentroDelPeriodo.length}/${recargo.dias_laborales?.length || 0} días en período`);
+
+      // ✅ PROCESAR DÍAS CON CÁLCULO DE VALORES
+      const diasProcesados = diasDentroDelPeriodo.map(dia => {
+        const recargosDelDia = { hed: 0, hen: 0, hefd: 0, hefn: 0, rn: 0, rd: 0 };
+        const tiposRecargosDelDia = [];
+
+        dia.detallesRecargos?.forEach(detalle => {
+          const codigo = detalle.tipoRecargo.codigo.toLowerCase();
+          const horas = parseFloat(detalle.horas) || 0;
+          recargosDelDia[codigo] = horas;
+
+          // Calcular valor usando configuración salarial
+          let valorCalculado = 0;
+          if (configSalario && horas > 0) {
+            const valorHora = parseFloat(configSalario.valor_hora_trabajador);
+            const porcentaje = parseFloat(detalle.tipoRecargo.porcentaje) / 100;
+            valorCalculado = valorHora * porcentaje * horas;
+          }
+
+          tiposRecargosDelDia.push({
+            codigo: detalle.tipoRecargo.codigo,
+            nombre: detalle.tipoRecargo.nombre,
+            porcentaje: detalle.tipoRecargo.porcentaje,
+            categoria: detalle.tipoRecargo.categoria,
+            adicional: detalle.tipoRecargo.adicional,
+            horas: horas,
+            valor_calculado: valorCalculado
+          });
+        });
+
+        return {
+          id: dia.id,
+          dia: dia.dia,
+          mes: recargo.mes,
+          año: recargo.año,
+          fecha_completa: `${recargo.año}-${String(recargo.mes).padStart(2, '0')}-${String(dia.dia).padStart(2, '0')}`,
+          hora_inicio: dia.hora_inicio,
+          hora_fin: dia.hora_fin,
+          total_horas: dia.total_horas,
+          es_especial: dia.es_domingo || dia.es_festivo,
+          es_domingo: dia.es_domingo,
+          es_festivo: dia.es_festivo,
+          ...recargosDelDia,
+          tipos_recargos: tiposRecargosDelDia
+        };
+      });
+
+      const totalHorasDelPeriodo = diasProcesados.reduce((total, dia) =>
+        total + (parseFloat(dia.total_horas) || 0), 0);
+
+      return {
+        id: recargo.id,
+        planilla: recargo.numero_planilla,
+        conductor: recargo.conductor,
+        vehiculo: recargo.vehiculo,
+        empresa: recargo.empresa,
+        mes: recargo.mes,
+        año: recargo.año,
+        total_horas_original: recargo.total_horas_trabajadas,
+        total_dias_original: recargo.total_dias_laborados,
+        total_horas: totalHorasDelPeriodo,
+        total_dias: diasProcesados.length,
+        created_at: recargo.created_at,
+        dias_laborales: diasProcesados
+      };
+    })
+      .filter(recargo => recargo.dias_laborales.length > 0);
+
+  } catch (error) {
+    console.error('❌ Error procesando recargos por período con salarios:', error);
+    throw error;
   }
 };
 

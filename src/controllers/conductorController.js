@@ -479,10 +479,12 @@ exports.obtenerConductoresBasicos = async (req, res) => {
       attributes: ['id', 'nombre', 'apellido', "numero_identificacion", "salario_base"]
     });
 
+    const conductoresOrdenados = conductores.sort((a, b)=> a.nombre.localeCompare(b.nombre))
+
     res.status(200).json({
       success: true,
       count: conductores.length,
-      data: conductores
+      data: conductoresOrdenados
     });
   } catch (error) {
     console.error('Error al obtener conductores básicos:', error);
