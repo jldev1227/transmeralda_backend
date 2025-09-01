@@ -79,7 +79,6 @@ module.exports = (sequelize) => {
                 'true = pago por día completo (no aplica RD/HEFD/HEFN), ' +
                 'false = pago por recargos en horas (aplica RD/HEFD/HEFN)',
         },
-        // Campo para el modelo ConfiguracionSalario
         porcentaje_festivos: {
             type: DataTypes.DECIMAL(8, 2),
             defaultValue: 180.00,
@@ -97,6 +96,70 @@ module.exports = (sequelize) => {
             comment: 'Porcentaje a pagar por días festivos/dominicales cuando paga_dias_festivos = true. ' +
                 'Ejemplo: 75% significa que se paga 1.75 veces el valor del día normal. ' +
                 'Se aplica sobre el valor diario base (valor_hora_trabajador * horas_dia_base)',
+        },
+        seguridad_social: {
+            type: DataTypes.DECIMAL(5, 2),
+            defaultValue: 0.00,
+            allowNull: false,
+            validate: {
+                min: {
+                    args: [0],
+                    msg: 'El porcentaje de seguridad social no puede ser negativo'
+                },
+                max: {
+                    args: [100],
+                    msg: 'El porcentaje de seguridad social no puede exceder 100%'
+                }
+            },
+            comment: 'Porcentaje de seguridad social aplicable sobre el subtotal de recargos del conductor. ' +
+                'Ejemplo: 8.5 representa 8.5% de descuento por seguridad social',
+        },
+        administracion: {
+            type: DataTypes.DECIMAL(5, 2),
+            defaultValue: 0.00,
+            allowNull: false,
+            validate: {
+                min: {
+                    args: [0],
+                    msg: 'El porcentaje de administración no puede ser negativo'
+                },
+                max: {
+                    args: [100],
+                    msg: 'El porcentaje de administración no puede exceder 100%'
+                }
+            },
+            comment: 'Porcentaje de administración aplicable sobre el subtotal de recargos del conductor. ' +
+                'Ejemplo: 10.0 representa 10% de costo administrativo',
+        },
+        prestaciones_sociales: {
+            type: DataTypes.DECIMAL(5, 2),
+            defaultValue: 0.00,
+            allowNull: false,
+            validate: {
+                min: {
+                    args: [0],
+                    msg: 'El porcentaje de prestaciones sociales no puede ser negativo'
+                },
+                max: {
+                    args: [100],
+                    msg: 'El porcentaje de prestaciones sociales no puede exceder 100%'
+                }
+            },
+            comment: 'Porcentaje de prestaciones sociales aplicable sobre el subtotal de recargos del conductor. ' +
+                'Ejemplo: 8.0 representa 8% de costo administrativo',
+        },
+        prueba_antigeno_covid: {
+            type: DataTypes.DECIMAL(10, 2),
+            defaultValue: 0.00,
+            allowNull: false,
+            validate: {
+                min: {
+                    args: [0],
+                    msg: 'El precio de la prueba antígeno COVID no puede ser negativo'
+                }
+            },
+            comment: 'Precio de la prueba de antígeno COVID-19. ' +
+                'Valor monetario que se aplica por prueba realizada',
         },
         vigencia_desde: {
             type: DataTypes.DATE,

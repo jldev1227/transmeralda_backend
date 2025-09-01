@@ -244,7 +244,7 @@ const obtenerRecargosPlanillaPorPeriodo = async (conductorId, periodoStart, peri
     const recargos = await RecargoPlanilla.findAll({
       where: whereClause,
       attributes: [
-        'id', 'numero_planilla', 'mes', 'año',
+        'id', 'mes', 'año',
         'total_horas_trabajadas', 'total_dias_laborados',
         'created_at'
       ],
@@ -405,7 +405,6 @@ const procesarRecargosPorPeriodoConSalarios = async (recargos, periodoStart, per
 
       return {
         id: recargo.id,
-        planilla: recargo.numero_planilla,
         conductor: recargo.conductor,
         vehiculo: recargo.vehiculo,
         empresa: recargo.empresa,
@@ -1028,3 +1027,8 @@ exports.eliminarLiquidacion = async (req, res) => {
     });
   }
 };
+
+
+exports.obtenerConfiguracionesSalario = obtenerConfiguracionesSalario;
+exports.obtenerRecargosPlanillaPorPeriodo = obtenerRecargosPlanillaPorPeriodo;
+exports.procesarRecargosPorPeriodoConSalarios = procesarRecargosPorPeriodoConSalarios;
