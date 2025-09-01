@@ -12,6 +12,7 @@ const {
 const nodemailer = require("nodemailer");
 const PDFDocument = require("pdfkit");
 const path = require("path");
+const { procesarRecargosPorPeriodoConSalarios, obtenerRecargosPlanillaPorPeriodo, obtenerConfiguracionesSalario } = require("./liquidacionController");
 
 /**
  * Función para notificar al usuario a través de Socket.IO
@@ -291,13 +292,64 @@ pdfQueue.process(async (job, done) => {
       updateJobProgress(jobId, progress, userId);
 
       try {
-        // Generar PDF para la liquidación
-        const pdfBuffer = await generatePDF(liquidacion);
+        console.log(`📋 Procesando liquidación ${i + 1}/${liquidaciones.length} - ID: ${liquidacion.id}`);
+
+        // ✅ PASO 1: Obtener configuraciones de salario usando función auxiliar
+        const configuracionesSalario = await obtenerConfiguracionesSalario(
+          liquidacion.periodo_start,
+          liquidacion.periodo_end
+        );
+
+        console.log(`⚙️ Encontradas ${configuracionesSalario.length} configuraciones de salario para el período`);
+
+        // ✅ PASO 2: Obtener recargos planilla del conductor usando función auxiliar
+        let recargosDelPeriodo = [];
+        if (liquidacion.conductor?.id) {
+          recargosDelPeriodo = await obtenerRecargosPlanillaPorPeriodo(
+            liquidacion.conductor.id,
+            liquidacion.periodo_start,
+            liquidacion.periodo_end
+          );
+          console.log(`📊 Encontrados ${recargosDelPeriodo.length} recargos planilla para el conductor ${liquidacion.conductor.id}`);
+        } else {
+          console.warn(`⚠️ Liquidación ${liquidacion.id} no tiene conductor válido`);
+        }
+
+        // ✅ PASO 3: Procesar recargos con configuración salarial usando función auxiliar
+        let recargosProcessados = [];
+        if (recargosDelPeriodo.length > 0) {
+          recargosProcessados = await procesarRecargosPorPeriodoConSalarios(
+            recargosDelPeriodo,
+            liquidacion.periodo_start,
+            liquidacion.periodo_end,
+            configuracionesSalario
+          );
+          console.log(`🔄 Procesados ${recargosProcessados.length} recargos con cálculo salarial`);
+        }
+
+        // ✅ PASO 4: Construir liquidación completa para PDF
+        const liquidacionCompleta = {
+          ...liquidacion.toJSON(),
+          configuraciones_salario: configuracionesSalario,
+          recargos_planilla: {
+            periodo_start: liquidacion.periodo_start,
+            periodo_end: liquidacion.periodo_end,
+            total_recargos: recargosProcessados.length,
+            total_dias_laborados: recargosProcessados.reduce((total, recargo) =>
+              total + (recargo.dias_laborales?.length || 0), 0),
+            total_horas_trabajadas: recargosProcessados.reduce((total, recargo) =>
+              total + (parseFloat(recargo.total_horas) || 0), 0),
+            recargos: recargosProcessados
+          }
+        };
+
+        // ✅ PASO 5: Generar PDF con los datos completos
+        const pdfBuffer = await generatePDF(liquidacionCompleta);
 
         // Verificar que el buffer es válido
         if (!Buffer.isBuffer(pdfBuffer)) {
           console.error(
-            `Error: El PDF generado para liquidación ${liquidacion.id} no es un Buffer válido`
+            `❌ Error: El PDF generado para liquidación ${liquidacion.id} no es un Buffer válido`
           );
           throw new Error("El PDF generado no es válido");
         }
@@ -305,22 +357,42 @@ pdfQueue.process(async (job, done) => {
         // Verificar tamaño y contenido
         if (pdfBuffer.length <= 10) {
           console.error(
-            `Error: El PDF generado para liquidación ${liquidacion.id} está vacío o demasiado pequeño`
+            `❌ Error: El PDF generado para liquidación ${liquidacion.id} está vacío o demasiado pequeño`
           );
           throw new Error("El PDF generado está vacío o es muy pequeño");
         }
+
+        console.log(`✅ PDF generado exitosamente para liquidación ${liquidacion.id} (${pdfBuffer.length} bytes)`);
 
         pdfBuffers.push({
           data: pdfBuffer,
           filename: `${liquidacion.conductor?.numero_identificacion || ""}_${liquidacion.id}_${getMesyAño(liquidacion.periodo_end)}.pdf`,
           conductorId: liquidacion.conductor?.id,
           email: liquidacion.conductor?.email,
+          liquidacionId: liquidacion.id,
+          // Agregar información adicional para debugging si es necesario
+          recargos_procesados: recargosProcessados.length,
+          configuraciones_encontradas: configuracionesSalario.length
         });
+
       } catch (pdfError) {
         console.error(
-          `Error al generar PDF para liquidación ${liquidacion.id}:`,
+          `❌ Error al generar PDF para liquidación ${liquidacion.id}:`,
           pdfError
         );
+
+        // Opcional: Agregar más información del error para debugging
+        console.error(`📋 Detalles de la liquidación con error:`, {
+          id: liquidacion.id,
+          conductor_id: liquidacion.conductor?.id,
+          periodo_start: liquidacion.periodo_start,
+          periodo_end: liquidacion.periodo_end,
+          error_message: pdfError.message
+        });
+
+        // Opcional: Si quieres continuar con las demás liquidaciones en caso de error
+        // o si quieres que falle completamente, puedes decidir aquí
+        // throw pdfError; // Descomentar para que falle completamente
       }
     }
 
@@ -1139,6 +1211,11 @@ async function generatePDF(liquidacion) {
         size: "A4",
       });
 
+      const recargosAgrupados = agruparRecargos(
+        liquidacion.recargos_planilla,
+        liquidacion.configuraciones_salario,
+      );
+
       // Collect data in chunks
       const chunks = [];
       doc.on("data", (chunk) => chunks.push(chunk));
@@ -1171,13 +1248,6 @@ async function generatePDF(liquidacion) {
         const diferenciaDias = Math.round(diferenciaMs / (24 * 60 * 60 * 1000));
 
         return diferenciaDias + 1;
-      };
-
-      const formatToCOP = (amount) => {
-        if (typeof amount === "string") {
-          amount = parseFloat(amount);
-        }
-        return `$ ${amount.toLocaleString("es-CO")}`;
       };
 
       const formatDate = (dateStr) => {
@@ -1913,6 +1983,152 @@ async function generatePDF(liquidacion) {
           }
         );
 
+
+      // ============ SECCIÓN DE RECARGOS AGRUPADOS CORREGIDA ============
+      // Agregar esta lógica justo ANTES del doc.end() en tu función generatePDF:
+
+      if (recargosAgrupados && Array.isArray(recargosAgrupados) && recargosAgrupados.length > 0) {
+        console.log(`Iniciando procesamiento de ${recargosAgrupados.length} grupos de recargos`);
+
+        // Debug: mostrar estructura de los primeros grupos
+        recargosAgrupados.slice(0, 2).forEach((grupo, index) => {
+          console.log(`Grupo ${index}:`, {
+            keys: Object.keys(grupo || {}),
+            tieneRecargos: !!(grupo && (grupo.recargos || grupo.items || grupo.data)),
+            cantidadRecargos: (grupo && (grupo.recargos || grupo.items || grupo.data || []).length) || 0
+          });
+        });
+
+        // Calcular páginas necesarias
+        const resultado = agruparEnPaginas(doc, recargosAgrupados);
+
+        if (resultado.totalPaginas === 0) {
+          console.log('No hay páginas de recargos para generar');
+        } else {
+          console.log(`Se crearán ${resultado.totalPaginas} páginas adicionales para recargos`);
+          console.log('Distribución:', resultado.resumen);
+
+          // Generar cada página de recargos
+          resultado.paginas.forEach((gruposPagina, indicePagina) => {
+            // Agregar nueva página
+            doc.addPage();
+
+            // Título de la página
+            doc
+              .fontSize(16)
+              .fillColor("#2E8B57")
+              .font("Helvetica-Bold")
+              .text('HORAS EXTRAS Y RECARGOS', 40, 50, {
+                align: "center"
+              });
+
+            let yActual = 110;
+
+            // Procesar cada grupo en esta página
+            gruposPagina.forEach((grupo, indiceGrupo) => {
+              // Obtener los recargos del grupo
+              const recargosArray = grupo.recargos || grupo.items || grupo.data || [];
+
+              if (recargosArray.length === 0) {
+                console.warn(`Grupo ${indiceGrupo} no tiene recargos válidos`);
+                return;
+              }
+
+              yActual += 30;
+
+              // Encabezado de la tabla para este grupo
+              const tableWidth = doc.page.width - 80;
+              const col1Width = tableWidth * 0.6;
+              const col2Width = tableWidth * 0.2;
+              const col3Width = tableWidth * 0.2;
+
+              // Dibujar encabezado
+              doc.rect(40, yActual, col1Width, 25);
+              doc.rect(40 + col1Width, yActual, col2Width, 25);
+              doc.rect(40 + col1Width + col2Width, yActual, col3Width, 25);
+
+              doc
+                .font("Helvetica-Bold")
+                .fillAndStroke("#F3F8F5", "#E0E0E0")
+                .fontSize(11)
+                .fillColor("#2E8B57")
+                .text(`VEHÍCULO: ${grupo.vehiculo.placa}`, 45, yActual + 8)
+              yActual += 25;
+
+              // Dibujar cada recargo del grupo
+              recargosArray.forEach((recargo, indiceRecargo) => {
+                const esUltimo = indiceRecargo === recargosArray.length - 1 &&
+                  indiceGrupo === gruposPagina.length - 1;
+                yActual = drawRecargoRow(doc, recargo, yActual, esUltimo);
+              });
+
+              // Subtotal del grupo si tiene más de un recargo
+              if (recargosArray.length > 1) {
+                const subtotal = recargosArray.reduce((sum, r) => {
+                  const valor = r?.valor || r?.value || r?.amount || 0;
+                  return sum + parseFloat(valor);
+                }, 0);
+
+                doc.rect(40, yActual, tableWidth, 25).fillAndStroke("#F8F8F8", "#E0E0E0");
+
+                doc
+                  .font("Helvetica-Bold")
+                  .fontSize(11)
+                  .fillColor("#2E8B57")
+                  .text(`Subtotal ${tituloGrupo}`, 45, yActual + 8)
+                  .text(formatToCOP(subtotal), 40 + col1Width + col2Width + 5, yActual + 8, {
+                    width: col3Width - 10,
+                    align: 'center'
+                  });
+
+                yActual += 25;
+              }
+
+              // Espacio entre grupos
+              yActual += 20;
+            });
+
+            // Información adicional en el pie de página
+            doc
+              .fontSize(9)
+              .fillColor("#999999")
+              .font("Helvetica")
+              .text(
+                `Total grupos en esta página: ${gruposPagina.length}`,
+                40,
+                doc.page.height - 60
+              );
+
+            // Total general si es la última página
+            if (indicePagina === resultado.paginas.length - 1) {
+              const totalGeneral = recargosAgrupados.reduce((total, grupo) => {
+                const recargosArray = grupo.recargos || grupo.items || grupo.data || [];
+                return total + recargosArray.reduce((subtotal, recargo) => {
+                  const valor = recargo?.valor || recargo?.value || recargo?.amount || 0;
+                  return subtotal + parseFloat(valor);
+                }, 0);
+              }, 0);
+
+              doc
+                .fontSize(12)
+                .fillColor("#2E8B57")
+                .font("Helvetica-Bold")
+                .text(
+                  `TOTAL GENERAL RECARGOS: ${formatToCOP(totalGeneral)}`,
+                  40,
+                  doc.page.height - 40,
+                  {
+                    align: 'right',
+                    width: doc.page.width - 80
+                  }
+                );
+            }
+          });
+        }
+      } else {
+        console.log('No se encontraron recargos agrupados para procesar');
+      }
+
       // Finish the PDF
       doc.end();
     } catch (error) {
@@ -2132,3 +2348,550 @@ function drawTableRow(doc, label, value, options = {}) {
   // Update document Y position
   doc.y = currentY + rowHeight;
 }
+
+const agruparRecargos = (
+  recargo,
+  configuraciones_salario,
+) => {
+  const grupos = {};
+
+  // Función auxiliar para crear clave única
+  const crearClave = (recargo) =>
+    `${recargo.vehiculo.placa}-${recargo.mes}-${recargo.año}-${recargo.empresa.nit}`;
+
+  // Función auxiliar para obtener configuración salarial
+  const obtenerConfiguracion = (empresaId) => {
+    if (!configuraciones_salario) {
+      console.warn("No hay configuraciones de salario disponibles");
+
+      return null;
+    }
+
+    // Buscar configuración específica de la empresa
+    const configEmpresa = configuraciones_salario.find(
+      (config) =>
+        config.empresa_id === empresaId && config.activo === true,
+    );
+
+    if (configEmpresa) {
+      return configEmpresa;
+    }
+
+    // Buscar configuración base del sistema
+    const configBase = configuraciones_salario.find(
+      (config) =>
+        config.empresa_id === null && config.activo === true,
+    );
+
+    if (configBase) {
+      return configBase;
+    }
+
+    return null;
+  };
+
+  // Función auxiliar para inicializar grupo
+  const inicializarGrupo = (recargo) => {
+    const configuracion = obtenerConfiguracion(recargo.empresa.id);
+
+    if (!configuracion) return;
+
+    const grupo = {
+      vehiculo: recargo.vehiculo,
+      mes: recargo.mes,
+      año: recargo.año,
+      empresa: recargo.empresa,
+      recargos: [],
+      configuracion_salarial: configuracion,
+      valor_hora_base:
+        configuracion.salario_basico / configuracion.horas_mensuales_base || 0,
+      totales: {
+        total_dias: 0,
+        total_horas: 0,
+        total_hed: 0,
+        total_rn: 0,
+        total_hen: 0,
+        total_rd: 0,
+        total_hefd: 0,
+        total_hefn: 0,
+        valor_total: 0,
+        total_dias_festivos: 0,
+        total_dias_domingos: 0,
+      },
+      dias_laborales_unificados: [],
+      tipos_recargos_consolidados: [],
+    };
+
+    return grupo;
+  };
+
+  // Función auxiliar para procesar día laboral
+  const procesarDiaLaboral = (grupo, dia) => {
+    // Contar días especiales
+    if (dia.es_festivo) {
+      grupo.totales.total_dias_festivos++;
+    }
+    if (dia.es_domingo) {
+      grupo.totales.total_dias_domingos++;
+    }
+
+    // Buscar si ya existe un día con la misma fecha
+    const diaExistente = grupo.dias_laborales_unificados.find(
+      (d) => d.dia === dia.dia,
+    );
+
+    if (diaExistente) {
+      // Sumar horas al día existente
+      const camposHoras = [
+        "hed",
+        "rn",
+        "hen",
+        "rd",
+        "hefd",
+        "hefn",
+        "total_horas",
+      ];
+
+      camposHoras.forEach((campo) => {
+        const valorAnterior = diaExistente[campo] || 0;
+        const valorNuevo = dia[campo] || 0;
+
+        diaExistente[campo] = valorAnterior + valorNuevo;
+      });
+    } else {
+      // Agregar nuevo día con valores por defecto
+      const nuevoDia = {
+        ...dia,
+        hed: dia.hed || 0,
+        rn: dia.rn || 0,
+        hen: dia.hen || 0,
+        rd: dia.rd || 0,
+        hefd: dia.hefd || 0,
+        hefn: dia.hefn || 0,
+      };
+
+      grupo.dias_laborales_unificados.push(nuevoDia);
+    }
+  };
+
+  // Función auxiliar para calcular valor por hora con recargo
+  const calcularValorRecargo = (
+    valorBase,
+    porcentaje,
+    horas,
+    esAdicional,
+    esValorFijo = false,
+    valorFijo = 0,
+  ) => {
+    if (esValorFijo && valorFijo > 0) {
+      const valorFijoRedondeado = Number(valorFijo);
+      const valorHoraConRecargo = valorFijoRedondeado / horas; // Calcular valor por hora
+
+      return {
+        valorTotal: valorFijoRedondeado,
+        valorHoraConRecargo: Number(valorHoraConRecargo),
+      };
+    }
+
+    let valorHoraConRecargo;
+    let valorTotal;
+
+    if (esAdicional) {
+      // MODO ADICIONAL: valor_hora * (1 + porcentaje/100)
+      valorHoraConRecargo = valorBase * (1 + porcentaje / 100);
+
+      // Redondear el valor por hora
+      valorHoraConRecargo = Number(valorHoraConRecargo);
+      valorTotal = valorHoraConRecargo * horas;
+    } else {
+      // MODO MULTIPLICATIVO: valor_hora * (porcentaje/100)
+      valorHoraConRecargo = valorBase * (porcentaje / 100);
+
+      // Redondear el valor por hora
+      valorHoraConRecargo = Number(valorHoraConRecargo);
+      valorTotal = valorHoraConRecargo * horas;
+    }
+
+    // Redondear también el valor total
+    valorTotal = Number(valorTotal);
+
+    return { valorTotal, valorHoraConRecargo };
+  };
+
+  const consolidarTipoRecargo = (grupo, tipo) => {
+    const configSalarial = grupo.configuracion_salarial;
+    const pagaDiasFestivos = configSalarial?.paga_dias_festivos || false;
+
+    // Excluir recargos dominicales si la configuración paga días festivos
+    if (pagaDiasFestivos && tipo.codigo === "RD") {
+      return; // Saltar este tipo de recargo
+    }
+
+    const tipoExistente = grupo.tipos_recargos_consolidados.find(
+      (t) => t.codigo === tipo.codigo,
+    );
+
+    const valorHoraBase = grupo.valor_hora_base;
+    const porcentaje = tipo.porcentaje || 0;
+    const horas = tipo.horas || 0;
+    const esAdicional = tipo.adicional || false;
+
+    const resultado = calcularValorRecargo(
+      valorHoraBase,
+      porcentaje,
+      horas,
+      esAdicional,
+    );
+
+    if (tipoExistente) {
+      // Sumar horas y recalcular total
+      tipoExistente.horas += horas;
+
+      // Recalcular el valor total con las nuevas horas
+      const nuevoResultado = calcularValorRecargo(
+        valorHoraBase,
+        porcentaje,
+        tipoExistente.horas,
+        esAdicional,
+      );
+
+      tipoExistente.valor_calculado = nuevoResultado.valorTotal;
+      tipoExistente.valor_hora_con_recargo = nuevoResultado.valorHoraConRecargo;
+      tipoExistente.adicional = esAdicional;
+    } else {
+      // Crear nuevo tipo de recargo
+      const nuevoTipo = {
+        ...tipo, // Spread todas las propiedades del tipo original
+        codigo: tipo.codigo,
+        nombre: tipo.nombre,
+        porcentaje: porcentaje,
+        horas: horas,
+        valor_calculado: resultado.valorTotal,
+        valor_hora_base: valorHoraBase,
+        valor_hora_con_recargo: resultado.valorHoraConRecargo,
+        adicional: esAdicional,
+      };
+
+      grupo.tipos_recargos_consolidados.push(nuevoTipo);
+    }
+  };
+
+  // Función auxiliar para agregar bono festivo
+  const agregarBonoFestivo = (grupo) => {
+    const configSalarial = grupo.configuracion_salarial;
+    const totalDiasEspeciales =
+      grupo.totales.total_dias_festivos + grupo.totales.total_dias_domingos;
+
+    if (!configSalarial?.paga_dias_festivos || totalDiasEspeciales === 0) {
+      return;
+    }
+
+    const salarioBasico =
+      parseFloat(configSalarial.salario_basico.toString()) || 0;
+    const porcentajeFestivos =
+      parseFloat(configSalarial.porcentaje_festivos?.toString() || "0") || 0;
+
+    const valorDiarioBase = salarioBasico / 30;
+
+    // FÓRMULA: valorDiarioBase * (porcentaje/100)
+    const valorDiarioConRecargoTemp =
+      valorDiarioBase * (porcentajeFestivos / 100);
+
+    // Redondear el valor diario con recargo
+    const valorDiarioConRecargo = Number(valorDiarioConRecargoTemp);
+
+    const valorTotalDiasFestivos = totalDiasEspeciales * valorDiarioConRecargo;
+
+    const bonoFestivo = {
+      id: `bono_festivo_${grupo.empresa.nit}_${grupo.mes}_${grupo.año}`,
+      codigo: "BONO_FESTIVO",
+      nombre: "Bono Días Festivos/Dominicales",
+      descripcion: "Bono por días festivos y dominicales trabajados",
+      subcategoria: "bonos",
+      porcentaje: porcentajeFestivos,
+      adicional: false,
+      es_valor_fijo: false,
+      valor_fijo: null,
+      aplica_festivos: true,
+      aplica_domingos: true,
+      aplica_nocturno: null,
+      aplica_diurno: null,
+      orden_calculo: 999,
+      es_hora_extra: false,
+      requiere_horas_extras: false,
+      limite_horas_diarias: null,
+      activo: true,
+      vigencia_desde: new Date().toISOString(),
+      vigencia_hasta: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      horas: totalDiasEspeciales,
+      valor_hora_base: valorDiarioBase,
+      valor_hora_con_recargo: valorDiarioConRecargo,
+      valor_calculado: valorTotalDiasFestivos,
+      es_bono_festivo: true,
+    };
+
+    grupo.tipos_recargos_consolidados.push(bonoFestivo);
+  };
+
+  // Función auxiliar para calcular totales finales
+  const calcularTotalesFinales = (grupo) => {
+    const configSalarial = grupo.configuracion_salarial;
+    const pagaDiasFestivos = configSalarial?.paga_dias_festivos || false;
+
+    // Calcular totales de horas por tipo
+    const campos = ["hed", "rn", "hen", "hefd", "hefn"];
+
+    campos.forEach((campo) => {
+      const total = grupo.dias_laborales_unificados.reduce(
+        (sum, dia) => sum + (dia[campo] || 0),
+        0,
+      );
+
+      // Usar key assertion para acceso dinámico a propiedades
+      (grupo.totales)[`total_${campo}`] = total;
+    });
+
+    // Solo sumar RD si NO se pagan días festivos
+    grupo.totales.total_rd = pagaDiasFestivos
+      ? 0
+      : grupo.dias_laborales_unificados.reduce(
+        (sum, dia) => sum + (dia.rd || 0),
+        0,
+      );
+
+    // Agregar bono festivo si aplica
+    agregarBonoFestivo(grupo);
+
+    // Calcular valor total
+    grupo.totales.valor_total = grupo.tipos_recargos_consolidados.reduce(
+      (sum, tipo) => sum + tipo.valor_calculado,
+      0,
+    );
+
+    // Ordenar resultados
+    grupo.dias_laborales_unificados.sort(
+      (a, b) => new Date(a.dia).getTime() - new Date(b.dia).getTime(),
+    );
+
+    grupo.tipos_recargos_consolidados.sort((a, b) => {
+      if (a.es_bono_festivo) return 1;
+      if (b.es_bono_festivo) return -1;
+
+      return a.porcentaje - b.porcentaje;
+    });
+  };
+
+  recargo.recargos.forEach((detalles) => {
+    const clave = crearClave(detalles);
+
+    // Crear grupo si no existe
+    if (!grupos[clave]) {
+      grupos[clave] = inicializarGrupo(detalles);
+    }
+
+    // Agregar detalles al grupo
+    grupos[clave].recargos.push(detalles);
+
+    // Acumular totales básicos
+    grupos[clave].totales.total_dias += detalles.total_dias || 0;
+    grupos[clave].totales.total_horas += detalles.total_horas || 0;
+
+    // Procesar días laborales
+    if (detalles.dias_laborales && detalles.dias_laborales.length > 0) {
+      detalles.dias_laborales.forEach((dia) => {
+        procesarDiaLaboral(grupos[clave], dia);
+
+        // Procesar tipos de recargos del día
+        if (dia.tipos_recargos && dia.tipos_recargos.length > 0) {
+          dia.tipos_recargos.forEach((tipo) => {
+            consolidarTipoRecargo(grupos[clave], tipo);
+          });
+        }
+      });
+    }
+  });
+
+  // Calcular totales finales para cada grupo
+  Object.values(grupos).forEach((grupo, index) => {
+    calcularTotalesFinales(grupo);
+  });
+
+  const resultado = Object.values(grupos);
+
+  return resultado;
+};
+
+// Función para calcular la altura que ocupará un grupo en el PDF
+const calcularAlturaGrupoPDF = (doc, grupo) => {
+  let altura = 0;
+
+  // Validar que el grupo existe y tiene la estructura esperada
+  if (!grupo) {
+    console.warn('Grupo undefined o null encontrado');
+    return 50; // Altura mínima por seguridad
+  }
+
+  // Altura del título del grupo
+  altura += 35; // Espacio para título del grupo con margen
+
+  // Validar que existe la propiedad de recargos (puede ser 'recargos' o algún otro nombre)
+  const recargosArray = grupo.recargos || grupo.items || grupo.data || [];
+
+  // Validar que es un array
+  if (!Array.isArray(recargosArray)) {
+    console.warn('Los recargos no son un array:', grupo);
+    return altura + 25; // Altura básica si no hay recargos válidos
+  }
+
+  // Altura de cada item en el grupo
+  recargosArray.forEach(recargo => {
+    if (!recargo) return; // Saltar items null/undefined
+
+    // Altura base por item (considerando descripción)
+    altura += 25;
+
+    // Si la descripción es muy larga, agregar altura adicional
+    const descripcion = recargo.descripcion || recargo.description || '';
+    if (descripcion.length > 60) {
+      const lineasExtra = Math.ceil((descripcion.length - 60) / 50);
+      altura += lineasExtra * 15;
+    }
+  });
+
+  // Espacio adicional entre grupos
+  altura += 20;
+
+  return altura;
+};
+
+// Función principal para agrupar contenido en páginas
+const agruparEnPaginas = (doc, recargosAgrupados) => {
+  // Validación inicial
+  if (!recargosAgrupados || !Array.isArray(recargosAgrupados)) {
+    console.warn('recargosAgrupados no es un array válido:', recargosAgrupados);
+    return {
+      paginas: [],
+      totalPaginas: 0,
+      resumen: {
+        totalGrupos: 0,
+        gruposPorPagina: []
+      }
+    };
+  }
+
+  // Filtrar grupos válidos
+  const gruposValidos = recargosAgrupados.filter(grupo => {
+    if (!grupo) return false;
+
+    const recargosArray = grupo.recargos || grupo.items || grupo.data || [];
+    return Array.isArray(recargosArray) && recargosArray.length > 0;
+  });
+
+  console.log(`Procesando ${gruposValidos.length} grupos válidos de ${recargosAgrupados.length} total`);
+
+  if (gruposValidos.length === 0) {
+    return {
+      paginas: [],
+      totalPaginas: 0,
+      resumen: {
+        totalGrupos: 0,
+        gruposPorPagina: []
+      }
+    };
+  }
+
+  const paginas = [];
+  let paginaActual = [];
+  let alturaAcumulada = 100; // Margen superior + título principal
+  const alturaMaximaPagina = 680; // Altura disponible considerando márgenes
+
+  gruposValidos.forEach((grupo) => {
+    const alturaGrupo = calcularAlturaGrupoPDF(doc, grupo);
+
+    // Si agregar este grupo excede la altura de página
+    if (
+      alturaAcumulada + alturaGrupo > alturaMaximaPagina &&
+      paginaActual.length > 0
+    ) {
+      // Cerrar página actual y comenzar nueva
+      paginas.push([...paginaActual]);
+      paginaActual = [grupo];
+      alturaAcumulada = 100 + alturaGrupo; // Título de página + grupo actual
+    } else {
+      // Agregar a página actual
+      paginaActual.push(grupo);
+      alturaAcumulada += alturaGrupo;
+    }
+  });
+
+  // Agregar última página si tiene contenido
+  if (paginaActual.length > 0) {
+    paginas.push([...paginaActual]);
+  }
+
+  return {
+    paginas,
+    totalPaginas: paginas.length,
+    resumen: {
+      totalGrupos: gruposValidos.length,
+      gruposPorPagina: paginas.map(p => p.length)
+    }
+  };
+};
+
+// Función corregida para dibujar una fila de recargo
+const drawRecargoRow = (doc, recargo, yPosition, isLast = false) => {
+  const tableWidth = doc.page.width - 80;
+  const col1Width = tableWidth * 0.6; // Descripción
+  const col2Width = tableWidth * 0.2; // Días/Cantidad
+  const col3Width = tableWidth * 0.2; // Valor
+  const rowHeight = 25;
+
+  // Validar que recargo existe
+  if (!recargo) {
+    console.warn('Recargo undefined encontrado');
+    return yPosition + rowHeight;
+  }
+
+  // Dibujar bordes
+  doc.rect(40, yPosition, col1Width, rowHeight).stroke("#E0E0E0");
+  doc.rect(40 + col1Width, yPosition, col2Width, rowHeight).stroke("#E0E0E0");
+  doc.rect(40 + col1Width + col2Width, yPosition, col3Width, rowHeight).stroke("#E0E0E0");
+
+  // Contenido con validaciones
+  const descripcion = recargo.descripcion || recargo.description || recargo.concepto || 'Sin descripción';
+  const cantidad = recargo.dias || recargo.cantidad || recargo.qty || '';
+  const valor = recargo.valor || recargo.value || recargo.amount || 0;
+
+  doc
+    .fillColor("#000000")
+    .font("Helvetica")
+    .fontSize(10)
+    .text(descripcion, 45, yPosition + 8, {
+      width: col1Width - 10,
+      ellipsis: true
+    });
+
+  // Días o cantidad
+  doc.text(cantidad.toString(), 40 + col1Width + 5, yPosition + 8, {
+    width: col2Width - 10,
+    align: 'center'
+  });
+
+  // Valor (usando la función formatToCOP que ya tienes)
+  doc.text(formatToCOP(valor), 40 + col1Width + col2Width + 5, yPosition + 8, {
+    width: col3Width - 10,
+    align: 'center'
+  });
+
+  return yPosition + rowHeight;
+};
+
+const formatToCOP = (amount) => {
+  if (typeof amount === "string") {
+    amount = parseFloat(amount);
+  }
+  return `$ ${amount.toLocaleString("es-CO")}`;
+};

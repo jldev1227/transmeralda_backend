@@ -1270,7 +1270,7 @@ class RecargoController {
         where,
         attributes: [
           'id', 'numero_planilla', 'mes', 'año',
-          'total_horas_trabajadas', 'total_dias_laborados',
+          'total_horas_trabajadas', 'total_dias_laborados', 'estado',
           'created_at'
         ],
         include: [
@@ -1325,6 +1325,7 @@ class RecargoController {
           empresa: recargo.empresa,
           total_horas: recargo.total_horas_trabajadas,
           total_dias: recargo.total_dias_laborados,
+          estado: recargo.estado,
 
           // ✅ DÍAS CON RECARGOS DESDE DETALLES NORMALIZADOS
           dias_laborales: recargo.dias_laborales?.map(dia => {
