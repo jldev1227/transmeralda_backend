@@ -1313,6 +1313,14 @@ async function generatePDF(liquidacion) {
         }
       }
 
+      function formatearHora(hora) {
+        if (!hora) return "";
+
+        return hora
+          .replace(/\./g, ":") // Cambiar puntos por dos puntos
+          .replace(/:50/g, ":30"); // Cambiar :50 por :30
+      };
+
       // Filter recargos data
       const recargosParex =
         liquidacion?.recargos?.filter(
@@ -1348,7 +1356,7 @@ async function generatePDF(liquidacion) {
         .fontSize(13)
         .fillColor("#2E8B57")
         .font("Helvetica-Bold")
-        .text("TRANSPORTES Y SERVICIOS ESMERALDA S.A.S ZOMAC", {
+        .text("TRANSPORTES Y SERVICIOS ESMERALDA S.A.S", {
           width: 300,
         });
 
@@ -1534,10 +1542,10 @@ async function generatePDF(liquidacion) {
       // CONCEPTS TABLE
       // Table header
       const conceptsTop = doc.y;
-      const col1Width = tableWidth * 0.3; // Reduce ligeramente
-      const col2Width = tableWidth * 0.35; // Aumenta
-      const col3Width = tableWidth * 0.175;
-      const col4Width = tableWidth * 0.175; // Asegura que sea suficiente
+      const col1Width = tableWidth * 0.28; // Reduce ligeramente
+      const col2Width = tableWidth * 0.44; // Aumenta
+      const col3Width = tableWidth * 0.14;
+      const col4Width = tableWidth * 0.14; // Asegura que sea suficiente
 
       // Draw concepts table header
       doc.rect(40, conceptsTop, col1Width, 26);
@@ -1614,11 +1622,7 @@ async function generatePDF(liquidacion) {
         // Observation with smaller font size and support for multiple lines
         doc
           .fontSize(observationFontSize)
-          .text(observation, 40 + col1Width + 8, currentY + 6, {
-            width: col2Width - 16,
-            align: "left",
-            lineGap: 2,
-          });
+          .text(observation, 40 + col1Width + 8, currentY + 6);
 
         // Quantity column
         doc
@@ -1689,14 +1693,9 @@ async function generatePDF(liquidacion) {
       // Recargos
       drawConceptRow(
         "Recargos",
+        "Ver recargos detallados más adelante",
         "",
-        recargosActualizados?.length || "0",
-        formatToCOP(
-          totalRecargosParex !== undefined &&
-            liquidacion.total_recargos !== undefined
-            ? liquidacion.total_recargos - totalRecargosParex
-            : liquidacion.total_recargos || 0
-        )
+        0
       );
 
       // Recargos PAREX if any
@@ -1706,8 +1705,8 @@ async function generatePDF(liquidacion) {
 
         drawConceptRow(
           "Recargos PAREX",
+          "Ver recargos detallados más adelante",
           "",
-          recargosParex.length,
           formatToCOP(totalRecargosParex),
           { isLastRow }
         );
@@ -2022,13 +2021,12 @@ async function generatePDF(liquidacion) {
                 align: "center"
               });
 
-            let yActual = 110;
+            let yActual = 50;
 
             // Procesar cada grupo en esta página
             gruposPagina.forEach((grupo, indiceGrupo) => {
               // Obtener los recargos del grupo
               const recargosArray = grupo.recargos || grupo.items || grupo.data || [];
-
               if (recargosArray.length === 0) {
                 console.warn(`Grupo ${indiceGrupo} no tiene recargos válidos`);
                 return;
@@ -2038,54 +2036,441 @@ async function generatePDF(liquidacion) {
 
               // Encabezado de la tabla para este grupo
               const tableWidth = doc.page.width - 80;
-              const col1Width = tableWidth * 0.6;
-              const col2Width = tableWidth * 0.2;
-              const col3Width = tableWidth * 0.2;
-
-              // Dibujar encabezado
-              doc.rect(40, yActual, col1Width, 25);
-              doc.rect(40 + col1Width, yActual, col2Width, 25);
-              doc.rect(40 + col1Width + col2Width, yActual, col3Width, 25);
+              // Dibujar UNA SOLA celda que ocupe todo el ancho de la tabla
+              doc.rect(40, yActual, tableWidth, 25)
+                .fillAndStroke("#2E8B57", "#E0E0E0");
 
               doc
                 .font("Helvetica-Bold")
-                .fillAndStroke("#F3F8F5", "#E0E0E0")
-                .fontSize(11)
-                .fillColor("#2E8B57")
+                .fontSize(10)
+                .fillColor("#fff")
+                // Texto izquierdo
                 .text(`VEHÍCULO: ${grupo.vehiculo.placa}`, 45, yActual + 8)
+                // Texto derecho
+                .text(`MES: ${new Date(grupo.año, grupo.mes - 1).toLocaleString("es-ES", {
+                  month: "long",
+                }).toUpperCase()}`, 40, yActual + 8, {
+                  width: tableWidth - 10,
+                  align: 'right',
+                });
+
               yActual += 25;
 
-              // Dibujar cada recargo del grupo
-              recargosArray.forEach((recargo, indiceRecargo) => {
-                const esUltimo = indiceRecargo === recargosArray.length - 1 &&
-                  indiceGrupo === gruposPagina.length - 1;
-                yActual = drawRecargoRow(doc, recargo, yActual, esUltimo);
+              // Información de la empresa - fila completa con fondo blanco y borde
+              const infoHeight = 60; // Altura para 3 líneas de texto
+
+              doc.rect(40, yActual, tableWidth, infoHeight)
+                .fillAndStroke("#ffffff", "#cccccc");
+
+              // Texto de la empresa
+              doc
+                .font("Helvetica-Bold")
+                .fontSize(11)
+                .fillColor("#000000")
+                .text("EMPRESA:", 45, yActual + 8)
+                .font("Helvetica")
+                .text(`${grupo.empresa.nombre} - NIT: ${grupo.empresa.nit}`, 105, yActual + 8);
+
+              // Valor/Hora Base
+              doc
+                .font("Helvetica")
+                .fontSize(11)
+                .fillColor("#666666")
+                .text(`Valor/Hora Base: $${Math.round(grupo.valor_hora_base).toLocaleString()}${grupo.configuracion_salarial?.empresa
+                  ? ` (${grupo.empresa.nombre})`
+                  : ''
+                  }`, 45, yActual + 42);
+
+              yActual += infoHeight;
+
+              // Encabezados de columnas
+              const totalColumnas = 10;
+              const anchoBase = (tableWidth / totalColumnas) + 2.7;
+
+              const colDia = anchoBase;
+              const colHorario = anchoBase * 1.5;
+              const colHoras = anchoBase;
+              const colHED = anchoBase;
+              const colRN = anchoBase;
+              const colHEN = anchoBase;
+              const colRD = anchoBase;
+              const colHEFD = anchoBase;
+              const colHEFN = anchoBase;
+
+              let xPos = 40;
+
+              // Dibujar celdas de encabezado
+              const encabezados = [
+                { texto: 'DÍA', ancho: colDia },
+                { texto: 'HORARIO', ancho: colHorario },
+                { texto: 'HORAS', ancho: colHoras },
+                { texto: 'HED', ancho: colHED },
+                { texto: 'RN', ancho: colRN },
+                { texto: 'HEN', ancho: colHEN },
+                { texto: 'RD', ancho: colRD },
+                { texto: 'HEFD', ancho: colHEFD },
+                { texto: 'HEFN', ancho: colHEFN }
+              ];
+
+              encabezados.forEach(encabezado => {
+                // 1. Dibujar el rectángulo de fondo
+                doc.rect(xPos, yActual, encabezado.ancho, 25)
+                  .fillAndStroke("#F3F8F5", "#E0E0E0")
+                  .stroke("#E0E0E0");
+
+                // 2. Agregar texto centrado
+                doc
+                  .font("Helvetica-Bold")
+                  .fontSize(10)
+                  .fillColor("#2E8B57")
+                  .text(
+                    encabezado.texto,
+                    xPos,
+                    yActual + 8,
+                    {
+                      width: encabezado.ancho,
+                      align: 'center'
+                    }
+                  );
+
+                xPos += encabezado.ancho;
               });
 
-              // Subtotal del grupo si tiene más de un recargo
-              if (recargosArray.length > 1) {
-                const subtotal = recargosArray.reduce((sum, r) => {
-                  const valor = r?.valor || r?.value || r?.amount || 0;
-                  return sum + parseFloat(valor);
-                }, 0);
+              yActual += 25;
 
-                doc.rect(40, yActual, tableWidth, 25).fillAndStroke("#F8F8F8", "#E0E0E0");
+              // Después de crear los encabezados, agregar las filas de datos
+              grupo.dias_laborales_unificados
+                ?.filter((dia) => dia)
+                .forEach((dia, diaIndex) => {
+                  // Verificar si necesitamos una nueva página
+                  if (yActual > doc.page.height - 100) {
+                    doc.addPage();
+                    yActual = 50; // Reset Y position
+                  }
+
+                  let xPos = 40;
+                  const rowHeight = 20;
+
+                  // Crear array con los datos de cada columna
+                  const datosColumnas = [
+                    { valor: dia.dia, ancho: colDia },
+                    { valor: `${formatearHora(dia.hora_inicio)}-${formatearHora(dia.hora_fin)}`, ancho: colHorario },
+                    { valor: dia.total_horas, ancho: colHoras },
+                    { valor: (dia.hed || 0) !== 0 ? `${dia.hed}` : "-", ancho: colHED },
+                    { valor: (dia.rn || 0) !== 0 ? `${dia.rn}` : "-", ancho: colRN },
+                    { valor: (dia.hen || 0) !== 0 ? `${dia.hen}` : "-", ancho: colHEN },
+                    { valor: (dia.rd || 0) !== 0 ? `${dia.rd}` : "-", ancho: colRD },
+                    { valor: (dia.hefd || 0) !== 0 ? `${dia.hefd}` : "-", ancho: colHEFD },
+                    { valor: (dia.hefn || 0) !== 0 ? `${dia.hefn}` : "-", ancho: colHEFN }
+                  ];
+
+                  // Dibujar cada celda de la fila
+                  datosColumnas.forEach((columna, colIndex) => {
+                    // 1. Dibujar el rectángulo de fondo (alternando colores)
+                    const colorFondo = diaIndex % 2 === 0 ? "#ffffff" : "#f9f9f9";
+
+                    doc.rect(xPos, yActual, columna.ancho, rowHeight)
+                      .fillAndStroke(colorFondo, "#E0E0E0");
+
+                    // 2. Agregar texto centrado
+                    doc
+                      .font("Helvetica")
+                      .fontSize(9)
+                      .fillColor("#333333")
+                      .text(
+                        columna.valor.toString(),
+                        xPos,
+                        yActual + 6,
+                        {
+                          width: columna.ancho,
+                          align: 'center'
+                        }
+                      );
+
+                    xPos += columna.ancho;
+                  });
+
+                  yActual += rowHeight;
+                });
+
+
+              // Función helper para formatear totales
+              function formatearTotal(valor) {
+                if (valor === null || valor === undefined || valor === 0) {
+                  return "-";
+                }
+                // Si es número, formatear con decimales si es necesario
+                return typeof valor === 'number' ? valor.toFixed(1) : valor.toString();
+              }
+
+              // 1. Encabezado de totales
+              const totalHeaderHeight = 25;
+              doc.rect(40, yActual, tableWidth, totalHeaderHeight)
+                .fillAndStroke("#F3F8F5", "#E0E0E0")
+
+              doc
+                .font("Helvetica-Bold")
+                .fontSize(11)
+                .fillColor("#2E8B57")
+                .text("TOTALES CONSOLIDADOS", 40, yActual + 8, {
+                  width: tableWidth,
+                  align: 'center'
+                });
+
+              yActual += totalHeaderHeight;
+
+              // 2. Fila de datos de totales
+              let positionX = 40;
+              const rowHeight = 22;
+
+              const totalesData = [
+                formatearTotal(grupo.totales.total_dias),
+                "-",
+                formatearTotal(grupo.totales.total_horas),
+                formatearTotal(grupo.totales.total_hed),
+                formatearTotal(grupo.totales.total_rn),
+                formatearTotal(grupo.totales.total_hen),
+                formatearTotal(grupo.totales.total_rd),
+                formatearTotal(grupo.totales.total_hefd),
+                formatearTotal(grupo.totales.total_hefn)
+              ];
+
+              const anchosColumnas = [colDia, colHorario, colHoras, colHED, colRN, colHEN, colRD, colHEFD, colHEFN];
+
+              totalesData.forEach((total, colIndex) => {
+                // Fondo ligeramente diferente para totales
+                doc.rect(positionX, yActual, anchosColumnas[colIndex], rowHeight)
+                  .fillAndStroke("#ffffff", "#E0E0E0");
+
+                // Texto en negrita para totales
+                doc
+                  .font("Helvetica-Bold")
+                  .fontSize(10)
+                  .fillColor("#2E8B57")
+                  .text(
+                    total,
+                    positionX + 2,
+                    yActual + 6,
+                    {
+                      width: anchosColumnas[colIndex] - 4,
+                      align: 'center'
+                    }
+                  );
+
+                positionX += anchosColumnas[colIndex];
+              });
+
+              yActual += rowHeight; // Espacio extra después de totales
+
+              // Solo mostrar si hay tipos de recargos
+              if (grupo.tipos_recargos_consolidados && grupo.tipos_recargos_consolidados.length > 0) {
+                // Calcular anchos de columnas para esta tabla
+                const tipoRecargosWidth = tableWidth;
+                const col1 = tipoRecargosWidth * 0.45; // TIPO RECARGO
+                const col2 = tipoRecargosWidth * 0.10; // %
+                const col3 = tipoRecargosWidth * 0.10; // V/BASE
+                const col4 = tipoRecargosWidth * 0.10; // V/+ %
+                const col5 = tipoRecargosWidth * 0.15; // CANTIDAD
+                const col6 = tipoRecargosWidth * 0.10; // TOTAL
+
+                // 1. Encabezado de tipos de recargos
+                const headerHeight = 25;
+                let xPos = 40;
+
+                // Dibujar rectángulos del encabezado
+                const encabezadosRecargos = [
+                  { texto: 'TIPO RECARGO', ancho: col1 },
+                  { texto: '%', ancho: col2 },
+                  { texto: 'V/BASE', ancho: col3 },
+                  { texto: 'V/+ %', ancho: col4 },
+                  { texto: 'CANTIDAD', ancho: col5 },
+                  { texto: 'TOTAL', ancho: col6 }
+                ];
+
+                encabezadosRecargos.forEach(encabezado => {
+                  doc.rect(xPos, yActual, encabezado.ancho, headerHeight)
+                    .fillAndStroke("#F3F8F5", "#E0E0E0")
+
+                  doc
+                    .font("Helvetica-Bold")
+                    .fontSize(10)
+                    .fillColor("#2E8B57")
+                    .text(
+                      encabezado.texto,
+                      xPos + 3,
+                      yActual + 8,
+                      {
+                        width: encabezado.ancho - 6,
+                        align: encabezado.texto === 'TIPO RECARGO' ? 'left' : 'center'
+                      }
+                    );
+
+                  xPos += encabezado.ancho;
+                });
+
+                yActual += headerHeight;
+
+                // 2. Filas de tipos de recargos
+                grupo.tipos_recargos_consolidados.forEach((tipo, tipoIndex) => {
+                  xPos = 40;
+                  const rowHeight = 20;
+
+                  // Datos de la fila
+                  const filaDatos = [
+                    {
+                      texto: `${tipo.nombre.toUpperCase()}${tipo.codigo !== "BONO_FESTIVO" ? ` - ${tipo.codigo}` : ''}`,
+                      ancho: col1,
+                      align: 'left',
+                      color: '#333333'
+                    },
+                    {
+                      texto: `${tipo.porcentaje}%`,
+                      ancho: col2,
+                      align: 'center',
+                      color: '#333333'
+                    },
+                    {
+                      texto: `$${Math.round(tipo.valor_hora_base).toLocaleString()}`,
+                      ancho: col3,
+                      align: 'center',
+                      color: '#666666'
+                    },
+                    {
+                      texto: `$${Math.round(tipo.valor_hora_con_recargo).toLocaleString()}`,
+                      ancho: col4,
+                      align: 'center',
+                      color: '#2E8B57'
+                    },
+                    {
+                      texto: tipo.horas.toString(),
+                      ancho: col5,
+                      align: 'center',
+                      color: '#333333'
+                    },
+                    {
+                      texto: `$${Math.round(tipo.valor_calculado).toLocaleString()}`,
+                      ancho: col6,
+                      align: 'center',
+                      color: '#333333'
+                    }
+                  ];
+
+                  // Dibujar cada celda
+                  filaDatos.forEach((celda, colIndex) => {
+                    doc.rect(xPos, yActual, celda.ancho, rowHeight)
+                      .fillAndStroke("#ffffff", "#E0E0E0");
+
+                    doc
+                      .font(colIndex === 3 || colIndex === 5 ? "Helvetica-Bold" : "Helvetica")
+                      .fontSize(10)
+                      .fillColor(celda.color)
+                      .text(
+                        celda.texto,
+                        xPos + 3,
+                        yActual + 5,
+                        {
+                          width: celda.ancho - 6,
+                          align: celda.align
+                        }
+                      );
+
+                    xPos += celda.ancho;
+                  });
+
+                  yActual += rowHeight;
+                });
+
+                // 3. SUBTOTAL
+                const subtotalHeight = 25;
+                doc.rect(40, yActual, tipoRecargosWidth, subtotalHeight)
+                  .fillAndStroke("#2E8B57", "#E0E0E0");
 
                 doc
                   .font("Helvetica-Bold")
-                  .fontSize(11)
-                  .fillColor("#2E8B57")
-                  .text(`Subtotal ${tituloGrupo}`, 45, yActual + 8)
-                  .text(formatToCOP(subtotal), 40 + col1Width + col2Width + 5, yActual + 8, {
-                    width: col3Width - 10,
-                    align: 'center'
+                  .fontSize(10)
+                  .fillColor("#ffffff")
+                  .text("SUBTOTAL", 43, yActual + 8)
+                  .text(`$${Math.round(grupo.totales.valor_total).toLocaleString()}`, 40, yActual + 8, {
+                    width: tipoRecargosWidth - 6,
+                    align: 'right'
                   });
 
-                yActual += 25;
+                yActual += subtotalHeight;
+
+                // 4. Calcular valores adicionales
+                const valorSeguridadSocial = Math.round(grupo.totales.valor_total * (grupo.configuracion_salarial?.seguridad_social || 0) / 100);
+                const valorPrestacionesSociales = Math.round(grupo.totales.valor_total * (grupo.configuracion_salarial?.prestaciones_sociales || 0) / 100);
+                const valorAdministracion = Math.round(grupo.totales.valor_total * (grupo.configuracion_salarial?.administracion || 0) / 100);
+                const total = grupo.totales.valor_total + valorSeguridadSocial + valorPrestacionesSociales + valorAdministracion;
+
+                // 5. Filas de conceptos adicionales
+                const conceptosAdicionales = [
+                  {
+                    nombre: "SEGURIDAD SOCIAL",
+                    porcentaje: grupo.configuracion_salarial?.seguridad_social || 0,
+                    valor: valorSeguridadSocial
+                  },
+                  {
+                    nombre: "PRESTACIONES SOCIALES",
+                    porcentaje: grupo.configuracion_salarial?.prestaciones_sociales || 0,
+                    valor: valorPrestacionesSociales
+                  },
+                  {
+                    nombre: "ADMINISTRACIÓN",
+                    porcentaje: grupo.configuracion_salarial?.administracion || 0,
+                    valor: valorAdministracion
+                  }
+                ];
+
+                conceptosAdicionales.forEach((concepto, index) => {
+                  const rowHeight = 20;
+                  doc.rect(40, yActual, tipoRecargosWidth, rowHeight)
+                    .fillAndStroke("#ffffff", "#E0E0E0");
+
+                  // Nombre del concepto
+                  doc
+                    .font("Helvetica")
+                    .fontSize(10)
+                    .fillColor("#333333")
+                    .text(concepto.nombre, 43, yActual + 5, {
+                      width: tipoRecargosWidth * 0.45
+                    });
+
+                  // Porcentaje
+                  doc
+                    .text(`${concepto.porcentaje}%`, 40 + (tipoRecargosWidth * 0.45), yActual + 5, {
+                      width: tipoRecargosWidth * 0.10,
+                      align: 'center'
+                    });
+
+                  // Valor
+                  doc
+                    .text(`$${concepto.valor.toLocaleString()}`, 40, yActual + 5, {
+                      width: tipoRecargosWidth - 6,
+                      align: 'right'
+                    });
+
+                  yActual += rowHeight;
+                });
+
+                // 6. TOTAL FINAL
+                const totalHeight = 25;
+                doc.rect(40, yActual, tipoRecargosWidth, totalHeight)
+                  .fillAndStroke("#2E8B57", "#E0E0E0");
+
+                doc
+                  .font("Helvetica-Bold")
+                  .fontSize(10)
+                  .fillColor("#ffffff")
+                  .text("TOTAL", 43, yActual + 8)
+                  .text(`$${total.toLocaleString()}`, 40, yActual + 8, {
+                    width: tipoRecargosWidth - 6,
+                    align: 'right'
+                  });
+
+                yActual += totalHeight + 20; // Espacio extra al final
               }
 
-              // Espacio entre grupos
-              yActual += 20;
             });
 
             // Información adicional en el pie de página
