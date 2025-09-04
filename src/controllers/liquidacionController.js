@@ -173,8 +173,6 @@ exports.obtenerLiquidacionPorId = async (req, res) => {
       liquidacion.periodo_end
     );
 
-    console.log(`🔍 Encontrados ${recargosDelPeriodo.length} recargos planilla para el período`);
-
     // ✅ PASO 4: Procesar y filtrar días dentro del período con configuración salarial
     const recargosProcessados = await procesarRecargosPorPeriodoConSalarios(
       recargosDelPeriodo,
@@ -216,9 +214,11 @@ exports.obtenerLiquidacionPorId = async (req, res) => {
 
 const obtenerRecargosPlanillaPorPeriodo = async (conductorId, periodoStart, periodoEnd) => {
   try {
+
     // Convertir fechas de período a objetos Date para comparación
     const fechaInicio = new Date(periodoStart);
     const fechaFin = new Date(periodoEnd);
+
     // Extraer años y meses del período para optimizar la consulta
     const añoInicio = fechaInicio.getFullYear();
     const mesInicio = fechaInicio.getMonth() + 1;
@@ -335,24 +335,38 @@ const obtenerConfiguracionesSalario = async (periodoStart, periodoEnd) => {
 // ✅ FUNCIÓN MEJORADA: Procesar recargos con cálculo de valores usando configuración salarial
 const procesarRecargosPorPeriodoConSalarios = async (recargos, periodoStart, periodoEnd, configuracionesSalario) => {
   try {
-    console.log(`📊 Procesando ${recargos.length} recargos para el período con cálculo salarial`);
-
-    const fechaInicio = new Date(periodoStart);
-    const fechaFin = new Date(periodoEnd);
-
     return recargos.map(recargo => {
-      // Buscar configuración salarial aplicable para esta empresa
       const configSalario = configuracionesSalario.find(config =>
         config.empresa_id === recargo.empresa.id || config.empresa_id === null
       );
 
-      // ✅ FILTRAR DÍAS LABORALES DENTRO DEL PERÍODO
+      // CORREGIDO: Filtrar días usando la misma lógica que el frontend
       const diasDentroDelPeriodo = recargo.dias_laborales?.filter(dia => {
-        const fechaDia = new Date(recargo.año, recargo.mes - 1, dia.dia);
-        return fechaDia >= fechaInicio && fechaDia <= fechaFin;
-      }) || [];
+        // Construir fecha completa del día (igual que en frontend)
+        let fechaCompleta;
 
-      console.log(`📅 Recargo ${recargo.numero_planilla}: ${diasDentroDelPeriodo.length}/${recargo.dias_laborales?.length || 0} días en período`);
+        // Si el día tiene fecha_completa, usarla
+        if (dia.fecha_completa) {
+          fechaCompleta = dia.fecha_completa;
+        }
+        // Si no, construir usando día.mes y día.año si están disponibles
+        else if (dia.mes && dia.año && dia.dia) {
+          const año = dia.año;
+          const mes = dia.mes.toString().padStart(2, '0');
+          const diaStr = dia.dia.toString().padStart(2, '0');
+          fechaCompleta = `${año}-${mes}-${diaStr}`;
+        }
+        // Fallback: usar recargo.mes y recargo.año
+        else {
+          const año = recargo.año;
+          const mes = recargo.mes.toString().padStart(2, '0');
+          const diaStr = dia.dia.toString().padStart(2, '0');
+          fechaCompleta = `${año}-${mes}-${diaStr}`;
+        }
+
+        // Comparación de strings (igual que en frontend)
+        return fechaCompleta >= periodoStart && fechaCompleta <= periodoEnd;
+      }) || [];
 
       // ✅ PROCESAR DÍAS CON CÁLCULO DE VALORES
       const diasProcesados = diasDentroDelPeriodo.map(dia => {
@@ -386,9 +400,10 @@ const procesarRecargosPorPeriodoConSalarios = async (recargos, periodoStart, per
         return {
           id: dia.id,
           dia: dia.dia,
-          mes: recargo.mes,
-          año: recargo.año,
-          fecha_completa: `${recargo.año}-${String(recargo.mes).padStart(2, '0')}-${String(dia.dia).padStart(2, '0')}`,
+          mes: dia.mes || recargo.mes,        // ← ASEGURAR que tenga mes
+          año: dia.año || recargo.año,        // ← ASEGURAR que tenga año
+          fecha_completa: dia.fecha_completa ||
+            `${dia.año || recargo.año}-${String(dia.mes || recargo.mes).padStart(2, '0')}-${String(dia.dia).padStart(2, '0')}`,
           hora_inicio: dia.hora_inicio,
           hora_fin: dia.hora_fin,
           total_horas: dia.total_horas,

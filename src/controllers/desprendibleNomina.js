@@ -292,15 +292,11 @@ pdfQueue.process(async (job, done) => {
       updateJobProgress(jobId, progress, userId);
 
       try {
-        console.log(`📋 Procesando liquidación ${i + 1}/${liquidaciones.length} - ID: ${liquidacion.id}`);
-
         // ✅ PASO 1: Obtener configuraciones de salario usando función auxiliar
         const configuracionesSalario = await obtenerConfiguracionesSalario(
           liquidacion.periodo_start,
           liquidacion.periodo_end
         );
-
-        console.log(`⚙️ Encontradas ${configuracionesSalario.length} configuraciones de salario para el período`);
 
         // ✅ PASO 2: Obtener recargos planilla del conductor usando función auxiliar
         let recargosDelPeriodo = [];
@@ -310,7 +306,6 @@ pdfQueue.process(async (job, done) => {
             liquidacion.periodo_start,
             liquidacion.periodo_end
           );
-          console.log(`📊 Encontrados ${recargosDelPeriodo.length} recargos planilla para el conductor ${liquidacion.conductor.id}`);
         } else {
           console.warn(`⚠️ Liquidación ${liquidacion.id} no tiene conductor válido`);
         }
@@ -324,7 +319,6 @@ pdfQueue.process(async (job, done) => {
             liquidacion.periodo_end,
             configuracionesSalario
           );
-          console.log(`🔄 Procesados ${recargosProcessados.length} recargos con cálculo salarial`);
         }
 
         // ✅ PASO 4: Construir liquidación completa para PDF
@@ -361,7 +355,6 @@ pdfQueue.process(async (job, done) => {
           );
           throw new Error("El PDF generado está vacío o es muy pequeño");
         }
-
         console.log(`✅ PDF generado exitosamente para liquidación ${liquidacion.id} (${pdfBuffer.length} bytes)`);
 
         pdfBuffers.push({
@@ -389,10 +382,6 @@ pdfQueue.process(async (job, done) => {
           periodo_end: liquidacion.periodo_end,
           error_message: pdfError.message
         });
-
-        // Opcional: Si quieres continuar con las demás liquidaciones en caso de error
-        // o si quieres que falle completamente, puedes decidir aquí
-        // throw pdfError; // Descomentar para que falle completamente
       }
     }
 
@@ -1214,6 +1203,10 @@ async function generatePDF(liquidacion) {
       const recargosAgrupados = agruparRecargos(
         liquidacion.recargos_planilla,
         liquidacion.configuraciones_salario,
+        {
+          periodo_start: liquidacion.periodo_start,
+          periodo_end: liquidacion.periodo_end
+        }
       );
 
       // Collect data in chunks
@@ -1543,9 +1536,9 @@ async function generatePDF(liquidacion) {
       // Table header
       const conceptsTop = doc.y;
       const col1Width = tableWidth * 0.28; // Reduce ligeramente
-      const col2Width = tableWidth * 0.44; // Aumenta
+      const col2Width = tableWidth * 0.41; // Aumenta
       const col3Width = tableWidth * 0.14;
-      const col4Width = tableWidth * 0.14; // Asegura que sea suficiente
+      const col4Width = tableWidth * 0.17; // Asegura que sea suficiente
 
       // Draw concepts table header
       doc.rect(40, conceptsTop, col1Width, 26);
@@ -1581,6 +1574,15 @@ async function generatePDF(liquidacion) {
 
       let currentY = conceptsTop + 26;
 
+      function calculateRowHeight(text, fontSize, columnWidth) {
+        // Estimar líneas necesarias basado en caracteres por línea
+        const avgCharWidth = fontSize * 0.6; // Aproximación para Helvetica
+        const charsPerLine = Math.floor((columnWidth - 16) / avgCharWidth); // -16 para padding
+        const lines = Math.ceil(text.length / charsPerLine);
+        return Math.max(24, lines * fontSize + 12); // +12 para padding vertical
+      }
+
+
       // Helper function for concept table rows
       function drawConceptRow(
         concept,
@@ -1590,10 +1592,12 @@ async function generatePDF(liquidacion) {
         options = {}
       ) {
         const {
-          isLastRow = false,
-          rowHeight = observation.length > 30 ? 35 : 24,
           observationFontSize = 10,
         } = options;
+
+        const rowHeight = observation.length > 40
+          ? calculateRowHeight(observation, observationFontSize, col2Width)
+          : 24;
 
         // Draw row background and borders
         doc.rect(40, currentY, col1Width, rowHeight).stroke("#E0E0E0");
@@ -1620,9 +1624,13 @@ async function generatePDF(liquidacion) {
           .text(concept, 48, currentY + 8);
 
         // Observation with smaller font size and support for multiple lines
+        // ¡AQUÍ ESTÁ EL CAMBIO PRINCIPAL!
         doc
           .fontSize(observationFontSize)
-          .text(observation, 40 + col1Width + 8, currentY + 6);
+          .text(observation, 40 + col1Width + 8, currentY + 6, {
+            width: col2Width - 16,  // Especificar el ancho disponible
+            align: "left"           // Opcional: alineación
+          });
 
         // Quantity column
         doc
@@ -1992,8 +2000,6 @@ async function generatePDF(liquidacion) {
       // Agregar esta lógica justo ANTES del doc.end() en tu función generatePDF:
 
       if (recargosAgrupados && Array.isArray(recargosAgrupados) && recargosAgrupados.length > 0) {
-        console.log(`Iniciando procesamiento de ${recargosAgrupados.length} grupos de recargos`);
-
         let esPrimerGrupo = true;
 
         // Función helper para formatear hora
@@ -2018,7 +2024,6 @@ async function generatePDF(liquidacion) {
 
           // Calcular altura necesaria ANTES de renderizar
           const alturaGrupo = calcularAlturaGrupoPDF(doc, grupo);
-          console.log(`Grupo ${indiceGrupo}: necesita ${alturaGrupo}px`);
 
           let yActual;
 
@@ -2215,7 +2220,7 @@ async function generatePDF(liquidacion) {
           const rowHeight = 22;
 
           const totalesData = [
-            formatearTotal(grupo.totales.total_dias),
+            grupo.totales.total_dias,
             "-",
             formatearTotal(grupo.totales.total_horas),
             formatearTotal(grupo.totales.total_hed),
@@ -2385,78 +2390,9 @@ async function generatePDF(liquidacion) {
               yActual += rowHeight;
             });
 
-            // SUBTOTAL
-            const subtotalHeight = 25;
-            doc.rect(40, yActual, tipoRecargosWidth, subtotalHeight)
-              .fillAndStroke("#2E8B57", "#E0E0E0");
-
-            doc
-              .font("Helvetica-Bold")
-              .fontSize(10)
-              .fillColor("#ffffff")
-              .text("SUBTOTAL", 45, yActual + 8)
-              .text(`$${Math.round(grupo.totales.valor_total).toLocaleString()}`, 40, yActual + 8, {
-                width: tipoRecargosWidth - 6,
-                align: 'right'
-              });
-
-            yActual += subtotalHeight;
-
-            // Conceptos adicionales
-            const valorSeguridadSocial = Math.round(grupo.totales.valor_total * (grupo.configuracion_salarial?.seguridad_social || 0) / 100);
-            const valorPrestacionesSociales = Math.round(grupo.totales.valor_total * (grupo.configuracion_salarial?.prestaciones_sociales || 0) / 100);
-            const valorAdministracion = Math.round((grupo.totales.valor_total + valorSeguridadSocial + valorPrestacionesSociales) * (grupo.configuracion_salarial?.administracion || 0) / 100);
-            const total = grupo.totales.valor_total + valorSeguridadSocial + valorPrestacionesSociales + valorAdministracion;
-
-            const conceptosAdicionales = [
-              {
-                nombre: "SEGURIDAD SOCIAL",
-                porcentaje: grupo.configuracion_salarial?.seguridad_social || 0,
-                valor: valorSeguridadSocial
-              },
-              {
-                nombre: "PRESTACIONES SOCIALES",
-                porcentaje: grupo.configuracion_salarial?.prestaciones_sociales || 0,
-                valor: valorPrestacionesSociales
-              },
-              {
-                nombre: "ADMINISTRACIÓN",
-                porcentaje: grupo.configuracion_salarial?.administracion || 0,
-                valor: valorAdministracion
-              }
-            ];
-
-            conceptosAdicionales.forEach((concepto) => {
-              const rowHeight = 20;
-              doc.rect(40, yActual, tipoRecargosWidth, rowHeight)
-                .fillAndStroke("#ffffff", "#E0E0E0");
-
-              doc
-                .font("Helvetica")
-                .fontSize(10)
-                .fillColor("#333333")
-                .text(concepto.nombre, 45, yActual + 5, {
-                  width: tipoRecargosWidth * 0.45
-                });
-
-              doc
-                .text(`${concepto.porcentaje}%`, 40 + (tipoRecargosWidth * 0.55), yActual + 5, {
-                  width: tipoRecargosWidth * 0.10,
-                  align: 'center'
-                });
-
-              doc
-                .text(`$${concepto.valor.toLocaleString()}`, 40, yActual + 5, {
-                  width: tipoRecargosWidth - 6,
-                  align: 'right'
-                });
-
-              yActual += rowHeight;
-            });
-
-            // TOTAL FINAL
-            const totalHeight = 25;
-            doc.rect(40, yActual, tipoRecargosWidth, totalHeight)
+            // TOTAL
+            const total = 25;
+            doc.rect(40, yActual, tipoRecargosWidth, total)
               .fillAndStroke("#2E8B57", "#E0E0E0");
 
             doc
@@ -2464,12 +2400,12 @@ async function generatePDF(liquidacion) {
               .fontSize(10)
               .fillColor("#ffffff")
               .text("TOTAL", 45, yActual + 8)
-              .text(`$${Math.round(total).toLocaleString()}`, 40, yActual + 8, {
+              .text(`$${Math.round(grupo.totales.valor_total).toLocaleString()}`, 40, yActual + 8, {
                 width: tipoRecargosWidth - 6,
                 align: 'right'
               });
 
-            yActual += totalHeight;
+            yActual += total;
           }
 
           // Actualizar posición Y del documento para el siguiente grupo
@@ -2702,59 +2638,47 @@ function drawTableRow(doc, label, value, options = {}) {
 const agruparRecargos = (
   recargo,
   configuraciones_salario,
+  opciones = {}
 ) => {
   const grupos = {};
+  const { periodo_start, periodo_end } = opciones;
 
-  // Función auxiliar para crear clave única
   const crearClave = (recargo) =>
     `${recargo.vehiculo.placa}-${recargo.mes}-${recargo.año}-${recargo.empresa.nit}`;
 
-  // Función auxiliar para obtener configuración salarial
   const obtenerConfiguracion = (empresaId) => {
     if (!configuraciones_salario) {
       console.warn("No hay configuraciones de salario disponibles");
-
       return null;
     }
 
-    // Buscar configuración específica de la empresa
     const configEmpresa = configuraciones_salario.find(
-      (config) =>
-        config.empresa_id === empresaId && config.activo === true,
+      (config) => config.empresa_id === empresaId && config.activo === true,
     );
 
     if (configEmpresa) {
       return configEmpresa;
     }
 
-    // Buscar configuración base del sistema
     const configBase = configuraciones_salario.find(
-      (config) =>
-        config.empresa_id === null && config.activo === true,
+      (config) => config.empresa_id === null && config.activo === true,
     );
 
-    if (configBase) {
-      return configBase;
-    }
-
-    return null;
+    return configBase || null;
   };
 
-  // Función auxiliar para inicializar grupo
   const inicializarGrupo = (recargo) => {
     const configuracion = obtenerConfiguracion(recargo.empresa.id);
-
     if (!configuracion) return;
 
-    const grupo = {
+    return {
       vehiculo: recargo.vehiculo,
       mes: recargo.mes,
       año: recargo.año,
       empresa: recargo.empresa,
       recargos: [],
       configuracion_salarial: configuracion,
-      valor_hora_base:
-        configuracion.salario_basico / configuracion.horas_mensuales_base || 0,
+      valor_hora_base: configuracion.salario_basico / configuracion.horas_mensuales_base || 0,
       totales: {
         total_dias: 0,
         total_horas: 0,
@@ -2770,13 +2694,98 @@ const agruparRecargos = (
       },
       dias_laborales_unificados: [],
       tipos_recargos_consolidados: [],
+      periodo_validacion: {
+        periodo_start,
+        periodo_end,
+        dias_excluidos: 0,
+        dias_procesados: 0
+      }
     };
-
-    return grupo;
   };
 
-  // Función auxiliar para procesar día laboral
+  const construirFechaCompleta = (diaLaboral) => {
+    // Si es solo un número, no se puede construir fecha
+    if (typeof diaLaboral === 'number') {
+      console.warn('diaLaboral es solo un número, no se puede construir fecha completa');
+      return null;
+    }
+
+    // Si ya tiene fecha_completa
+    if (diaLaboral?.fecha_completa) {
+      return diaLaboral.fecha_completa;
+    }
+
+    // Construir fecha usando día, mes y año
+    if (diaLaboral?.dia && diaLaboral?.mes && diaLaboral?.año) {
+      const año = diaLaboral.año;
+      const mes = diaLaboral.mes.toString().padStart(2, '0');
+      const dia = diaLaboral.dia.toString().padStart(2, '0');
+      const fechaConstructa = `${año}-${mes}-${dia}`;
+      return fechaConstructa;
+    }
+
+    console.warn('No se pudo construir fecha completa. Datos insuficientes:', diaLaboral);
+    return null;
+  };
+
+  const esDiaDelPeriodo = (diaLaboral, periodoInicio, periodoFin) => {
+    if (!periodoInicio || !periodoFin) {
+      console.warn('No se especificó período válido, procesando todos los días');
+      return true;
+    }
+
+    const fechaCompleta = construirFechaCompleta(diaLaboral);
+    if (!fechaCompleta) {
+      console.warn('No se pudo construir fecha completa del día laboral:', diaLaboral);
+      return false;
+    }
+
+    // Comparación de strings de fecha (YYYY-MM-DD) - más confiable
+    const estaEnPeriodo = fechaCompleta >= periodoInicio && fechaCompleta <= periodoFin;
+    return estaEnPeriodo;
+  };
+
+  const esDiaDelMesAño = (diaLaboral, mes, año) => {
+    // Usar los valores directos del día laboral si están disponibles
+    if (diaLaboral?.mes && diaLaboral?.año) {
+      const coincide = diaLaboral.mes === mes && diaLaboral.año === año;
+      return coincide;
+    }
+
+    // Fallback: construir fecha y validar
+    const fechaCompleta = construirFechaCompleta(diaLaboral);
+    if (!fechaCompleta) return false;
+
+    const fecha = new Date(fechaCompleta);
+    const mesDelDia = fecha.getMonth() + 1;
+    const añoDelDia = fecha.getFullYear();
+    const coincide = mesDelDia === mes && añoDelDia === año;
+    return coincide;
+  };
+
+  // FUNCIÓN CORREGIDA: Ahora pasa el objeto completo del día
   const procesarDiaLaboral = (grupo, dia) => {
+    // VALIDACIÓN 1: Verificar que el día esté en el período especificado
+    // CORREGIDO: Pasar el objeto completo 'dia' en lugar de 'dia.dia'
+    if (!esDiaDelPeriodo(dia, periodo_start, periodo_end)) {
+      const fechaCompleta = construirFechaCompleta(dia);
+      console.warn(`Día ${fechaCompleta || 'fecha inválida'} fuera del período ${periodo_start} - ${periodo_end}. Saltando...`);
+      grupo.periodo_validacion.dias_excluidos++;
+      return;
+    }
+
+    // VALIDACIÓN 2: Verificar que el día pertenezca al mes/año del grupo
+    // CORREGIDO: Pasar el objeto completo 'dia' en lugar de 'dia.dia'
+    if (!esDiaDelMesAño(dia, grupo.mes, grupo.año)) {
+      const fechaCompleta = construirFechaCompleta(dia);
+      console.warn(`Día ${fechaCompleta || 'fecha inválida'} no pertenece al período ${grupo.mes}/${grupo.año}. Saltando...`);
+      grupo.periodo_validacion.dias_excluidos++;
+      return;
+    }
+
+    // Si llegamos aquí, el día es válido
+    grupo.periodo_validacion.dias_procesados++;
+
     // Contar días especiales
     if (dia.es_festivo) {
       grupo.totales.total_dias_festivos++;
@@ -2786,30 +2795,26 @@ const agruparRecargos = (
     }
 
     // Buscar si ya existe un día con la misma fecha
-    const diaExistente = grupo.dias_laborales_unificados.find(
-      (d) => d.dia === dia.dia,
-    );
+    // CORREGIDO: Comparar por fecha completa o por dia/mes/año
+    const diaExistente = grupo.dias_laborales_unificados.find((d) => {
+      if (dia.fecha_completa && d.fecha_completa) {
+        return d.fecha_completa === dia.fecha_completa;
+      }
+      if (dia.dia && dia.mes && dia.año && d.dia && d.mes && d.año) {
+        return d.dia === dia.dia && d.mes === dia.mes && d.año === dia.año;
+      }
+      return d.dia === dia.dia; // Fallback
+    });
 
     if (diaExistente) {
-      // Sumar horas al día existente
-      const camposHoras = [
-        "hed",
-        "rn",
-        "hen",
-        "rd",
-        "hefd",
-        "hefn",
-        "total_horas",
-      ];
+      const camposHoras = ["hed", "rn", "hen", "rd", "hefd", "hefn", "total_horas"];
 
       camposHoras.forEach((campo) => {
         const valorAnterior = diaExistente[campo] || 0;
         const valorNuevo = dia[campo] || 0;
-
         diaExistente[campo] = valorAnterior + valorNuevo;
       });
     } else {
-      // Agregar nuevo día con valores por defecto
       const nuevoDia = {
         ...dia,
         hed: dia.hed || 0,
@@ -2824,19 +2829,10 @@ const agruparRecargos = (
     }
   };
 
-  // Función auxiliar para calcular valor por hora con recargo
-  const calcularValorRecargo = (
-    valorBase,
-    porcentaje,
-    horas,
-    esAdicional,
-    esValorFijo = false,
-    valorFijo = 0,
-  ) => {
+  const calcularValorRecargo = (valorBase, porcentaje, horas, esAdicional, esValorFijo = false, valorFijo = 0) => {
     if (esValorFijo && valorFijo > 0) {
       const valorFijoRedondeado = Number(valorFijo);
-      const valorHoraConRecargo = valorFijoRedondeado / horas; // Calcular valor por hora
-
+      const valorHoraConRecargo = valorFijoRedondeado / horas;
       return {
         valorTotal: valorFijoRedondeado,
         valorHoraConRecargo: Number(valorHoraConRecargo),
@@ -2847,24 +2843,16 @@ const agruparRecargos = (
     let valorTotal;
 
     if (esAdicional) {
-      // MODO ADICIONAL: valor_hora * (1 + porcentaje/100)
       valorHoraConRecargo = valorBase * (1 + porcentaje / 100);
-
-      // Redondear el valor por hora
       valorHoraConRecargo = Number(valorHoraConRecargo);
       valorTotal = valorHoraConRecargo * horas;
     } else {
-      // MODO MULTIPLICATIVO: valor_hora * (porcentaje/100)
       valorHoraConRecargo = valorBase * (porcentaje / 100);
-
-      // Redondear el valor por hora
       valorHoraConRecargo = Number(valorHoraConRecargo);
       valorTotal = valorHoraConRecargo * horas;
     }
 
-    // Redondear también el valor total
     valorTotal = Number(valorTotal);
-
     return { valorTotal, valorHoraConRecargo };
   };
 
@@ -2872,9 +2860,8 @@ const agruparRecargos = (
     const configSalarial = grupo.configuracion_salarial;
     const pagaDiasFestivos = configSalarial?.paga_dias_festivos || false;
 
-    // Excluir recargos dominicales si la configuración paga días festivos
     if (pagaDiasFestivos && tipo.codigo === "RD") {
-      return; // Saltar este tipo de recargo
+      return;
     }
 
     const tipoExistente = grupo.tipos_recargos_consolidados.find(
@@ -2886,32 +2873,17 @@ const agruparRecargos = (
     const horas = tipo.horas || 0;
     const esAdicional = tipo.adicional || false;
 
-    const resultado = calcularValorRecargo(
-      valorHoraBase,
-      porcentaje,
-      horas,
-      esAdicional,
-    );
+    const resultado = calcularValorRecargo(valorHoraBase, porcentaje, horas, esAdicional);
 
     if (tipoExistente) {
-      // Sumar horas y recalcular total
       tipoExistente.horas += horas;
-
-      // Recalcular el valor total con las nuevas horas
-      const nuevoResultado = calcularValorRecargo(
-        valorHoraBase,
-        porcentaje,
-        tipoExistente.horas,
-        esAdicional,
-      );
-
+      const nuevoResultado = calcularValorRecargo(valorHoraBase, porcentaje, tipoExistente.horas, esAdicional);
       tipoExistente.valor_calculado = nuevoResultado.valorTotal;
       tipoExistente.valor_hora_con_recargo = nuevoResultado.valorHoraConRecargo;
       tipoExistente.adicional = esAdicional;
     } else {
-      // Crear nuevo tipo de recargo
       const nuevoTipo = {
-        ...tipo, // Spread todas las propiedades del tipo original
+        ...tipo,
         codigo: tipo.codigo,
         nombre: tipo.nombre,
         porcentaje: porcentaje,
@@ -2921,35 +2893,23 @@ const agruparRecargos = (
         valor_hora_con_recargo: resultado.valorHoraConRecargo,
         adicional: esAdicional,
       };
-
       grupo.tipos_recargos_consolidados.push(nuevoTipo);
     }
   };
 
-  // Función auxiliar para agregar bono festivo
   const agregarBonoFestivo = (grupo) => {
     const configSalarial = grupo.configuracion_salarial;
-    const totalDiasEspeciales =
-      grupo.totales.total_dias_festivos + grupo.totales.total_dias_domingos;
+    const totalDiasEspeciales = grupo.totales.total_dias_festivos + grupo.totales.total_dias_domingos;
 
     if (!configSalarial?.paga_dias_festivos || totalDiasEspeciales === 0) {
       return;
     }
 
-    const salarioBasico =
-      parseFloat(configSalarial.salario_basico.toString()) || 0;
-    const porcentajeFestivos =
-      parseFloat(configSalarial.porcentaje_festivos?.toString() || "0") || 0;
-
+    const salarioBasico = parseFloat(configSalarial.salario_basico.toString()) || 0;
+    const porcentajeFestivos = parseFloat(configSalarial.porcentaje_festivos?.toString() || "0") || 0;
     const valorDiarioBase = salarioBasico / 30;
-
-    // FÓRMULA: valorDiarioBase * (porcentaje/100)
-    const valorDiarioConRecargoTemp =
-      valorDiarioBase * (porcentajeFestivos / 100);
-
-    // Redondear el valor diario con recargo
+    const valorDiarioConRecargoTemp = valorDiarioBase * (porcentajeFestivos / 100);
     const valorDiarioConRecargo = Number(valorDiarioConRecargoTemp);
-
     const valorTotalDiasFestivos = totalDiasEspeciales * valorDiarioConRecargo;
 
     const bonoFestivo = {
@@ -2985,86 +2945,80 @@ const agruparRecargos = (
     grupo.tipos_recargos_consolidados.push(bonoFestivo);
   };
 
-  // Función auxiliar para calcular totales finales
   const calcularTotalesFinales = (grupo) => {
     const configSalarial = grupo.configuracion_salarial;
     const pagaDiasFestivos = configSalarial?.paga_dias_festivos || false;
 
-    // Calcular totales de horas por tipo
     const campos = ["hed", "rn", "hen", "hefd", "hefn"];
-
     campos.forEach((campo) => {
       const total = grupo.dias_laborales_unificados.reduce(
         (sum, dia) => sum + (dia[campo] || 0),
         0,
       );
-
-      // Usar key assertion para acceso dinámico a propiedades
-      (grupo.totales)[`total_${campo}`] = total;
+      grupo.totales[`total_${campo}`] = total;
     });
 
-    // Solo sumar RD si NO se pagan días festivos
     grupo.totales.total_rd = pagaDiasFestivos
       ? 0
-      : grupo.dias_laborales_unificados.reduce(
-        (sum, dia) => sum + (dia.rd || 0),
-        0,
-      );
+      : grupo.dias_laborales_unificados.reduce((sum, dia) => sum + (dia.rd || 0), 0);
 
-    // Agregar bono festivo si aplica
     agregarBonoFestivo(grupo);
 
-    // Calcular valor total
     grupo.totales.valor_total = grupo.tipos_recargos_consolidados.reduce(
       (sum, tipo) => sum + tipo.valor_calculado,
       0,
     );
 
-    // Ordenar resultados
-    grupo.dias_laborales_unificados.sort(
-      (a, b) => new Date(a.dia).getTime() - new Date(b.dia).getTime(),
-    );
+    // Ordenar por fecha completa si está disponible
+    grupo.dias_laborales_unificados.sort((a, b) => {
+      if (a.fecha_completa && b.fecha_completa) {
+        return new Date(a.fecha_completa).getTime() - new Date(b.fecha_completa).getTime();
+      }
+      if (a.dia && b.dia && a.mes && b.mes && a.año && b.año) {
+        const fechaA = new Date(a.año, a.mes - 1, a.dia);
+        const fechaB = new Date(b.año, b.mes - 1, b.dia);
+        return fechaA.getTime() - fechaB.getTime();
+      }
+      return (a.dia || 0) - (b.dia || 0); // Fallback
+    });
 
     grupo.tipos_recargos_consolidados.sort((a, b) => {
       if (a.es_bono_festivo) return 1;
       if (b.es_bono_festivo) return -1;
-
       return a.porcentaje - b.porcentaje;
     });
   };
 
+  // PROCESAMIENTO PRINCIPAL
   recargo.recargos.forEach((detalles) => {
     const clave = crearClave(detalles);
 
-    // Crear grupo si no existe
     if (!grupos[clave]) {
       grupos[clave] = inicializarGrupo(detalles);
     }
 
-    // Agregar detalles al grupo
     grupos[clave].recargos.push(detalles);
-
-    // Acumular totales básicos
     grupos[clave].totales.total_dias += detalles.total_dias || 0;
     grupos[clave].totales.total_horas += detalles.total_horas || 0;
 
-    // Procesar días laborales
     if (detalles.dias_laborales && detalles.dias_laborales.length > 0) {
       detalles.dias_laborales.forEach((dia) => {
         procesarDiaLaboral(grupos[clave], dia);
 
-        // Procesar tipos de recargos del día
-        if (dia.tipos_recargos && dia.tipos_recargos.length > 0) {
-          dia.tipos_recargos.forEach((tipo) => {
-            consolidarTipoRecargo(grupos[clave], tipo);
-          });
+        // CORREGIDO: Pasar el objeto completo del día
+        if (esDiaDelPeriodo(dia, periodo_start, periodo_end) &&
+          esDiaDelMesAño(dia, grupos[clave].mes, grupos[clave].año)) {
+          if (dia.tipos_recargos && dia.tipos_recargos.length > 0) {
+            dia.tipos_recargos.forEach((tipo) => {
+              consolidarTipoRecargo(grupos[clave], tipo);
+            });
+          }
         }
       });
     }
   });
 
-  // Calcular totales finales para cada grupo
-  Object.values(grupos).forEach((grupo, index) => {
+  Object.values(grupos).forEach((grupo) => {
     calcularTotalesFinales(grupo);
   });
 
@@ -3110,88 +3064,7 @@ const calcularAlturaGrupoPDF = (doc, grupo) => {
   // 8. Espacio entre grupos
   altura += 20;
 
-  console.log(`Grupo ${grupo.vehiculo?.placa}: ${diasLaborales.length} días, altura calculada: ${altura}px`);
-
   return altura;
-};
-
-const procesarGrupoConControlDePagina = (alturaGrupo, yActual, alturaMaxima = 650) => {
-  return yActual + alturaGrupo > alturaMaxima;
-};
-
-// Función principal para agrupar contenido en páginas
-const agruparEnPaginas = (doc, recargosAgrupados) => {
-  // Validación inicial
-  if (!recargosAgrupados || !Array.isArray(recargosAgrupados)) {
-    console.warn('recargosAgrupados no es un array válido:', recargosAgrupados);
-    return {
-      paginas: [],
-      totalPaginas: 0,
-      resumen: {
-        totalGrupos: 0,
-        gruposPorPagina: []
-      }
-    };
-  }
-
-  // Filtrar grupos válidos
-  const gruposValidos = recargosAgrupados.filter(grupo => {
-    if (!grupo) return false;
-
-    const recargosArray = grupo.recargos || grupo.items || grupo.data || [];
-    return Array.isArray(recargosArray) && recargosArray.length > 0;
-  });
-
-  console.log(`Procesando ${gruposValidos.length} grupos válidos de ${recargosAgrupados.length} total`);
-
-  if (gruposValidos.length === 0) {
-    return {
-      paginas: [],
-      totalPaginas: 0,
-      resumen: {
-        totalGrupos: 0,
-        gruposPorPagina: []
-      }
-    };
-  }
-
-  const paginas = [];
-  let paginaActual = [];
-  let alturaAcumulada = 100; // Margen superior + título principal
-  const alturaMaximaPagina = 680; // Altura disponible considerando márgenes
-
-  gruposValidos.forEach((grupo) => {
-    const alturaGrupo = calcularAlturaGrupoPDF(doc, grupo);
-
-    // Si agregar este grupo excede la altura de página
-    if (
-      alturaAcumulada + alturaGrupo > alturaMaximaPagina &&
-      paginaActual.length > 0
-    ) {
-      // Cerrar página actual y comenzar nueva
-      paginas.push([...paginaActual]);
-      paginaActual = [grupo];
-      alturaAcumulada = 100 + alturaGrupo; // Título de página + grupo actual
-    } else {
-      // Agregar a página actual
-      paginaActual.push(grupo);
-      alturaAcumulada += alturaGrupo;
-    }
-  });
-
-  // Agregar última página si tiene contenido
-  if (paginaActual.length > 0) {
-    paginas.push([...paginaActual]);
-  }
-
-  return {
-    paginas,
-    totalPaginas: paginas.length,
-    resumen: {
-      totalGrupos: gruposValidos.length,
-      gruposPorPagina: paginas.map(p => p.length)
-    }
-  };
 };
 
 const formatToCOP = (amount) => {
