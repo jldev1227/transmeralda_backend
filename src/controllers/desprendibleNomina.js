@@ -2038,7 +2038,7 @@ async function generatePDF(liquidacion) {
               .text('HORAS EXTRAS Y RECARGOS', 40, 30, {
                 align: "center"
               });
-            yActual = 50;
+            yActual = 80;
             esPrimerGrupo = false;
           } else {
             // Grupos siguientes: verificar si cabe en página actual
