@@ -349,7 +349,32 @@ exports.crear = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
+        {
+          model: Conductor,
+          as: 'conductor',
+          attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'],
+          include: [
+            {
+              model: Documento,
+              as: 'documentos',
+              attributes: [
+                'id',
+                'categoria',
+                'nombre_original',
+                'nombre_archivo',
+                'ruta_archivo',
+                's3_key',
+                'filename',
+                'mimetype',
+                'size',
+                'fecha_vigencia',
+                'estado',
+                'upload_date',
+                'metadata'
+              ]
+            }
+          ]
+        },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
@@ -717,7 +742,32 @@ exports.actualizar = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
+        {
+          model: Conductor,
+          as: 'conductor',
+          attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'],
+          include: [
+            {
+              model: Documento,
+              as: 'documentos',
+              attributes: [
+                'id',
+                'categoria',
+                'nombre_original',
+                'nombre_archivo',
+                'ruta_archivo',
+                's3_key',
+                'filename',
+                'mimetype',
+                'size',
+                'fecha_vigencia',
+                'estado',
+                'upload_date',
+                'metadata'
+              ]
+            }
+          ]
+        },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
