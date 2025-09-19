@@ -16,7 +16,8 @@ const {
   TipoRecargo,
   ConfiguracionSalario
 } = require("../models");
-const { Op } = require("sequelize")
+const { Op } = require("sequelize");
+const { notificarGlobal } = require("../utils/notificar");
 
 // Obtener todas las liquidaciones
 exports.obtenerLiquidaciones = async (req, res) => {
@@ -677,16 +678,11 @@ exports.crearLiquidacion = async (req, res) => {
       }
     );
 
-    // Emisión de evento Socket.IO para notificar a los clientes
-    const emitLiquidacionEvent = req.app.get("emitLiquidacionEvent");
-
-    if (emitLiquidacionEvent) {
-      // Emitir evento global
-      emitLiquidacionEvent("liquidacion_creada", {
-        liquidacion: liquidacionConDetalles, // Usar la variable correcta
-        usuarioCreador: req.user?.nombre || "Sistema",
-      });
-    }
+    notificarGlobal("liquidacion:creada", {
+      usuarioId: req.user.id,
+      usuarioNombre: req.user.nombre,
+      liquidacion: liquidacionConDetalles,
+    });
 
     res.status(201).json({
       success: true,
@@ -959,15 +955,11 @@ exports.editarLiquidacion = async (req, res) => {
       ],
     });
 
-    const emitLiquidacionEvent = req.app.get("emitLiquidacionEvent");
-
-    if (emitLiquidacionEvent) {
-      // Emitir evento global
-      emitLiquidacionEvent("liquidacion_actualizada", {
-        liquidacion: liquidacionActualizada, // Usar la variable correcta
-        usuarioActualizador: req.user?.nombre || "Sistema",
-      });
-    }
+    notificarGlobal("liquidacion:actualizada", {
+      usuarioId: req.user.id,
+      usuarioNombre: req.user.nombre,
+      liquidacion: liquidacionActualizada,
+    });
 
     res.status(200).json({
       success: true,
@@ -1006,6 +998,248 @@ exports.obtenerConfiguracion = async (req, res) => {
   }
 };
 
+/**
+ * Actualizar configuración
+ * PUT /api/configuraciones/:id
+ */
+exports.actualizarConfiguracion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nombre, valor, tipo, activo } = req.body;
+
+    // Validar que el ID sea válido
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "El ID de la configuración es obligatorio",
+      });
+    }
+
+    // Buscar la configuración existente
+    const configuracion = await ConfiguracionLiquidacion.findByPk(id);
+
+    if (!configuracion) {
+      return res.status(404).json({
+        success: false,
+        message: "Configuración no encontrada",
+      });
+    }
+
+    // Si se está cambiando el nombre, verificar que no exista otro con el mismo nombre
+    if (nombre && nombre.trim() !== configuracion.nombre) {
+      const configuracionExistente = await ConfiguracionLiquidacion.findOne({
+        where: {
+          nombre: nombre.trim(),
+          activo: true,
+          id: { [Op.ne]: id } // Excluir la configuración actual
+        }
+      });
+
+      if (configuracionExistente) {
+        return res.status(409).json({
+          success: false,
+          message: "Ya existe otra configuración activa con ese nombre",
+        });
+      }
+    }
+
+    // Determinar el tipo a validar (nuevo tipo o tipo existente)
+    const tipoParaValidar = tipo || configuracion.tipo;
+
+    // Validar el valor si se está actualizando
+    if (valor !== undefined) {
+      const validationResult = validateValueByType(valor, tipoParaValidar);
+      if (!validationResult.valid) {
+        return res.status(400).json({
+          success: false,
+          message: validationResult.message,
+        });
+      }
+    }
+
+    // Preparar datos para actualizar (solo incluir campos que se enviaron)
+    const updateData = {};
+    
+    if (nombre !== undefined && nombre.trim() !== '') {
+      updateData.nombre = nombre.trim();
+    }
+    
+    if (valor !== undefined) {
+      updateData.valor = parseFloat(valor);
+    }
+    
+    if (tipo !== undefined) {
+      updateData.tipo = tipo;
+    }
+    
+    if (activo !== undefined) {
+      updateData.activo = Boolean(activo);
+    }
+
+    // Verificar que al menos un campo se esté actualizando
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No se enviaron datos para actualizar",
+      });
+    }
+
+    // Actualizar la configuración
+    await configuracion.update(updateData);
+
+    // Obtener la configuración actualizada completa
+    const configuracionActualizada = await ConfiguracionLiquidacion.findByPk(id);
+
+    notificarGlobal("configuracion_liquidacion_actualizada", configuracionActualizada);
+
+    res.status(200).json({
+      success: true,
+      message: "Configuración actualizada exitosamente",
+      data: configuracionActualizada,
+    });
+
+  } catch (error) {
+    console.error("Error al actualizar configuración:", error);
+    
+    // Manejar errores específicos de Sequelize
+    if (error.name === 'SequelizeValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: "Error de validación",
+        errors: error.errors.map(e => ({
+          field: e.path,
+          message: e.message,
+          value: e.value
+        }))
+      });
+    }
+
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({
+        success: false,
+        message: "Violación de restricción única",
+        errors: error.errors.map(e => ({
+          field: e.path,
+          message: e.message
+        }))
+      });
+    }
+
+    if (error.name === 'SequelizeDatabaseError') {
+      return res.status(500).json({
+        success: false,
+        message: "Error de base de datos",
+        error: process.env.NODE_ENV === "development" ? error.message : "Error interno del servidor"
+      });
+    }
+
+    // Error genérico
+    res.status(500).json({
+      success: false,
+      message: "Error interno al actualizar la configuración",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+/**
+ * Función auxiliar para validar valores según el tipo
+ */
+function validateValueByType(valor, tipo) {
+  // Verificar que el valor sea numérico
+  const numericValue = parseFloat(valor);
+  
+  if (isNaN(numericValue)) {
+    return { 
+      valid: false, 
+      message: "El valor debe ser numérico válido" 
+    };
+  }
+
+  // Validaciones específicas por tipo
+  switch (tipo) {
+    case 'PORCENTAJE':
+      if (numericValue < 0 || numericValue > 100) {
+        return { 
+          valid: false, 
+          message: "El porcentaje debe estar entre 0 y 100" 
+        };
+      }
+      break;
+    
+    case 'VALOR_NUMERICO':
+      if (numericValue < 0) {
+        return { 
+          valid: false, 
+          message: "El valor numérico no puede ser negativo" 
+        };
+      }
+      break;
+
+    case 'MONTO_FIJO':
+      if (numericValue < 0) {
+        return { 
+          valid: false, 
+          message: "El monto fijo no puede ser negativo" 
+        };
+      }
+      if (numericValue > 999999999.99) {
+        return { 
+          valid: false, 
+          message: "El monto excede el límite máximo permitido" 
+        };
+      }
+      break;
+    
+    case 'MULTIPLICADOR':
+      if (numericValue <= 0) {
+        return { 
+          valid: false, 
+          message: "El multiplicador debe ser mayor que 0" 
+        };
+      }
+      if (numericValue > 1000) {
+        return { 
+          valid: false, 
+          message: "El multiplicador no puede ser mayor a 1000" 
+        };
+      }
+      break;
+    
+    case 'BOOLEAN':
+      if (numericValue !== 0 && numericValue !== 1) {
+        return { 
+          valid: false, 
+          message: "El valor booleano debe ser 0 (falso) o 1 (verdadero)" 
+        };
+      }
+      break;
+    
+    case 'DESCUENTO':
+      if (numericValue < 0) {
+        return { 
+          valid: false, 
+          message: "El descuento no puede ser negativo" 
+        };
+      }
+      if (numericValue > 100) {
+        return { 
+          valid: false, 
+          message: "El descuento no puede ser mayor al 100%" 
+        };
+      }
+      break;
+
+    default:
+      return { 
+        valid: false, 
+        message: `Tipo de valor no válido: ${tipo}` 
+      };
+  }
+
+  return { valid: true };
+}
+
 exports.eliminarLiquidacion = async (req, res) => {
   const { id } = req.params;
   try {
@@ -1019,14 +1253,11 @@ exports.eliminarLiquidacion = async (req, res) => {
     // Eliminar la liquidación - las relaciones se eliminarán automáticamente por CASCADE
     await liquidacion.destroy();
 
-    const emitLiquidacionEvent = req.app.get("emitLiquidacionEvent");
-
-    if (emitLiquidacionEvent) {
-      // Emitir evento global
-      emitLiquidacionEvent("liquidacion_eliminada", {
-        liquidacionId: id,
-      });
-    }
+    notificarGlobal("liquidacion:eliminada", {
+      usuarioId: req.user.id,
+      usuarioNombre: req.user.nombre,
+      liquidacionId: id,
+    });
 
     res.status(200).json({
       success: true,

@@ -113,10 +113,10 @@ async function uploadProcessedDocumentsVehiculo(sessionId, vehiculoId, fechasVig
         if (isUpdate && categorias && categorias.length > 0) {
             try {
                 logger.info(`Eliminando documentos antiguos para vehículo ${vehiculoId} en categorías: ${categorias.join(', ')}`);
-                
+
                 // Buscar solo documentos de las categorías específicas
                 const documentosAntiguos = await Documento.findAll({
-                    where: { 
+                    where: {
                         vehiculo_id: vehiculoId,
                         categoria: categorias // Solo documentos de las categorías que se van a actualizar
                     }
@@ -146,7 +146,7 @@ async function uploadProcessedDocumentsVehiculo(sessionId, vehiculoId, fechasVig
                 // Eliminar registros de la base de datos solo de las categorías específicas
                 if (documentosAntiguos.length > 0) {
                     await Documento.destroy({
-                        where: { 
+                        where: {
                             vehiculo_id: vehiculoId,
                             categoria: categorias
                         }
@@ -275,8 +275,8 @@ async function uploadProcessedDocumentsVehiculo(sessionId, vehiculoId, fechasVig
 
                             // Si no encuentra por mapping, buscar por clave que contenga la categoría
                             if (!fechaVigencia) {
-                                const fechaKey = Object.keys(fechasVigencia).find(key => 
-                                    key.toLowerCase().includes(categoria.toLowerCase()) || 
+                                const fechaKey = Object.keys(fechasVigencia).find(key =>
+                                    key.toLowerCase().includes(categoria.toLowerCase()) ||
                                     categoria.toLowerCase().includes(key.toLowerCase())
                                 );
                                 if (fechaKey) {
@@ -383,10 +383,10 @@ async function uploadProcessedDocumentsConductor(sessionId, conductorId, fechasV
         if (isUpdate && categorias && categorias.length > 0) {
             try {
                 logger.info(`Eliminando documentos antiguos para conductor ${conductorId} en categorías: ${categorias.join(', ')}`);
-                
+
                 // Buscar solo documentos de las categorías específicas
                 const documentosAntiguos = await Documento.findAll({
-                    where: { 
+                    where: {
                         conductor_id: conductorId, // ✅ CAMBIADO: conductor_id en lugar de vehiculo_id
                         categoria: categorias
                     }
@@ -414,7 +414,7 @@ async function uploadProcessedDocumentsConductor(sessionId, conductorId, fechasV
                 // Eliminar registros de la base de datos
                 if (documentosAntiguos.length > 0) {
                     await Documento.destroy({
-                        where: { 
+                        where: {
                             conductor_id: conductorId,
                             categoria: categorias
                         }
@@ -509,7 +509,7 @@ async function uploadProcessedDocumentsConductor(sessionId, conductorId, fechasV
 
                     // ✅ OPCIONAL: Buscar fecha de vigencia si está disponible
                     let fechaVigencia = null;
-                    
+
                     if (fechasVigencia) {
                         // Buscar coincidencia exacta primero
                         if (fechasVigencia[categoria]) {
@@ -536,8 +536,8 @@ async function uploadProcessedDocumentsConductor(sessionId, conductorId, fechasV
 
                             // Búsqueda flexible si no encuentra coincidencia exacta
                             if (!fechaVigencia) {
-                                const fechaKey = Object.keys(fechasVigencia).find(key => 
-                                    key.toLowerCase().includes(categoria.toLowerCase()) || 
+                                const fechaKey = Object.keys(fechasVigencia).find(key =>
+                                    key.toLowerCase().includes(categoria.toLowerCase()) ||
                                     categoria.toLowerCase().includes(key.toLowerCase())
                                 );
                                 if (fechaKey) {
@@ -719,7 +719,7 @@ async function downloadFileFromS3(s3Key, filename, res) {
         });
 
         const response = await s3Client.send(command);
-        
+
         // Configurar headers para descarga
         res.setHeader('Content-Type', response.ContentType || 'application/octet-stream');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -728,12 +728,131 @@ async function downloadFileFromS3(s3Key, filename, res) {
 
         // Stream del archivo
         response.Body.pipe(res);
-        
+
         logger.info(`Archivo ${filename} descargado exitosamente desde ${s3Key}`);
-        
+
     } catch (error) {
         logger.error(`Error al descargar archivo ${s3Key}: ${error.message}`);
         throw error;
+    }
+}
+
+// Agregar estas funciones a tu documentService.js o crear un nuevo planillaService.js
+
+/**
+ * Sube un archivo de planilla a S3 y retorna la información del archivo
+ * @param {Object} file - Archivo de multer (req.file)
+ * @param {string} recargoId - ID del recargo
+ * @param {string} oldS3Key - Clave S3 del archivo anterior (opcional, para eliminarlo)
+ * @returns {Promise<Object>} - Información del archivo subido
+ */
+async function uploadPlanillaToS3(file, recargoId, oldS3Key = null) {
+    try {
+        // Generar ID único para el archivo
+        const fileId = uuidv4();
+
+        // Generar ruta en S3 específica para planillas
+        const s3Key = `planillas/recargos/${recargoId}/${fileId}${path.extname(file.originalname)}`;
+
+        // Leer el archivo
+        const fileContent = await fs.readFile(file.path);
+
+        if (fileContent.length === 0) {
+            throw new Error('El archivo está vacío');
+        }
+
+        // Eliminar archivo anterior de S3 si existe
+        if (oldS3Key && oldS3Key.trim() !== '') {
+            try {
+                await s3Client.send(new DeleteObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: oldS3Key
+                }));
+                logger.info(`Archivo anterior eliminado de S3: ${oldS3Key}`);
+            } catch (deleteError) {
+                logger.warn(`Error al eliminar archivo anterior de S3: ${deleteError.message}`);
+                // Continuar aunque no se pueda eliminar el anterior
+            }
+        } else {
+            logger.info('No hay archivo anterior para eliminar');
+        }
+
+        // Subir nuevo archivo a S3
+        const upload = new Upload({
+            client: s3Client,
+            params: {
+                Bucket: BUCKET_NAME,
+                Key: s3Key,
+                Body: fileContent,
+                ContentType: file.mimetype,
+                Metadata: {
+                    'original-filename': file.originalname,
+                    'recargo-id': recargoId,
+                    'file-size': String(file.size),
+                    'upload-date': new Date().toISOString()
+                }
+            }
+        });
+
+        const result = await upload.done();
+        logger.info(`Planilla subida exitosamente a S3: ${s3Key}, ETag: ${result.ETag}`);
+
+        // Eliminar archivo temporal local
+        try {
+            await fs.unlink(file.path);
+        } catch (unlinkError) {
+            logger.warn(`Error al eliminar archivo temporal: ${unlinkError.message}`);
+        }
+
+        // Retornar información del archivo para guardar en BD
+        return {
+            archivo_planilla_url: s3Key, // Guardar la S3 key, no la URL local
+            archivo_planilla_nombre: file.originalname,
+            archivo_planilla_tipo: file.mimetype,
+            archivo_planilla_tamaño: file.size,
+            s3_key: s3Key, // Campo adicional para referenciar en S3
+            s3_bucket: BUCKET_NAME
+        };
+
+    } catch (error) {
+        logger.error(`Error al subir planilla a S3: ${error.message}`);
+
+        // Limpiar archivo temporal si existe
+        try {
+            if (file && file.path) {
+                await fs.unlink(file.path);
+            }
+        } catch (unlinkError) {
+            logger.warn(`Error al limpiar archivo temporal: ${unlinkError.message}`);
+        }
+
+        throw error;
+    }
+}
+
+/**
+ * Elimina un archivo de planilla de S3
+ * @param {string} s3Key - Clave del archivo en S3
+ * @returns {Promise<boolean>} - True si se eliminó exitosamente
+ */
+async function deletePlanillaFromS3(s3Key) {
+    try {
+        if (!s3Key) {
+            logger.warn('No se proporcionó S3 key para eliminar');
+            return false;
+        }
+
+        await s3Client.send(new DeleteObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: s3Key
+        }));
+
+        logger.info(`Planilla eliminada de S3: ${s3Key}`);
+        return true;
+
+    } catch (error) {
+        logger.error(`Error al eliminar planilla de S3: ${error.message}`);
+        return false;
     }
 }
 
@@ -745,5 +864,7 @@ module.exports = {
     getDocumentosByConductorId,
     generateSignedUrl,
     downloadFileFromS3,
-    getDocumentoById
+    getDocumentoById,
+    uploadPlanillaToS3,
+    deletePlanillaFromS3,
 };

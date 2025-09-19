@@ -1,4 +1,5 @@
 const { Servicio, Municipio, Conductor, Vehiculo, Empresa, ServicioHistorico, Documento } = require('../models');
+const { notificarGlobal } = require('../utils/notificar');
 
 const verificarDisponibilidad = async (conductorId, vehiculoId, servicioIdExcluir = null) => {
   const errores = [];
@@ -110,7 +111,7 @@ exports.obtenerTodos = async (req, res) => {
             }
           ]
         },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color"] },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color", "clase_vehiculo"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
     });
@@ -172,8 +173,33 @@ exports.obtenerPorId = async (req, res) => {
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color"] },
+        {
+          model: Conductor,
+          as: 'conductor',
+          attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'],
+          include: [
+            {
+              model: Documento,
+              as: 'documentos',
+              attributes: [
+                'id',
+                'categoria',
+                'nombre_original',
+                'nombre_archivo',
+                'ruta_archivo',
+                's3_key',
+                'filename',
+                'mimetype',
+                'size',
+                'fecha_vigencia',
+                'estado',
+                'upload_date',
+                'metadata'
+              ]
+            }
+          ]
+        },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color", "clase_vehiculo"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
     });
@@ -375,24 +401,12 @@ exports.crear = async (req, res) => {
             }
           ]
         },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color"] },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color", "clase_vehiculo"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
     });
 
-    // Emitir evento para todos los clientes conectados
-    const emitServicioEvent = req.app.get('emitServicioEvent');
-    if (emitServicioEvent) {
-      emitServicioEvent('servicio:creado', servicioCreado);
-    }
-
-    // Emitir evento específicamente para el conductor asignado
-    if (conductorId) {
-      const emitServicioToUser = req.app.get('emitServicioToUser');
-      if (emitServicioToUser) {
-        emitServicioToUser(conductorId, 'servicio:asignado', servicioCreado);
-      }
-    }
+    notificarGlobal("servicio:creado", servicioCreado);
 
     return res.status(201).json({
       success: true,
@@ -634,7 +648,7 @@ exports.actualizar = async (req, res) => {
         try {
           // Buscar los datos del vehículo para tener información más completa en el histórico
           const vehiculoAnterior = await Vehiculo.findByPk(servicio.vehiculo_id, {
-            attributes: ['id', 'placa', 'marca', 'linea', 'modelo', "color"]
+            attributes: ['id', 'placa', 'marca', 'linea', 'modelo', "color", "clase_vehiculo"]
           });
 
           let valorAnterior = `Vehículo ID: ${servicio.vehiculo_id}`;
@@ -768,41 +782,12 @@ exports.actualizar = async (req, res) => {
             }
           ]
         },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color"] },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color", "clase_vehiculo"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
     });
 
-    // Emitir evento para todos los clientes conectados
-    const emitServicioEvent = req.app.get('emitServicioEvent');
-    if (emitServicioEvent) {
-      emitServicioEvent('servicio:actualizado', servicioActualizado);
-    }
-
-    // Emitir notificación al conductor si ha cambiado
-    const emitServicioToUser = req.app.get('emitServicioToUser');
-    if (emitServicioToUser) {
-      // Notificar al conductor nuevo (si se ha asignado uno)
-      if (updateData.conductor_id && updateData.conductor_id !== conductorAnteriorId) {
-        emitServicioToUser(updateData.conductor_id, 'servicio:asignado', servicioActualizado);
-      }
-
-      // Notificar al conductor anterior que se le ha quitado el servicio (si había uno y ha cambiado o se ha eliminado)
-      if (conductorAnteriorId &&
-        (req.body.hasOwnProperty('conductor_id') &&
-          (updateData.conductor_id !== conductorAnteriorId || updateData.conductor_id === null))) {
-
-        // Mensaje específico para cuando se elimina completamente la asignación
-        const mensaje = updateData.conductor_id === null ?
-          'Este servicio ha sido desvinculado de tu cuenta' :
-          'Este servicio ya no está asignado a usted';
-
-        emitServicioToUser(conductorAnteriorId, 'servicio:desasignado', {
-          id: servicioActualizado.id,
-          mensaje: mensaje
-        });
-      }
-    }
+    notificarGlobal("servicio:actualizado", servicioActualizado);
 
     return res.status(200).json({
       success: true,
@@ -871,19 +856,7 @@ exports.eliminar = async (req, res) => {
       }
     });
 
-    // Emitir evento para todos los clientes conectados
-    const emitServicioEvent = req.app.get('emitServicioEvent');
-    if (emitServicioEvent) {
-      emitServicioEvent('servicio:eliminado', { id, ...servicioInfo });
-    }
-
-    // Notificar específicamente al conductor asignado
-    if (conductorId) {
-      const emitServicioToUser = req.app.get('emitServicioToUser');
-      if (emitServicioToUser) {
-        emitServicioToUser(conductorId, 'servicio:eliminado', servicioInfo);
-      }
-    }
+    notificarGlobal("servicio:eliminado", { servicio: servicioInfo, conductor_id: conductorId });
 
     return res.status(200).json({
       success: true,
@@ -1025,37 +998,40 @@ exports.cambiarEstado = async (req, res) => {
     // Obtener el servicio actualizado
     const servicioActualizado = await Servicio.findByPk(id, {
       include: [
-        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento'] },
-        { model: Conductor, as: 'conductor', attributes: ['id', 'nombre'] },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo'] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre'] }
+        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
+        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
+        {
+          model: Conductor,
+          as: 'conductor',
+          attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'],
+          include: [
+            {
+              model: Documento,
+              as: 'documentos',
+              attributes: [
+                'id',
+                'categoria',
+                'nombre_original',
+                'nombre_archivo',
+                'ruta_archivo',
+                's3_key',
+                'filename',
+                'mimetype',
+                'size',
+                'fecha_vigencia',
+                'estado',
+                'upload_date',
+                'metadata'
+              ]
+            }
+          ]
+        },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color", "clase_vehiculo"] },
+        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
       ]
     });
 
-    // Emitir evento para todos los clientes conectados
-    const emitServicioEvent = req.app.get('emitServicioEvent');
-    if (emitServicioEvent) {
-      emitServicioEvent('servicio:estado-actualizado', {
-        id: servicioActualizado.id,
-        estado: servicioActualizado.estado,
-        estadoAnterior,
-        servicio: servicioActualizado
-      });
-    }
-
-    // Notificar al conductor asignado
-    if (servicio.conductor && servicio.conductor.id) {
-      const emitServicioToUser = req.app.get('emitServicioToUser');
-      if (emitServicioToUser) {
-        emitServicioToUser(servicio.conductor.id, 'servicio:estado-actualizado', {
-          id: servicioActualizado.id,
-          estado: servicioActualizado.estado,
-          estadoAnterior,
-          mensaje: `El estado del servicio ha cambiado a ${estado}`
-        });
-      }
-    }
+    notificarGlobal("servicio:estado-cambiado", servicioActualizado);
 
     return res.status(200).json({
       success: true,
@@ -1133,28 +1109,7 @@ exports.asignarNumeroPlanilla = async (req, res) => {
       ]
     });
 
-    // Emitir evento para todos los clientes conectados
-    const emitServicioEvent = req.app.get('emitServicioEvent');
-    if (emitServicioEvent) {
-      emitServicioEvent('servicio:numero-planilla-actualizado', {
-        id: servicioActualizado.id,
-        numero_planilla: servicioActualizado.numero_planilla,
-        servicio: servicioActualizado
-      });
-    }
-
-    // Notificar al conductor asignado
-    if (servicio.conductor && servicio.conductor.id) {
-      const emitServicioToUser = req.app.get('emitServicioToUser');
-      if (emitServicioToUser) {
-        emitServicioToUser(servicio.conductor.id, 'servicio:numero-planilla-actualizado', {
-          id: servicioActualizado.id,
-          estado: estadoActual,
-          numero_planilla: servicioActualizado.numero_planilla,
-          mensaje: `Se ha asignado el número de planilla ${numero_planilla} al servicio`
-        });
-      }
-    }
+    notificarGlobal("servicio:planilla-asignada", servicioActualizado);
 
     return res.status(200).json({
       success: true,
@@ -1166,6 +1121,65 @@ exports.asignarNumeroPlanilla = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Error al asignar número de planilla al servicio',
+      error: error.message
+    });
+  }
+};
+
+exports.generarEnlacePublico = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { expiresIn = '7d' } = req.body;
+    
+    // Verificar que el servicio existe
+    const servicio = await Servicio.findByPk(id);
+    if (!servicio) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Servicio no encontrado' 
+      });
+    }
+    
+    // Importar la función para generar JWT
+    const { generarJWTPublico } = require('../middleware/publicJWT');
+    const token = generarJWTPublico(id, expiresIn);
+    
+    const enlacePublico = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/servicio/publico/${id}?token=${token}`;
+    
+    return res.status(200).json({ 
+      success: true,
+      data: {
+        enlace: enlacePublico, 
+        token,
+        expira_en: expiresIn,
+        servicio_id: id
+      }
+    });
+  } catch (error) {
+    console.error('Error generar enlace público:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Error generando enlace público',
+      error: error.message
+    });
+  }
+};
+
+// Revocar token (placeholder)
+exports.revocarToken = async (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    return res.status(200).json({ 
+      success: true,
+      message: 'Token revocado exitosamente',
+      data: { token }
+    });
+  } catch (error) {
+    console.error('Error revocar token:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Error revocando token',
       error: error.message
     });
   }

@@ -201,25 +201,25 @@ module.exports = (sequelize) => {
           return value === null ? null : parseFloat(value);
         },
       },
-      // ajuste_parex: {
-      //   type: DataTypes.DECIMAL(10, 2),
-      //   allowNull: false,
-      //   defaultValue: 0,
-      //   validate: {
-      //     isDecimal: { msg: "El ajuste salarial debe ser un valor numérico" },
-      //   },
-      //   get() {
-      //     const value = this.getDataValue("ajuste_parex");
-      //     return value === null ? null : parseFloat(value);
-      //   },
-      // },
-      // ajuste_salarial_por_dia: {
-      //   type: DataTypes.BOOLEAN,
-      //   allowNull: false,
-      //   defaultValue: false, // Cambiar de 0 a false para boolean
-      //   // Remover validate ya que no aplica para boolean
-      //   // Remover get() ya que no necesitas parsing para boolean
-      // },
+      ajuste_parex: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+        validate: {
+          isDecimal: { msg: "El ajuste salarial debe ser un valor numérico" },
+        },
+        get() {
+          const value = this.getDataValue("ajuste_parex");
+          return value === null ? null : parseFloat(value);
+        },
+      },
+      ajuste_salarial_por_dia: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false, // Cambiar de 0 a false para boolean
+        // Remover validate ya que no aplica para boolean
+        // Remover get() ya que no necesitas parsing para boolean
+      },
       valor_incapacidad: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,

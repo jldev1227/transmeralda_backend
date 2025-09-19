@@ -248,11 +248,13 @@ exports.updateEmpresa = async (req, res) => {
       paga_recargos
     });
 
-    // Emitir evento para todos los clientes conectados
-    const emitEmpresaEvent = req.app.get('emitEmpresaEvent');
-    if (emitEmpresaEvent) {
-      emitEmpresaEvent('empresa:actualizado', empresaActualizada);
-    }
+    notificarGlobal('empresa:actualizado-global', {
+      usuarioId: req.user.id,
+      usuarioNombre: req.user.nombre,
+      empresa: empresaActualizada,
+    });
+
+    notifyUser(req.user.id, 'empresa:actualizado', empresaActualizada)
 
     return res.status(200).json({
       success: true,
