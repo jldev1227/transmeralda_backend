@@ -19,6 +19,9 @@ router.post('/conductores', protect, liquidacionController.crearLiquidacion);
 router.put('/conductores/:id', protect, liquidacionController.editarLiquidacion);
 
 // Ruta para editar una liquidación existente
+router.put('/conductores/configuracion/:id', protect, liquidacionController.actualizarConfiguracion);
+
+// Ruta para editar una liquidación existente
 router.delete('/conductores/:id', protect, isAdmin, liquidacionController.eliminarLiquidacion);
 
 module.exports = router;

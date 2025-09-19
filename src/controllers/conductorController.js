@@ -137,12 +137,7 @@ exports.crearConductorBasico = async (req, res) => {
       user_id: req.user.id // ID del usuario autenticado
     });
 
-    // Emitir evento para todos los clientes conectados
-    const emitConductorEvent = req.app.get('emitConductorEvent');
-
-    if (emitConductorEvent) {
-      emitConductorEvent('conductor:creado', nuevoConductor);
-    }
+    notificarGlobal("conductor:creado", nuevoConductor);
 
     // Retornar respuesta exitosa
     res.status(201).json({
@@ -425,11 +420,7 @@ exports.actualizarConductor = async (req, res) => {
 
     const conductorActualizado = await Conductor.findByPk(req.params.id);
 
-    // Emitir evento para todos los clientes conectados
-    const emitConductorEvent = req.app.get('emitConductorEvent');
-    if (emitConductorEvent) {
-      emitConductorEvent('conductor:actualizado', conductorActualizado);
-    }
+    notificarGlobal("conductor:actualizado", conductorActualizado);
 
     res.status(200).json({
       success: true,
@@ -458,6 +449,8 @@ exports.eliminarConductor = async (req, res) => {
         message: 'Conductor no encontrado'
       });
     }
+
+    notificarGlobal("conductor:eliminado", { id: req.params.id });
 
     res.status(200).json({
       success: true,
@@ -658,6 +651,7 @@ exports.obtenerEstadisticasEstados = async (req, res) => {
 const { procesarDocumentosConMinistral, actualizarDocumentosConMinistral } = require('../queues/conductor');
 const { procesarDatosOCRConMinistral } = require('../services/ministralConductor');
 const logger = require('../utils/logger');
+const { notificarGlobal } = require('../utils/notificar');
 
 // Crear conductor usando Ministral-3B
 exports.crearConductorConIA = async (req, res) => {

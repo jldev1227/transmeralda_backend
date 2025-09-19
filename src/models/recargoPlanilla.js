@@ -147,40 +147,9 @@ module.exports = (sequelize) => {
       comment: 'Total de horas ordinarias en el período',
     },
 
-    // ARCHIVO ADJUNTO
-    archivo_planilla_url: {
-      type: DataTypes.STRING(500),
+    planilla_s3key: {
+      type: DataTypes.STRING,
       allowNull: true,
-      validate: {
-        isUrl: {
-          msg: 'Debe ser una URL válida'
-        }
-      },
-      comment: 'URL del archivo de planilla adjunto',
-    },
-
-    archivo_planilla_nombre: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-      comment: 'Nombre original del archivo adjunto',
-    },
-
-    archivo_planilla_tipo: {
-      type: DataTypes.STRING(100),
-      allowNull: true,
-      comment: 'Tipo MIME del archivo adjunto',
-    },
-
-    archivo_planilla_tamaño: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      validate: {
-        min: {
-          args: [0],
-          msg: 'El tamaño del archivo no puede ser negativo'
-        }
-      },
-      comment: 'Tamaño del archivo en bytes',
     },
 
     // INFORMACIÓN ADICIONAL

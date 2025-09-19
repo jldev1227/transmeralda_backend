@@ -2,6 +2,7 @@
 const db = require('../models');
 const multer = require('multer');
 const path = require('path');
+const { uploadPlanillaToS3 } = require('./documentoController');
 const fs = require('fs').promises;
 
 const {
@@ -312,7 +313,7 @@ class RecargoController {
       for (const mapping of mappingRecargos) {
         const horas = resultadosCalculo[mapping.campo];
 
-        if (horas > 0 && tiposMap[mapping.codigo]) {
+        if (horas !== 0 && tiposMap[mapping.codigo]) {
           recargos[mapping.codigo] = horas;
 
           const detalle = await DetalleRecargosDia.create({
@@ -551,39 +552,6 @@ class RecargoController {
     }
   }
 
-  // ✅ ENDPOINT DEBUG SIMPLE
-  async debugSimple(req, res) {
-    try {
-      const data = req.body;
-
-      if (data.dias_laborales && data.dias_laborales[0]) {
-        const primerDia = data.dias_laborales[0];
-
-        const horaInicio = this.convertirHoraDecimalATime(primerDia.hora_inicio);
-        const horaFin = this.convertirHoraDecimalATime(primerDia.hora_fin);
-
-        // Calcular horas
-        const inicioDecimal = parseFloat(primerDia.hora_inicio);
-        const finDecimal = parseFloat(primerDia.hora_fin);
-        const totalHoras = finDecimal - inicioDecimal;
-
-      }
-
-      return res.json({
-        success: true,
-        debug: 'Ver logs en consola'
-      });
-
-    } catch (error) {
-      console.error('❌ Error en debug:', error);
-      return res.status(500).json({
-        success: false,
-        error: error.message
-      });
-    }
-  }
-
-  // Actualizar recargo existente
   // Actualizar recargo existente
   async actualizar(req, res) {
     const transaction = await sequelize.transaction();
@@ -969,26 +937,6 @@ class RecargoController {
         data = req.body;
       }
 
-      // Manejar archivo si existe
-      if (req.file) {
-        archivoInfo = {
-          archivo_planilla_url: `/uploads/planillas/${req.file.filename}`,
-          archivo_planilla_nombre: req.file.originalname,
-          archivo_planilla_tipo: req.file.mimetype,
-          archivo_planilla_tamaño: req.file.size
-        };
-
-        // Eliminar archivo anterior si existe
-        if (recargoExistente.archivo_planilla_url) {
-          try {
-            const archivoAnterior = path.join(__dirname, '../../', recargoExistente.archivo_planilla_url);
-            await fs.unlink(archivoAnterior);
-          } catch (error) {
-            console.log('⚠️ No se pudo eliminar archivo anterior:', error.message);
-          }
-        }
-      }
-
       // Validaciones básicas (igual que crear)
       if (!data.conductor_id || !data.vehiculo_id || !data.empresa_id || !data.dias_laborales) {
         await transaction.rollback();
@@ -1004,6 +952,50 @@ class RecargoController {
           success: false,
           message: 'Debe incluir al menos un día laboral'
         });
+      }
+
+      if (req.file) {
+        try {
+          // Determinar si hay un archivo anterior para eliminar
+          const oldS3Key = recargoExistente.s3_key ||
+            (recargoExistente.archivo_planilla_url &&
+              recargoExistente.archivo_planilla_url.startsWith('planillas/') ?
+              recargoExistente.archivo_planilla_url : null);
+
+          console.log('oldS3Key:', oldS3Key);
+
+          // Subir nuevo archivo a S3 - pasar null si oldS3Key es null
+          archivoInfo = await uploadPlanillaToS3(req.file, id, oldS3Key || undefined);
+
+          logger.info(`Planilla actualizada para recargo ${id}: ${archivoInfo.s3_key}`);
+
+        } catch (uploadError) {
+          // Verificar estado de transacción ANTES de hacer rollback
+          if (transaction && !transaction.finished) {
+            try {
+              await transaction.rollback();
+            } catch (rollbackError) {
+              console.error('Error en rollback:', rollbackError.message);
+            }
+          }
+
+          logger.error(`Error al subir planilla: ${uploadError.message}`);
+
+          // Limpiar archivo temporal si existe
+          if (req.file && req.file.path) {
+            try {
+              await fs.unlink(req.file.path);
+            } catch (unlinkError) {
+              console.error('Error eliminando archivo temporal:', unlinkError.message);
+            }
+          }
+
+          return res.status(500).json({
+            success: false,
+            message: 'Error al procesar el archivo de planilla',
+            error: process.env.NODE_ENV === 'development' ? uploadError.message : undefined
+          });
+        }
       }
 
       // Guardar datos anteriores para historial
@@ -1382,7 +1374,7 @@ class RecargoController {
         },
         attributes: [
           'id', 'numero_planilla', 'mes', 'año',
-          'total_horas_trabajadas', 'total_dias_laborados',
+          'total_horas_trabajadas', 'total_dias_laborados', 'planilla_s3key',
           'created_at'
         ],
         include: [
@@ -1442,6 +1434,7 @@ class RecargoController {
         empresa: recargo.empresa,
         total_horas: recargo.total_horas_trabajadas,
         total_dias: recargo.total_dias_laborados,
+        planilla_s3key: recargo.planilla_s3key,
 
         // ✅ DÍAS CON RECARGOS DESDE DETALLES NORMALIZADOS
         dias_laborales: recargo.dias_laborales?.map(dia => {
