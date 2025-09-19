@@ -856,7 +856,7 @@ exports.eliminar = async (req, res) => {
       }
     });
 
-    notificarGlobal("servicio:eliminado", { servicio: servicioInfo, conductor_id: conductorId });
+    notificarGlobal("servicio:eliminado", { id: servicioInfo.id, conductor_id: conductorId });
 
     return res.status(200).json({
       success: true,
@@ -1144,7 +1144,7 @@ exports.generarEnlacePublico = async (req, res) => {
     const { generarJWTPublico } = require('../middleware/publicJWT');
     const token = generarJWTPublico(id, expiresIn);
     
-    const enlacePublico = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/servicio/publico/${id}?token=${token}`;
+    const enlacePublico = `${process.env.SERVICIOS_FRONTEND_URL || 'http://localhost:3000'}/servicio/${id}?token=${token}`;
     
     return res.status(200).json({ 
       success: true,
