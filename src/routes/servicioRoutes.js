@@ -20,6 +20,7 @@ router.get('/:id', protect, servicioController.obtenerPorId);
 router.post('/', protect, servicioController.crear);
 router.put('/:id', protect, servicioController.actualizar);
 router.delete('/:id', protect, hasRole(['gestor_servicio', 'admin']), servicioController.eliminar);
+router.patch('/:id/cancelar', protect, hasRole(['gestor_servicio', 'admin']), servicioController.cancelar);
 
 // Rutas específicas para cambiar estado
 router.patch('/:id/estado', protect, servicioController.cambiarEstado);

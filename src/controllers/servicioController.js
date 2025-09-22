@@ -1,4 +1,4 @@
-const { Servicio, Municipio, Conductor, Vehiculo, Empresa, ServicioHistorico, Documento } = require('../models');
+const { User, Servicio, Municipio, Conductor, Vehiculo, Empresa, ServicioHistorico, ServicioCancelado, Documento } = require('../models');
 const { notificarGlobal } = require('../utils/notificar');
 
 const verificarDisponibilidad = async (conductorId, vehiculoId, servicioIdExcluir = null) => {
@@ -199,8 +199,37 @@ exports.obtenerPorId = async (req, res) => {
             }
           ]
         },
-        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color", "clase_vehiculo"] },
-        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
+        {
+          model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color", "clase_vehiculo"],
+          include: [
+            {
+              model: Documento,
+              as: 'documentos',
+              attributes: [
+                'id',
+                'categoria',
+                'nombre_original',
+                'nombre_archivo',
+                'ruta_archivo',
+                's3_key',
+                'filename',
+                'mimetype',
+                'size',
+                'fecha_vigencia',
+                'estado',
+                'upload_date',
+                'metadata'
+              ]
+            }
+          ]
+        },
+        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', 'nit', 'requiere_osi'] },
+        {
+          model: ServicioCancelado, as: 'cancelacion', attributes: ['id', 'motivo_cancelacion', 'observaciones', 'fecha_cancelacion', 'created_at', 'updated_at'],
+          include: [
+            { model: User, as: 'usuario_cancelacion', attributes: ['id', 'nombre', 'role'] }
+          ]
+        }
       ]
     });
 
@@ -244,6 +273,7 @@ exports.crear = async (req, res) => {
       proposito_servicio,
       fecha_solicitud,
       fecha_realizacion,
+      fecha_finalizacion, // ← Capturar fecha_finalizacion
       valor,
       observaciones
     } = req.body;
@@ -276,9 +306,7 @@ exports.crear = async (req, res) => {
       }
     }
 
-    // ✅ NUEVA VALIDACIÓN: Verificar disponibilidad de conductor y vehículo
-    // Solo verificar si se están asignando conductor o vehículo
-    if (conductorId || vehiculoId) {
+    if ((conductorId || vehiculoId) && !fecha_finalizacion) {
       const erroresDisponibilidad = await verificarDisponibilidad(conductorId, vehiculoId);
 
       if (erroresDisponibilidad.length > 0) {
@@ -305,11 +333,9 @@ exports.crear = async (req, res) => {
       }
     }
 
-    // Verificar que existan los registros relacionados, omitiendo los valores nulos
     const promises = [
       Municipio.findByPk(origen_id),
       Municipio.findByPk(destino_id),
-      // Solo buscar conductor y vehículo si los IDs no son nulos
       conductorId ? Conductor.findByPk(conductorId) : Promise.resolve(null),
       vehiculoId ? Vehiculo.findByPk(vehiculoId) : Promise.resolve(null),
       Empresa.findByPk(cliente_id)
@@ -317,7 +343,7 @@ exports.crear = async (req, res) => {
 
     const [origen, destino, conductor, vehiculo, cliente] = await Promise.all(promises);
 
-    // Verificar las entidades obligatorias
+    // Verificaciones de existencia...
     if (!origen || !destino || !cliente) {
       return res.status(400).json({
         success: false,
@@ -325,7 +351,6 @@ exports.crear = async (req, res) => {
       });
     }
 
-    // Verificar conductor y vehículo solo si se proporcionaron IDs
     if (conductorId && !conductor) {
       return res.status(400).json({
         success: false,
@@ -350,17 +375,18 @@ exports.crear = async (req, res) => {
       origen_longitud,
       destino_latitud,
       destino_longitud,
-      conductor_id: conductorId,  // Usar la versión convertida
-      vehiculo_id: vehiculoId,    // Usar la versión convertida
+      conductor_id: conductorId,
+      vehiculo_id: vehiculoId,
       cliente_id,
       estado: estado || 'planificado',
       proposito_servicio,
       fecha_solicitud,
       fecha_realizacion,
+      fecha_finalizacion, // ← Incluir fecha_finalizacion
       valor,
       observaciones
     }, {
-      user_id: req.user.id, // Pasar el ID del usuario para el histórico
+      user_id: req.user.id,
       ip_usuario: req.ip,
       navegador_usuario: req.headers['user-agent'],
       detalles: {
@@ -455,6 +481,7 @@ exports.actualizar = async (req, res) => {
       proposito_servicio,
       fecha_solicitud,
       fecha_realizacion,
+      fecha_finalizacion, // ← Capturar fecha_finalizacion
       valor,
       observaciones
     } = req.body;
@@ -468,10 +495,9 @@ exports.actualizar = async (req, res) => {
       });
     }
 
-    // ✅ NUEVA VALIDACIÓN: Verificar disponibilidad de conductor y vehículo al actualizar
     // Determinar qué conductor y vehículo se van a asignar después de la actualización
-    let conductorFinalId = servicio.conductor_id; // Valor actual por defecto
-    let vehiculoFinalId = servicio.vehiculo_id; // Valor actual por defecto
+    let conductorFinalId = servicio.conductor_id;
+    let vehiculoFinalId = servicio.vehiculo_id;
 
     // Actualizar los IDs finales basado en lo que viene en la petición
     if (req.body.hasOwnProperty('conductor_id')) {
@@ -484,20 +510,23 @@ exports.actualizar = async (req, res) => {
       vehiculoFinalId = vehiculoDesasociado ? null : vehiculo_id;
     }
 
-    // Solo verificar disponibilidad si se están asignando conductor o vehículo
-    // y si han cambiado respecto a los valores actuales
+    // Determinar si el servicio estará finalizado después de la actualización
+    const servicioFinalizadoActual = !!servicio.fecha_finalizacion;
+    const servicioFinalizadoNuevo = fecha_finalizacion !== undefined ? !!fecha_finalizacion : servicioFinalizadoActual;
+
+    // Solo verificar disponibilidad si se están asignando conductor o vehículo,
+    // han cambiado respecto a los valores actuales Y el servicio NO está finalizado
     const conductorCambio = conductorFinalId !== servicio.conductor_id;
     const vehiculoCambio = vehiculoFinalId !== servicio.vehiculo_id;
 
-    if ((conductorCambio && conductorFinalId) || (vehiculoCambio && vehiculoFinalId)) {
+    if (((conductorCambio && conductorFinalId) || (vehiculoCambio && vehiculoFinalId)) && !servicioFinalizadoNuevo) {
       const erroresDisponibilidad = await verificarDisponibilidad(
-        conductorCambio ? conductorFinalId : null, // Solo verificar si cambió
-        vehiculoCambio ? vehiculoFinalId : null,   // Solo verificar si cambió
+        conductorCambio ? conductorFinalId : null,
+        vehiculoCambio ? vehiculoFinalId : null,
         id // Excluir el servicio actual de la validación
       );
 
       if (erroresDisponibilidad.length > 0) {
-        // Generar mensaje dinámico basado en los tipos de conflictos
         let mensajePrincipal;
         const tieneErrorConductor = erroresDisponibilidad.some(error => error.tipo === 'conductor');
         const tieneErrorVehiculo = erroresDisponibilidad.some(error => error.tipo === 'vehiculo');
@@ -553,9 +582,6 @@ exports.actualizar = async (req, res) => {
       }
     }
 
-    // Guardar el ID del conductor anterior para notificaciones
-    const conductorAnteriorId = servicio.conductor_id;
-
     // Preparar objeto de actualización
     const updateData = {
       origen_id: origen_id || servicio.origen_id,
@@ -571,9 +597,10 @@ exports.actualizar = async (req, res) => {
       proposito_servicio: proposito_servicio || servicio.proposito_servicio,
       fecha_solicitud: fecha_solicitud || servicio.fecha_solicitud,
       fecha_realizacion: fecha_realizacion || servicio.fecha_realizacion,
+      fecha_finalizacion: fecha_finalizacion !== undefined ? fecha_finalizacion : servicio.fecha_finalizacion, // ← Incluir fecha_finalizacion
       valor: valor || servicio.valor,
-      // Manejo especial para observaciones: preservar cadenas vacías cuando se envían explícitamente
-      observaciones: observaciones !== undefined ? observaciones : servicio.observaciones
+      observaciones: observaciones !== undefined ? observaciones : servicio.observaciones,
+      estado: fecha_finalizacion ? 'realizado' : (estado || servicio.estado) // Si hay fecha_finalizacion, forzar estado a 'finalizado'
     };
 
     // Manejar conductor_id: si está presente en req.body pero es null/vacío, lo establecemos a null
@@ -621,7 +648,6 @@ exports.actualizar = async (req, res) => {
               datos_conductor: conductorAnterior ? conductorAnterior.toJSON() : null
             }
           });
-          console.log(`Registro histórico creado para la desvinculación del conductor en servicio ID: ${servicio.id}`);
         } catch (error) {
           console.error('Error al registrar la desvinculación del conductor en histórico:', error);
         }
@@ -675,7 +701,6 @@ exports.actualizar = async (req, res) => {
               datos_vehiculo: vehiculoAnterior ? vehiculoAnterior.toJSON() : null
             }
           });
-          console.log(`Registro histórico creado para la desvinculación del vehículo en servicio ID: ${servicio.id}`);
         } catch (error) {
           console.error('Error al registrar la desvinculación del vehículo en histórico:', error);
         }
@@ -723,8 +748,6 @@ exports.actualizar = async (req, res) => {
                 'Adición de observaciones (campo vacío a campo con valor)'
             }
           });
-
-          console.log(`Registro histórico creado para el cambio de observaciones en servicio ID: ${servicio.id}`);
         }
       } catch (error) {
         console.error('Error al registrar cambio de observaciones en histórico:', error);
@@ -868,6 +891,184 @@ exports.eliminar = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Error al eliminar el servicio',
+      error: error.message
+    });
+  }
+};
+
+// Cancelar un servicio
+exports.cancelar = async (req, res) => {
+  const transaction = await Servicio.sequelize.transaction();
+
+  try {
+    const { id } = req.params;
+    const {
+      motivo_cancelacion = 'otro',
+      observaciones = '',
+      fecha_cancelacion
+    } = req.body;
+
+    // Buscar el servicio con sus relaciones (siguiendo el mismo patrón que cambiarEstado)
+    const servicio = await Servicio.findByPk(id, {
+      include: [
+        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
+        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
+        {
+          model: Conductor,
+          as: 'conductor',
+          attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'],
+        },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color", "clase_vehiculo"] },
+        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
+      ],
+      transaction
+    });
+
+    if (!servicio) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Servicio no encontrado'
+      });
+    }
+
+    // Verificar que el servicio no esté ya cancelado
+    if (servicio.estado === 'cancelado') {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'El servicio ya se encuentra cancelado'
+      });
+    }
+
+    // Verificar que el servicio se pueda cancelar (no esté liquidado)
+    if (servicio.estado === 'liquidado') {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'No se puede cancelar un servicio que ya ha sido liquidado'
+      });
+    }
+
+    // Guardar el estado anterior para comparación
+    const estadoAnterior = servicio.estado;
+
+    // Actualizar el estado del servicio a cancelado y las observaciones
+    await servicio.update({
+      estado: 'cancelado',
+    }, {
+      transaction,
+      user_id: req.user.id, // Pasar el ID del usuario para el histórico
+      ip_usuario: req.ip,
+      detalles: {
+        origen: 'API',
+        ruta: req.originalUrl,
+        metodo: req.method,
+        estado_anterior: estadoAnterior,
+      }
+    });
+
+    // Crear el registro de cancelación (solo si el modelo existe)
+    let cancelacion = null;
+
+    try {
+      cancelacion = await ServicioCancelado.create({
+        servicio_id: id,
+        usuario_cancelacion_id: req.user.id,
+        motivo_cancelacion,
+        observaciones,
+        fecha_cancelacion
+      }, { transaction });
+    } catch (cancelacionError) {
+      console.warn('No se pudo crear el registro de cancelación:', cancelacionError.message);
+      // Continuar sin crear el registro de cancelación si el modelo no existe aún
+    }
+
+    await transaction.commit();
+
+    // Obtener el servicio actualizado (siguiendo el mismo patrón que cambiarEstado)
+    const servicioActualizado = await Servicio.findByPk(id, {
+      include: [
+        { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
+        { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
+        {
+          model: Conductor,
+          as: 'conductor',
+          attributes: ['id', 'nombre', 'apellido', 'numero_identificacion', 'tipo_identificacion', 'telefono'],
+          include: [
+            {
+              model: Documento,
+              as: 'documentos',
+              attributes: [
+                'id',
+                'categoria',
+                'nombre_original',
+                'nombre_archivo',
+                'ruta_archivo',
+                's3_key',
+                'filename',
+                'mimetype',
+                'size',
+                'fecha_vigencia',
+                'estado',
+                'upload_date',
+                'metadata'
+              ]
+            }
+          ]
+        },
+        { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color", "clase_vehiculo"] },
+        { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] },
+        {
+          model: ServicioCancelado, as: 'cancelacion', attributes: ['id', 'motivo_cancelacion', 'observaciones', 'fecha_cancelacion', 'created_at', 'updated_at'],
+          include: [
+            { model: User, as: 'usuario_cancelacion', attributes: ['id', 'nombre', 'role'] }
+          ]
+        }
+      ]
+    });
+
+    // Notificar la cancelación (siguiendo el mismo patrón)
+    notificarGlobal("servicio:cancelado", {
+      ...servicioActualizado.toJSON(),
+      motivo_cancelacion,
+      cancelacion_id: cancelacion ? cancelacion.id : null,
+      usuario_cancelo: req.user.id
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Servicio cancelado exitosamente',
+      data: {
+        ...servicioActualizado.toJSON(),
+        estado_anterior: estadoAnterior,
+        motivo_cancelacion,
+        fecha_cancelacion: cancelacion ? cancelacion.fecha_cancelacion : new Date(),
+        cancelacion_id: cancelacion ? cancelacion.id : null
+      }
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Error al cancelar el servicio:', error);
+
+    // Manejar errores de validación
+    if (error.name === 'SequelizeValidationError') {
+      const errores = error.errors.map(err => ({
+        campo: err.path,
+        mensaje: err.message
+      }));
+
+      return res.status(400).json({
+        success: false,
+        message: 'Error de validación',
+        errores
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Error al cancelar el servicio',
       error: error.message
     });
   }
@@ -1129,35 +1330,33 @@ exports.asignarNumeroPlanilla = async (req, res) => {
 exports.generarEnlacePublico = async (req, res) => {
   try {
     const { id } = req.params;
-    const { expiresIn = '7d' } = req.body;
-    
+
     // Verificar que el servicio existe
     const servicio = await Servicio.findByPk(id);
     if (!servicio) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: 'Servicio no encontrado' 
+        message: 'Servicio no encontrado'
       });
     }
-    
+
     // Importar la función para generar JWT
     const { generarJWTPublico } = require('../middleware/publicJWT');
-    const token = generarJWTPublico(id, expiresIn);
-    
+    const token = generarJWTPublico(id);
+
     const enlacePublico = `${process.env.SERVICIOS_FRONTEND_URL || 'http://localhost:3000'}/servicio/${id}?token=${token}`;
-    
-    return res.status(200).json({ 
+
+    return res.status(200).json({
       success: true,
       data: {
-        enlace: enlacePublico, 
+        enlace: enlacePublico,
         token,
-        expira_en: expiresIn,
         servicio_id: id
       }
     });
   } catch (error) {
     console.error('Error generar enlace público:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
       message: 'Error generando enlace público',
       error: error.message
@@ -1169,15 +1368,15 @@ exports.generarEnlacePublico = async (req, res) => {
 exports.revocarToken = async (req, res) => {
   try {
     const { token } = req.params;
-    
-    return res.status(200).json({ 
+
+    return res.status(200).json({
       success: true,
       message: 'Token revocado exitosamente',
       data: { token }
     });
   } catch (error) {
     console.error('Error revocar token:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
       message: 'Error revocando token',
       error: error.message

@@ -1,15 +1,14 @@
 const jwt = require('jsonwebtoken'); // ← ESTO FALTABA
 
 // Generar JWT público
-const generarJWTPublico = (servicioId, expiresIn = '7d') => {
+const generarJWTPublico = (servicioId) => {
     return jwt.sign(
         { 
             type: 'public_access',
             servicio_id: servicioId,
             permissions: ['read']
         },
-        process.env.JWT_SECRET,
-        { expiresIn }
+        process.env.JWT_SECRET
     );
 };
 

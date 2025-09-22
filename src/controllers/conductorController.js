@@ -300,8 +300,6 @@ exports.obtenerConductores = async (req, res) => {
       whereClause.estado = { [Op.in]: estados };
     }
 
-    console.log(req.query)
-
     // Procesamiento de filtro por sede de trabajo (puede ser múltiple)
     if (req.query.sede_trabajo) {
       const sedes = req.query.sede_trabajo.split(',');
@@ -820,15 +818,6 @@ exports.actualizarConductorConIA = async (req, res) => {
         archivos: adaptedFiles.length,
         camposBasicos: !!camposBasicos
       });
-
-      console.log(req.user.id,
-        req.user.id,
-        conductorId,
-        adaptedFiles,
-        categoriasArray,
-        socketId,
-        camposBasicos
-      )
 
       // Iniciar procesamiento asíncrono con Ministral
       const sessionId = await actualizarDocumentosConMinistral(
