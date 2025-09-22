@@ -962,8 +962,6 @@ class RecargoController {
               recargoExistente.archivo_planilla_url.startsWith('planillas/') ?
               recargoExistente.archivo_planilla_url : null);
 
-          console.log('oldS3Key:', oldS3Key);
-
           // Subir nuevo archivo a S3 - pasar null si oldS3Key es null
           archivoInfo = await uploadPlanillaToS3(req.file, id, oldS3Key || undefined);
 

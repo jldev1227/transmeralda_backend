@@ -247,9 +247,6 @@ async function uploadProcessedDocumentsVehiculo(sessionId, vehiculoId, fechasVig
                         throw s3Error;
                     }
 
-                    console.log('Fechas vigencia:', fechasVigencia);
-                    console.log('Categoria actual:', categoria);
-
                     // ✅ CORREGIDO: Buscar fecha de vigencia por categoría o usar null
                     let fechaVigencia = null;
                     if (fechasVigencia) {
@@ -285,8 +282,6 @@ async function uploadProcessedDocumentsVehiculo(sessionId, vehiculoId, fechasVig
                             }
                         }
                     }
-
-                    console.log('Fecha vigencia encontrada:', fechaVigencia);
 
                     // Crear registro en la base de datos
                     const documento = await Documento.create({
@@ -504,9 +499,6 @@ async function uploadProcessedDocumentsConductor(sessionId, conductorId, fechasV
                         throw s3Error;
                     }
 
-                    console.log('Fechas vigencia:', fechasVigencia);
-                    console.log('Categoria actual:', categoria);
-
                     // ✅ OPCIONAL: Buscar fecha de vigencia si está disponible
                     let fechaVigencia = null;
 
@@ -551,8 +543,6 @@ async function uploadProcessedDocumentsConductor(sessionId, conductorId, fechasV
                     if (!fechaVigencia) {
                         logger.info(`No se encontró fecha de vigencia para categoría ${categoria} en conductor ${conductorId}. Se guardará sin fecha de vigencia.`);
                     }
-
-                    console.log('Fecha vigencia encontrada:', fechaVigencia);
 
                     // Crear registro en la base de datos
                     const documento = await Documento.create({

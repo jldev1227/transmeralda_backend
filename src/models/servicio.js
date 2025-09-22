@@ -450,6 +450,11 @@ module.exports = (sequelize) => {
       as: 'historicos',
       foreignKey: 'servicio_id'
     });
+
+    Servicio.hasOne(models.ServicioCancelado, {
+      as: 'cancelacion',
+      foreignKey: 'servicio_id'
+    });
   };
 
   return Servicio;

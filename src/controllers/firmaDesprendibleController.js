@@ -79,8 +79,6 @@ const crearFirma = async (req, res) => {
     try {
         const { signatureData, conductorId, liquidacionId } = req.body;
 
-        console.log(req.body)
-        
         // Validaciones básicas
         if (!signatureData) {
             return res.status(400).json({
@@ -96,8 +94,6 @@ const crearFirma = async (req, res) => {
             });
         }
 
-        console.log(liquidacionId)
-        
         // Verificar que existe la liquidación
         const liquidacion = await Liquidacion.findByPk(liquidacionId, {
             include: [
@@ -110,8 +106,6 @@ const crearFirma = async (req, res) => {
             transaction
         });
 
-        console.log(liquidacion)
-        
         if (!liquidacion) {
             return res.status(404).json({
                 success: false,
