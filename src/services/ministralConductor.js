@@ -379,6 +379,7 @@ REGLAS IMPORTANTES:
 4. Para sede_trabajo, usa exactamente: YOPAL, VILLANUEVA, o TAURAMENA (EN MAYÚSCULAS)
 5 . Las fechas mantienen el formato YYYY-MM-DD (no necesitan mayúsculas)
 
+
 Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
   }
 
