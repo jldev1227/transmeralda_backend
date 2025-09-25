@@ -1,5 +1,5 @@
 const { Conductor, Vehiculo, Documento, User } = require('../models');
-const { Op, ValidationError } = require('sequelize');
+const { Op, ValidationError, where } = require('sequelize');
 const multer = require('multer');
 const { procesarDocumentos } = require('../queues/conductor');
 const { sequelize } = require('../config/database');
@@ -280,10 +280,9 @@ exports.obtenerConductores = async (req, res) => {
     } = req.query;
 
     const sequelizeOrder = order;
-
     const whereClause = {};
 
-    // Procesamiento de búsqueda general (busca en varios campos)
+    // Procesamiento de búsqueda general
     if (search) {
       whereClause[Op.or] = [
         { nombre: { [Op.iLike]: `%${search}%` } },
@@ -294,40 +293,65 @@ exports.obtenerConductores = async (req, res) => {
       ];
     }
 
-    // Procesamiento de filtro por estado (puede ser múltiple)
-    if (req.query.estado) {
-      const estados = req.query.estado.split(',');
-      whereClause.estado = { [Op.in]: estados };
+    // ✅ FUNCIÓN AUXILIAR para procesar filtros (maneja tanto arrays como strings)
+    const procesarFiltroMultiple = (valor) => {
+      if (!valor) return null;
+      
+      // Si es un array, lo usamos directamente
+      if (Array.isArray(valor)) {
+        return valor.length > 0 ? valor : null;
+      }
+      
+      // Si es un string, lo dividimos por comas
+      if (typeof valor === 'string') {
+        return valor.split(',').filter(v => v.trim() !== '');
+      }
+      
+      return null;
+    };
+
+    // ✅ PROCESAMIENTO DE FILTROS CORREGIDO
+    
+    // Filtro por estado
+    const estadosFiltro = procesarFiltroMultiple(req.query.estado);
+    if (estadosFiltro && estadosFiltro.length > 0) {
+      whereClause.estado = { [Op.in]: estadosFiltro };
     }
 
-    // Procesamiento de filtro por sede de trabajo (puede ser múltiple)
-    if (req.query.sede_trabajo) {
-      const sedes = req.query.sede_trabajo.split(',');
-      whereClause.sede_trabajo = { [Op.in]: sedes };
+    // Filtro por sede de trabajo
+    const sedesFiltro = procesarFiltroMultiple(req.query.sede_trabajo);
+    if (sedesFiltro && sedesFiltro.length > 0) {
+      whereClause.sede_trabajo = { [Op.in]: sedesFiltro };
     }
 
-    // Procesamiento de filtro por tipo de identificación (puede ser múltiple)
-    if (req.query.tipo_identificacion) {
-      const tiposId = req.query.tipo_identificacion.split(',');
-      whereClause.tipo_identificacion = { [Op.in]: tiposId };
+    // Filtro por tipo de identificación
+    const tiposIdFiltro = procesarFiltroMultiple(req.query.tipo_identificacion);
+    if (tiposIdFiltro && tiposIdFiltro.length > 0) {
+      whereClause.tipo_identificacion = { [Op.in]: tiposIdFiltro };
     }
 
-    // Procesamiento de filtro por tipo de contrato (puede ser múltiple)
-    if (req.query.tipo_contrato) {
-      const tiposContrato = req.query.tipo_contrato.split(',');
-      whereClause.tipo_contrato = { [Op.in]: tiposContrato };
+    // Filtro por tipo de contrato
+    const tiposContratoFiltro = procesarFiltroMultiple(req.query.tipo_contrato);
+    if (tiposContratoFiltro && tiposContratoFiltro.length > 0) {
+      whereClause.tipo_contrato = { [Op.in]: tiposContratoFiltro };
     }
 
-    // Si había filtros simples, intégralos también
+    // Filtros simples (mantener como estaban)
     if (req.query.nombre) whereClause.nombre = { [Op.iLike]: `%${req.query.nombre}%` };
     if (req.query.cargo) whereClause.cargo = req.query.cargo;
+
+    // ✅ DEBUG: Log para verificar los filtros aplicados
+    console.log('🔍 Filtros aplicados:', {
+      whereClause,
+      query: req.query,
+      page,
+      limit
+    });
 
     const offset = (page - 1) * limit;
 
     // Determinación del ordenamiento
     let orderArray = [[sort, sequelizeOrder]];
-
-    // Si el ordenamiento es por nombre completo (para mostrar nombre + apellido)
     if (sort === 'conductor') {
       orderArray = [['nombre', sequelizeOrder], ['apellido', sequelizeOrder]];
     }
@@ -344,16 +368,24 @@ exports.obtenerConductores = async (req, res) => {
           model: User,
           as: 'creadoPor',
           attributes: ['id', 'nombre', 'correo'],
-          required: false // LEFT JOIN - no excluir conductores sin creador
+          required: false
         },
         {
           model: User,
           as: 'actualizadoPor',
           attributes: ['id', 'nombre', 'correo'],
-          required: false // LEFT JOIN - no excluir conductores sin actualizador
+          required: false
         }
       ],
-      distinct: true  // Importante para contar correctamente con includes
+      distinct: true
+    });
+
+    // ✅ DEBUG: Log de resultados
+    console.log('📊 Resultados:', {
+      count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: parseInt(page),
+      rowsLength: rows.length
     });
 
     res.status(200).json({
@@ -364,7 +396,7 @@ exports.obtenerConductores = async (req, res) => {
       data: rows
     });
   } catch (error) {
-    console.error('Error al obtener conductores:', error);
+    console.error('❌ Error al obtener conductores:', error);
     res.status(500).json({
       success: false,
       message: 'Error al obtener conductores',
@@ -435,6 +467,110 @@ exports.actualizarConductor = async (req, res) => {
   }
 };
 
+exports.actualizarInformacionAdicional = async (req, res) => {
+  try {
+    const { telefono, email, direccion, salario_base, estado } = req.body;
+    const conductorId = req.params.id; // Asumiendo que el ID viene por params
+
+    // Validar que tengamos el ID del conductor
+    if (!conductorId) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID del conductor es requerido'
+      });
+    }
+
+    // Solo validar si vienen los campos
+    if (email) {
+      // Validar formato de email básico
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Formato de email inválido'
+        });
+      }
+
+      // Verificar si el email ya existe en OTROS conductores (excluir el actual)
+      const emailExistente = await Conductor.findOne({
+        where: {
+          email: email.toLowerCase().trim(),
+          id: { [Op.ne]: conductorId } // Excluir el conductor actual
+        }
+      });
+
+      if (emailExistente) {
+        return res.status(409).json({
+          success: false,
+          message: 'El email ya está registrado por otro conductor',
+          campo: 'email'
+        });
+      }
+    }
+
+    if (telefono) {
+      // Validar formato de teléfono (10 dígitos para Colombia)
+      const telefonoRegex = /^[0-9]{10}$/;
+      if (!telefonoRegex.test(telefono)) {
+        return res.status(400).json({
+          success: false,
+          message: 'El teléfono debe tener 10 dígitos numéricos'
+        });
+      }
+
+      // Verificar si el teléfono ya existe en OTROS conductores (excluir el actual)
+      const telefonoExistente = await Conductor.findOne({
+        where: {
+          telefono: telefono.trim(),
+          id: { [Op.ne]: conductorId } // Excluir el conductor actual
+        }
+      });
+
+      if (telefonoExistente) {
+        return res.status(409).json({
+          success: false,
+          message: 'El teléfono ya está registrado por otro conductor',
+          campo: 'telefono'
+        });
+      }
+    }
+
+    // Aquí actualizas el conductor
+    const conductorActualizado = await Conductor.update(
+      {
+        ...(telefono && { telefono: telefono.trim() }),
+        ...(email && { email: email.toLowerCase().trim() }),
+        ...(direccion !== undefined && { direccion }),
+        ...(salario_base && { salario_base }),
+        ...(estado && { estado })
+      },
+      {
+        where: { id: conductorId },
+        returning: true // Para PostgreSQL, devuelve el registro actualizado
+      }
+    );
+
+    const conductor = await Conductor.findByPk(req.params.id);
+
+    notificarGlobal("conductor:actualizado", conductor)
+
+    return res.status(200).json({
+      success: true,
+      message: 'Conductor actualizado exitosamente',
+      data: conductorActualizado
+    });
+
+  } catch (error) {
+    console.error('Error en actualizarInformacionAdicional:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
 exports.eliminarConductor = async (req, res) => {
   try {
     const eliminado = await Conductor.destroy({
@@ -470,7 +606,7 @@ exports.obtenerConductoresBasicos = async (req, res) => {
       attributes: ['id', 'nombre', 'apellido', "numero_identificacion", "salario_base"]
     });
 
-    const conductoresOrdenados = conductores.sort((a, b)=> a.nombre.localeCompare(b.nombre))
+    const conductoresOrdenados = conductores.sort((a, b) => a.nombre.localeCompare(b.nombre))
 
     res.status(200).json({
       success: true,
@@ -598,7 +734,7 @@ exports.obtenerEstadisticasEstados = async (req, res) => {
     // ✅ FORMATEAR RESPUESTA PARA INCLUIR TODOS LOS ESTADOS (incluso los con 0)
     const estadosCompletos = [
       'servicio',
-      'disponible', 
+      'disponible',
       'descanso',
       'vacaciones',
       'incapacidad',
