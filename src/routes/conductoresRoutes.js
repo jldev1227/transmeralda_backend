@@ -14,6 +14,7 @@ router.get('/basicos', protect, conductorController.obtenerConductoresBasicos);
 router.get('/:id', protect, conductorController.obtenerConductorPorId);
 router.put('/:id', protect, conductorController.actualizarConductor);
 router.delete('/:id', protect, conductorController.eliminarConductor);
+router.patch('/:id/actualizar-info', conductorController.actualizarInformacionAdicional);
 router.post('/asignar-vehiculo', conductorController.asignarConductorAVehiculo);
 
 // ====== NUEVAS RUTAS CON MINISTRAL ======

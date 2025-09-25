@@ -4,6 +4,8 @@ const multer = require('multer');
 const path = require('path');
 const { uploadPlanillaToS3 } = require('./documentoController');
 const fs = require('fs').promises;
+const logger = require('../utils/logger');
+const { notificarGlobal } = require('../utils/notificar');
 
 const {
   RecargoPlanilla,
@@ -554,7 +556,21 @@ class RecargoController {
 
   // Actualizar recargo existente
   async actualizar(req, res) {
-    const transaction = await sequelize.transaction();
+    const transaction = await RecargoPlanilla.sequelize.transaction();
+
+    // Helper function to safely rollback transaction
+    const safeRollback = async (transaction) => {
+      if (transaction && !transaction.finished) {
+        try {
+          await transaction.rollback();
+          console.log('Transaction rolled back successfully');
+        } catch (rollbackError) {
+          console.error('Error during rollback:', rollbackError.message);
+        }
+      } else {
+        console.log('Transaction already finished, skipping rollback');
+      }
+    };
 
     const HORAS_LIMITE = {
       JORNADA_NORMAL: 10,      // ¡IMPORTANTE: 10 horas, no 8!
@@ -897,7 +913,7 @@ class RecargoController {
       const userId = req.user?.id;
 
       if (!userId) {
-        await transaction.rollback();
+        await safeRollback(transaction);
         return res.status(401).json({
           success: false,
           message: 'Usuario no autenticado'
@@ -911,7 +927,7 @@ class RecargoController {
       });
 
       if (!recargoExistente) {
-        await transaction.rollback();
+        await safeRollback(transaction);
         return res.status(404).json({
           success: false,
           message: 'Recargo no encontrado'
@@ -920,7 +936,7 @@ class RecargoController {
 
       // Verificar si es editable
       if (!recargoExistente.esEditable()) {
-        await transaction.rollback();
+        await safeRollback(transaction);
         return res.status(400).json({
           success: false,
           message: 'El recargo no puede ser editado en su estado actual'
@@ -937,9 +953,9 @@ class RecargoController {
         data = req.body;
       }
 
-      // Validaciones básicas (igual que crear)
+      // Validaciones básicas
       if (!data.conductor_id || !data.vehiculo_id || !data.empresa_id || !data.dias_laborales) {
-        await transaction.rollback();
+        await safeRollback(transaction);
         return res.status(400).json({
           success: false,
           message: 'Faltan campos requeridos'
@@ -947,13 +963,14 @@ class RecargoController {
       }
 
       if (!Array.isArray(data.dias_laborales) || data.dias_laborales.length === 0) {
-        await transaction.rollback();
+        await safeRollback(transaction);
         return res.status(400).json({
           success: false,
           message: 'Debe incluir al menos un día laboral'
         });
       }
 
+      // Handle file upload
       if (req.file) {
         try {
           // Determinar si hay un archivo anterior para eliminar
@@ -962,21 +979,29 @@ class RecargoController {
               recargoExistente.archivo_planilla_url.startsWith('planillas/') ?
               recargoExistente.archivo_planilla_url : null);
 
-          // Subir nuevo archivo a S3 - pasar null si oldS3Key es null
+          // Subir nuevo archivo a S3
           archivoInfo = await uploadPlanillaToS3(req.file, id, oldS3Key || undefined);
+
+          // actualizar planilla_s3_key
+
+          const recargoActualizado = await recargoExistente.update({
+            planilla_s3key: archivoInfo.s3_key
+          })
 
           logger.info(`Planilla actualizada para recargo ${id}: ${archivoInfo.s3_key}`);
 
-        } catch (uploadError) {
-          // Verificar estado de transacción ANTES de hacer rollback
-          if (transaction && !transaction.finished) {
-            try {
-              await transaction.rollback();
-            } catch (rollbackError) {
-              console.error('Error en rollback:', rollbackError.message);
-            }
-          }
+          notificarGlobal("recargo-planilla:actualizado", {
+            data: recargoActualizado,
+            usuarioId: req.user.id,
+            usuarioNombre: req.user.nombre
+          })
 
+          return res.status(200).json({
+            success: true,
+            data: recargoActualizado
+          })
+        } catch (uploadError) {
+          await safeRollback(transaction);
           logger.error(`Error al subir planilla: ${uploadError.message}`);
 
           // Limpiar archivo temporal si existe
@@ -996,13 +1021,13 @@ class RecargoController {
         }
       }
 
-      // Guardar datos anteriores para historial
+      // Rest of your database operations...
       const datosAnteriores = {
         recargo: recargoExistente.toJSON(),
         dias_laborales: recargoExistente.dias_laborales
       };
 
-      // Primero eliminar los detalles de recargos
+      // Delete existing details and days
       const diasExistentes = await DiaLaboralPlanilla.findAll({
         where: { recargo_planilla_id: id },
         transaction
@@ -1011,19 +1036,18 @@ class RecargoController {
       for (const dia of diasExistentes) {
         await DetalleRecargosDia.destroy({
           where: { dia_laboral_id: dia.id },
-          force: true, // Eliminación física
+          force: true,
           transaction
         });
       }
 
-      // Luego eliminar los días laborales
       await DiaLaboralPlanilla.destroy({
         where: { recargo_planilla_id: id },
-        force: true, // Eliminación física
+        force: true,
         transaction
       });
 
-      // ACTUALIZAR DATOS DEL RECARGO PRINCIPAL
+      // Update main recargo data
       const datosActualizacion = {
         conductor_id: data.conductor_id,
         vehiculo_id: data.vehiculo_id,
@@ -1038,34 +1062,33 @@ class RecargoController {
 
       await recargoExistente.update(datosActualizacion, { transaction });
 
-      // CREAR NUEVOS DÍAS LABORALES CON LA MISMA LÓGICA QUE CREAR
+      // Create new work days
       const diasCreados = [];
-
       for (const [index, diaOriginal] of data.dias_laborales.entries()) {
         const horaInicio = parseFloat(diaOriginal.horaInicio);
         const horaFin = parseFloat(diaOriginal.horaFin);
 
-        // Validaciones
+        // Validations
         if (isNaN(horaInicio) || isNaN(horaFin)) {
-          await transaction.rollback();
+          await safeRollback(transaction);
           return res.status(400).json({
             success: false,
             message: `Error: Horas inválidas en día ${diaOriginal.dia}`
           });
         }
 
-        // Determinar si es domingo o festivo
+        // Determine if it's Sunday or holiday
         const fecha = new Date(parseInt(data.año), parseInt(data.mes) - 1, parseInt(diaOriginal.dia));
         const esDomingoCalculado = fecha.getDay() === 0;
         const esFestivoCalculado = Boolean(diaOriginal.esFestivo);
 
-        // CREAR DÍA LABORAL
+        // CREATE WORK DAY
         const diaCreado = await DiaLaboralPlanilla.create({
           recargo_planilla_id: id,
           dia: parseInt(diaOriginal.dia),
           hora_inicio: horaInicio,
           hora_fin: horaFin,
-          total_horas: 0, // Se calculará automáticamente
+          total_horas: 0,
           es_domingo: esDomingoCalculado,
           es_festivo: esFestivoCalculado,
           observaciones: diaOriginal.observaciones || null,
@@ -1073,28 +1096,25 @@ class RecargoController {
           actualizado_por_id: userId
         }, { transaction });
 
-        // Agregar mes y año al día creado para los cálculos
         diaCreado.mes = parseInt(data.mes);
         diaCreado.año = parseInt(data.año);
 
-        // CALCULAR Y CREAR RECARGOS USANDO LÓGICA DEL FRONTEND
+        // CALCULATE AND CREATE SURCHARGES
         const resultadoCalculo = await calcularYCrearRecargos(diaCreado, transaction);
-
         diasCreados.push({
           ...diaCreado.toJSON(),
           ...resultadoCalculo
         });
       }
 
-      // CALCULAR Y ACTUALIZAR TOTALES
+      // CALCULATE AND UPDATE TOTALS
       const totalesRecargo = await calcularTotalesRecargoDesdeDetalles(id, transaction);
-
       await recargoExistente.update({
         ...totalesRecargo,
         actualizado_por_id: userId
       }, { transaction });
 
-      // Crear registro en historial
+      // Create history record
       await HistorialRecargoPlanilla.create({
         recargo_planilla_id: id,
         accion: 'actualizacion',
@@ -1111,9 +1131,10 @@ class RecargoController {
         fecha_accion: new Date()
       }, { transaction });
 
+      // COMMIT TRANSACTION
       await transaction.commit();
 
-      // Obtener recargo actualizado con todas las relaciones
+      // Get updated recargo with all relations
       const recargoActualizado = await RecargoPlanilla.findByPk(id, {
         include: [
           { model: DiaLaboralPlanilla, as: 'dias_laborales' },
@@ -1145,15 +1166,17 @@ class RecargoController {
       });
 
     } catch (error) {
-      await transaction.rollback();
+      // SAFE ROLLBACK - Check transaction state before rolling back
+      await safeRollback(transaction);
+
       console.error('❌ Error actualizando recargo:', error);
 
-      // Eliminar archivo nuevo si se subió pero falló
-      if (req.file) {
+      // Clean up file if uploaded but failed
+      if (req.file && req.file.path) {
         try {
           await fs.unlink(req.file.path);
         } catch (unlinkError) {
-          console.error('⚠️ Error eliminando archivo:', unlinkError);
+          console.error('⚠️ Error eliminando archivo:', unlinkError.message);
         }
       }
 

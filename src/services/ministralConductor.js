@@ -178,11 +178,7 @@ class MinistralConductorService {
         };
       case 'CONTRATO':
         return {
-          email: "",
-          telefono: "",
-          direccion: "",
           fecha_ingreso: "",
-          salario_base: "",
           termino_contrato: "",
           fecha_terminacion: "",
           sede_trabajo: ""
@@ -370,11 +366,7 @@ Extrae la siguiente información del contrato de trabajo:
 
 {
   "numero_identificacion": "número de cédula del empleado (campo OBLIGATORIO)",
-  "email": "correo electrónico del conductor EN MAYÚSCULAS",
-  "telefono": "número de teléfono del conductor",
-  "direccion": "dirección de residencia del conductor EN MAYÚSCULAS",
   "fecha_ingreso": "fecha de ingreso en formato YYYY-MM-DD",
-  "salario_base": "salario base como número (sin puntos ni comas)",
   "termino_contrato": "término del contrato EN MAYÚSCULAS (INDEFINIDO, FIJO, etc.)",
   "fecha_terminacion": "fecha de terminación del contrato en formato YYYY-MM-DD",
   "sede_trabajo": "sede de trabajo EN MAYÚSCULAS (YOPAL, VILLANUEVA, o TAURAMENA)"
@@ -383,22 +375,9 @@ Extrae la siguiente información del contrato de trabajo:
 REGLAS IMPORTANTES:
 1. TODOS LOS VALORES DE TEXTO DEBEN ESTAR EN MAYÚSCULAS
 2. numero_identificacion es OBLIGATORIO - es el número de cédula del empleado (sin puntos ni espacios)
-3. Para email, convierte todo a mayúsculas (ej: USUARIO@EMPRESA.COM)
-4. Para dirección, convierte toda la dirección a mayúsculas
-5. Para término de contrato, usa: INDEFINIDO, FIJO, TEMPORAL, etc.
-6. Para salario_base, extrae solo el número sin símbolos
-7. Para sede_trabajo, usa exactamente: YOPAL, VILLANUEVA, o TAURAMENA (EN MAYÚSCULAS)
-8. Las fechas mantienen el formato YYYY-MM-DD (no necesitan mayúsculas)
-9. Los números de teléfono y salario no necesitan mayúsculas
-10. Si no encuentras algún campo, déjalo como string vacío "" o null para salario_base
-2. Para email, convierte todo a mayúsculas (ej: USUARIO@EMPRESA.COM)
-3. Para dirección, convierte toda la dirección a mayúsculas
-4. Para término de contrato, usa: INDEFINIDO, FIJO, TEMPORAL, etc.
-5. Para salario_base, extrae solo el número sin símbolos
-6. Para sede_trabajo, usa exactamente: YOPAL, VILLANUEVA, o TAURAMENA (EN MAYÚSCULAS)
-7. Las fechas mantienen el formato YYYY-MM-DD (no necesitan mayúsculas)
-8. Los números de teléfono y salario no necesitan mayúsculas
-9. Si no encuentras algún campo, déjalo como string vacío "" o null para salario_base
+3. Para término de contrato, usa: INDEFINIDO, FIJO, TEMPORAL, etc.
+4. Para sede_trabajo, usa exactamente: YOPAL, VILLANUEVA, o TAURAMENA (EN MAYÚSCULAS)
+5 . Las fechas mantienen el formato YYYY-MM-DD (no necesitan mayúsculas)
 
 Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
   }
@@ -421,14 +400,9 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
           apellido: datosDocumentos.apellido || "",
           tipo_identificacion: datosDocumentos.tipo_identificacion || "CC",
           numero_identificacion: datosDocumentos.numero_identificacion || "",
-          email: datosDocumentos.email || null,
-          telefono: datosDocumentos.telefono || "",
           fecha_nacimiento: datosDocumentos.fecha_nacimiento || null,
           genero: datosDocumentos.genero || null,
-          direccion: datosDocumentos.direccion || null,
           fecha_ingreso: datosDocumentos.fecha_ingreso || null,
-          salario_base: datosDocumentos.salario_base ?
-            parseFloat(datosDocumentos.salario_base) : null,
           termino_contrato: datosDocumentos.termino_contrato || null,
           fecha_terminacion: datosDocumentos.fecha_terminacion || null,
           sede_trabajo: datosDocumentos.sede_trabajo || null,
@@ -455,14 +429,9 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
           apellido: datosDocumentos.CEDULA?.apellido || "",
           tipo_identificacion: datosDocumentos.CEDULA?.tipo_identificacion || "CC",
           numero_identificacion: datosDocumentos.CEDULA?.numero_identificacion || "",
-          email: datosDocumentos.CONTRATO?.email || null,
-          telefono: datosDocumentos.CONTRATO?.telefono || "",
           fecha_nacimiento: datosDocumentos.CEDULA?.fecha_nacimiento || null,
           genero: datosDocumentos.CEDULA?.genero || null,
-          direccion: datosDocumentos.CONTRATO?.direccion || null,
           fecha_ingreso: datosDocumentos.CONTRATO?.fecha_ingreso || null,
-          salario_base: datosDocumentos.CONTRATO?.salario_base ?
-            parseFloat(datosDocumentos.CONTRATO.salario_base) : null,
           termino_contrato: datosDocumentos.CONTRATO?.termino_contrato || null,
           fecha_terminacion: datosDocumentos.CONTRATO?.fecha_terminacion || null,
           sede_trabajo: datosDocumentos.CONTRATO?.sede_trabajo || null,
@@ -510,11 +479,6 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
       documentos.push('LICENCIA');
     }
 
-    // Campos típicos de CONTRATO
-    if (datos.email || datos.telefono || datos.direccion || datos.fecha_ingreso || datos.salario_base || datos.sede_trabajo) {
-      documentos.push('CONTRATO');
-    }
-
     return documentos.length > 0 ? documentos : ['DESCONOCIDO'];
   }
 
@@ -538,21 +502,8 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
       errores.push("El número de identificación es obligatorio");
     }
 
-    if (!datosCompletos.telefono || datosCompletos.telefono.trim() === '') {
-      errores.push("El teléfono es obligatorio");
-    }
-
     if (!datosCompletos.fecha_ingreso) {
       errores.push("La fecha de ingreso es obligatoria");
-    }
-
-    if (datosCompletos.salario_base === undefined || datosCompletos.salario_base === null) {
-      errores.push("El salario base es obligatorio");
-    }
-
-    // Validaciones de formato
-    if (datosCompletos.email && !this._validarEmail(datosCompletos.email)) {
-      errores.push("El formato del email no es válido");
     }
 
     if (datosCompletos.fecha_nacimiento && !this._validarFecha(datosCompletos.fecha_nacimiento)) {
@@ -581,17 +532,8 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
       errores.push("El tipo de sangre debe ser uno de: A+, A-, B+, B-, AB+, AB-, O+, O-");
     }
 
-    // Validaciones opcionales (advertencias)
-    if (!datosCompletos.email) {
-      advertencias.push("Email no encontrado");
-    }
-
     if (!datosCompletos.fecha_nacimiento) {
       advertencias.push("Fecha de nacimiento no encontrada");
-    }
-
-    if (!datosCompletos.direccion) {
-      advertencias.push("Dirección no encontrada");
     }
 
     if (!datosCompletos.licencia_conduccion) {
@@ -640,14 +582,6 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
   }
 
   /**
-   * Validar formato de email
-   */
-  _validarEmail(email) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  }
-
-  /**
    * Validar formato de fecha YYYY-MM-DD
    */
   _validarFecha(fecha) {
@@ -663,9 +597,8 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
    */
   _calcularCompletitud(datos) {
     const camposImportantes = [
-      'nombre', 'apellido', 'numero_identificacion', 'telefono',
-      'email', 'fecha_nacimiento', 'direccion', 'licencia_conduccion',
-      'sede_trabajo', 'fecha_ingreso', 'salario_base', 'tipo_sangre'
+      'nombre', 'apellido', 'numero_identificacion','fecha_nacimiento', 'licencia_conduccion',
+      'sede_trabajo', 'fecha_ingreso', 'tipo_sangre'
     ];
 
     let camposCompletos = 0;
