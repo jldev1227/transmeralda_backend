@@ -2,7 +2,7 @@
 const db = require('../models');
 const multer = require('multer');
 const path = require('path');
-const { uploadPlanillaToS3 } = require('./documentoController');
+const { uploadPlanillaToS3, deletePlanillaFromS3 } = require('./documentoController');
 const fs = require('fs').promises;
 const logger = require('../utils/logger');
 const { notificarGlobal } = require('../utils/notificar');
@@ -345,29 +345,29 @@ class RecargoController {
     // ===== FUNCIÓN COMPLETA PARA CALCULAR TOTALES =====
     const calcularTotalesRecargoDesdeDetalles = async (recargoId, transaction) => {
       const query = `
-      SELECT 
-        SUM(dlp.total_horas) as total_horas,
-        COUNT(DISTINCT dlp.id) as total_dias,
-        tr.codigo,
-        SUM(drd.horas) as total_horas_tipo
-      FROM dias_laborales_planillas dlp
-      LEFT JOIN detalles_recargos_dias drd ON dlp.id = drd.dia_laboral_id
-      LEFT JOIN tipos_recargos tr ON drd.tipo_recargo_id = tr.id
-      WHERE dlp.recargo_planilla_id = :recargoId
-        AND dlp.deleted_at IS NULL
-      GROUP BY tr.codigo
+    SELECT 
+      SUM(dlp.total_horas) as total_horas,
+      COUNT(DISTINCT dlp.id) as total_dias,
+      tr.codigo,
+      SUM(drd.horas) as total_horas_tipo
+    FROM dias_laborales_planillas dlp
+    LEFT JOIN detalles_recargos_dias drd ON dlp.id = drd.dia_laboral_id
+    LEFT JOIN tipos_recargos tr ON drd.tipo_recargo_id = tr.id
+    WHERE dlp.recargo_planilla_id = :recargoId
+      AND dlp.deleted_at IS NULL
+    GROUP BY tr.codigo
 
-      UNION ALL
+    UNION ALL
 
-      SELECT 
-        SUM(dlp.total_horas) as total_horas,
-        COUNT(DISTINCT dlp.id) as total_dias,
-        'TOTAL' as codigo,
-        NULL as total_horas_tipo
-      FROM dias_laborales_planillas dlp
-      WHERE dlp.recargo_planilla_id = :recargoId
-        AND dlp.deleted_at IS NULL
-    `;
+    SELECT 
+      SUM(dlp.total_horas) as total_horas,
+      COUNT(DISTINCT dlp.id) as total_dias,
+      'TOTAL' as codigo,
+      NULL as total_horas_tipo
+    FROM dias_laborales_planillas dlp
+    WHERE dlp.recargo_planilla_id = :recargoId
+      AND dlp.deleted_at IS NULL
+  `;
 
       const resultados = await sequelize.query(query, {
         replacements: { recargoId },
@@ -451,7 +451,7 @@ class RecargoController {
         });
       }
 
-      // ✅ CREAR RECARGO PRINCIPAL
+      // ✅ CREAR RECARGO PRINCIPAL CON LA PLANILLA S3 KEY
       const recargo = await RecargoPlanilla.create({
         conductor_id: data.conductor_id,
         vehiculo_id: data.vehiculo_id,
@@ -464,6 +464,37 @@ class RecargoController {
         creado_por_id: userId,
         actualizado_por_id: userId
       }, { transaction });
+
+
+      // ✅ MANEJAR ARCHIVO DE PLANILLA ANTES DE CREAR EL RECARGO
+      let planillaS3Key = null;
+      if (req.file) {
+        try {
+          // Crear un ID temporal para la subida
+          const archivoInfo = await uploadPlanillaToS3(req.file, recargo.id, undefined);
+          planillaS3Key = archivoInfo.s3_key;
+
+          logger.info(`Planilla subida exitosamente: ${planillaS3Key}`);
+        } catch (uploadError) {
+          await transaction.rollback();
+          logger.error(`Error al subir planilla: ${uploadError.message}`);
+
+          // Limpiar archivo temporal si existe
+          if (req.file && req.file.path) {
+            try {
+              await fs.unlink(req.file.path);
+            } catch (unlinkError) {
+              console.error('Error eliminando archivo temporal:', unlinkError.message);
+            }
+          }
+
+          return res.status(500).json({
+            success: false,
+            message: 'Error al procesar el archivo de planilla',
+            error: process.env.NODE_ENV === 'development' ? uploadError.message : undefined
+          });
+        }
+      }
 
       const diasCreados = [];
 
@@ -511,7 +542,6 @@ class RecargoController {
           ...diaCreado.toJSON(),
           ...resultadoCalculo
         });
-
       }
 
       // ✅ CALCULAR Y ACTUALIZAR TOTALES
@@ -520,10 +550,39 @@ class RecargoController {
       await recargo.update({
         total_dias_laborados: diasCreados.length,
         total_horas_trabajadas: totalesRecargo.total_horas || diasCreados.reduce((sum, d) => sum + d.total_horas, 0),
-        actualizado_por_id: userId
+        actualizado_por_id: userId,
+        planilla_s3key: planillaS3Key, // ✅ Asignar la clave S3 al crear
       }, { transaction });
 
+      // ✅ CONFIRMAR TRANSACCIÓN
       await transaction.commit();
+
+      // ✅ OBTENER RECARGO COMPLETO CON RELACIONES PARA LA NOTIFICACIÓN
+      const recargoCompleto = await RecargoPlanilla.findByPk(recargo.id, {
+        include: [
+          {
+            model: Conductor,
+            as: 'conductor',
+            attributes: ['id', 'nombre', 'apellido', 'numero_identificacion']
+          },
+          {
+            model: Vehiculo,
+            as: 'vehiculo',
+            attributes: ['id', 'placa', 'marca', 'modelo']
+          },
+          {
+            model: Empresa,
+            as: 'empresa',
+            attributes: ['id', 'nombre', 'nit']
+          }
+        ]
+      });
+
+      notificarGlobal("recargo-planilla:creado", {
+        data: recargoCompleto,
+        usuarioId: req.user.id,
+        usuarioNombre: req.user.nombre
+      });
 
       return res.status(201).json({
         success: true,
@@ -531,6 +590,7 @@ class RecargoController {
         data: {
           recargo_id: recargo.id,
           numero_planilla: recargo.numero_planilla,
+          planilla_s3key: recargo.planilla_s3key, // ✅ Incluir en la respuesta
           total_dias: diasCreados.length,
           totales: totalesRecargo,
           dias_creados: diasCreados.map(d => ({
@@ -970,55 +1030,87 @@ class RecargoController {
         });
       }
 
+      
       // Handle file upload
       if (req.file) {
-        try {
-          // Determinar si hay un archivo anterior para eliminar
-          const oldS3Key = recargoExistente.s3_key ||
-            (recargoExistente.archivo_planilla_url &&
-              recargoExistente.archivo_planilla_url.startsWith('planillas/') ?
-              recargoExistente.archivo_planilla_url : null);
-
-          // Subir nuevo archivo a S3
-          archivoInfo = await uploadPlanillaToS3(req.file, id, oldS3Key || undefined);
-
-          // actualizar planilla_s3_key
-
-          const recargoActualizado = await recargoExistente.update({
-            planilla_s3key: archivoInfo.s3_key
-          })
-
-          logger.info(`Planilla actualizada para recargo ${id}: ${archivoInfo.s3_key}`);
-
-          notificarGlobal("recargo-planilla:actualizado", {
-            data: recargoActualizado,
-            usuarioId: req.user.id,
-            usuarioNombre: req.user.nombre
-          })
-
-          return res.status(200).json({
-            success: true,
-            data: recargoActualizado
-          })
-        } catch (uploadError) {
-          await safeRollback(transaction);
-          logger.error(`Error al subir planilla: ${uploadError.message}`);
-
-          // Limpiar archivo temporal si existe
+        // Validaciones del archivo
+        if (!req.file.originalname || req.file.size === 0) {
+          // Limpiar archivo temporal
           if (req.file && req.file.path) {
             try {
               await fs.unlink(req.file.path);
+              logger.info(`Archivo temporal eliminado: ${req.file.path}`);
             } catch (unlinkError) {
-              console.error('Error eliminando archivo temporal:', unlinkError.message);
+              logger.warn(`No se pudo eliminar archivo temporal: ${req.file.path}`, unlinkError.message);
             }
           }
-
-          return res.status(500).json({
-            success: false,
-            message: 'Error al procesar el archivo de planilla',
-            error: process.env.NODE_ENV === 'development' ? uploadError.message : undefined
-          });
+          throw new Error('Archivo inválido o vacío');
         }
+
+        logger.info(`Procesando nueva planilla para recargo ${id}`, {
+          fileName: req.file.originalname,
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype
+        });
+
+        // Extraer S3 key anterior para eliminación
+        const oldS3Key = recargoExistente.s3_key ||
+          (recargoExistente.archivo_planilla_url &&
+            recargoExistente.archivo_planilla_url.startsWith('planillas/') ?
+            recargoExistente.archivo_planilla_url : null);
+
+        // Subir nuevo archivo a S3
+        archivoInfo = await uploadPlanillaToS3(req.file, id, oldS3Key || undefined);
+
+        if (!archivoInfo || !archivoInfo.s3_key) {
+          throw new Error('No se recibió información válida del archivo subido');
+        }
+
+        // Actualizar BD - continúa con el resto de operaciones
+        await recargoExistente.update({
+          planilla_s3key: archivoInfo.s3_key
+        }, { transaction });
+
+        // Limpiar archivo temporal
+        if (req.file && req.file.path) {
+          try {
+            await fs.unlink(req.file.path);
+            logger.info(`Archivo temporal eliminado: ${req.file.path}`);
+          } catch (unlinkError) {
+            logger.warn(`No se pudo eliminar archivo temporal: ${req.file.path}`, unlinkError.message);
+          }
+        }
+
+        logger.info(`Planilla procesada exitosamente para recargo ${id}`, {
+          oldS3Key: oldS3Key,
+          newS3Key: archivoInfo.s3_key
+        });
+
+      } else if (recargoExistente.planilla_s3key) {
+        // CASO 2: Eliminar planilla existente (no se envió archivo)
+
+        const s3KeyToDelete = recargoExistente.planilla_s3key;
+        logger.info(`Eliminando planilla existente para recargo ${id}: ${s3KeyToDelete}`);
+
+        // Actualizar BD primero
+        await recargoExistente.update({
+          planilla_s3key: null
+        }, { transaction });
+
+        // Eliminar de S3
+        const s3keyEliminado = await deletePlanillaFromS3(s3KeyToDelete);
+
+        if (!s3keyEliminado) {
+          throw new Error(`Error al eliminar la planilla ${s3KeyToDelete} del almacenamiento S3`);
+        }
+
+        logger.info(`Planilla eliminada exitosamente para recargo ${id}`, {
+          deletedS3Key: s3KeyToDelete
+        });
+
+      } else {
+        // CASO 3: No hay archivo nuevo ni planilla existente - continuar normalmente
+        logger.info(`Recargo ${id} - sin cambios en planilla`);
       }
 
       // Rest of your database operations...
@@ -1144,6 +1236,12 @@ class RecargoController {
         ]
       });
 
+      notificarGlobal("recargo-planilla:actualizado", {
+        data: recargoActualizado,
+        usuarioId: req.user.id,
+        usuarioNombre: req.user.nombre
+      })
+
       return res.json({
         success: true,
         message: 'Recargo actualizado exitosamente',
@@ -1193,7 +1291,7 @@ class RecargoController {
     const transaction = await sequelize.transaction();
 
     try {
-      const { id } = req.params;
+      const { selectedIds } = req.body;
       const userId = req.user?.id;
 
       if (!userId) {
@@ -1203,50 +1301,79 @@ class RecargoController {
         });
       }
 
-      const recargo = await RecargoPlanilla.findByPk(id, { transaction });
+      if (!selectedIds || !Array.isArray(selectedIds) || selectedIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Debe proporcionar al menos un ID para eliminar'
+        });
+      }
 
-      if (!recargo) {
+      const recargos = await RecargoPlanilla.findAll({
+        where: {
+          id: selectedIds
+        },
+        transaction
+      });
+
+      if (recargos.length === 0) {
         await transaction.rollback();
         return res.status(404).json({
           success: false,
-          message: 'Recargo no encontrado'
+          message: 'No se encontraron recargos con los IDs proporcionados'
         });
       }
 
-      // Verificar si se puede eliminar
-      if (!recargo.esEditable()) {
+      const recargosNoEditables = recargos.filter(recargo => !recargo.esEditable());
+      if (recargosNoEditables.length > 0) {
         await transaction.rollback();
         return res.status(400).json({
           success: false,
-          message: 'El recargo no puede ser eliminado en su estado actual'
+          message: `${recargosNoEditables.length} recargo(s) no pueden ser eliminados en su estado actual`
         });
       }
 
-      // Crear registro en historial antes de eliminar
-      await HistorialRecargoPlanilla.create({
-        recargo_planilla_id: id,
-        accion: 'eliminacion',
-        version_anterior: recargo.version,
-        datos_anteriores: { recargo: recargo.toJSON() },
-        realizado_por_id: userId,
-        ip_usuario: req.ip,
-        user_agent: req.get('User-Agent'),
-        fecha_accion: new Date()
-      }, { transaction });
+      // Crear registros en historial con version_nueva
+      const historialPromises = recargos.map(recargo =>
+        HistorialRecargoPlanilla.create({
+          recargo_planilla_id: recargo.id,
+          accion: 'eliminacion',
+          version_anterior: recargo.version,
+          version_nueva: -1, // O 0, indicando eliminación
+          datos_anteriores: { recargo: recargo.toJSON() },
+          datos_nuevos: null, // Para eliminación, no hay datos nuevos
+          realizado_por_id: userId,
+          ip_usuario: req.ip,
+          user_agent: req.get('User-Agent'),
+          fecha_accion: new Date()
+        }, { transaction })
+      );
 
-      // Soft delete
-      await recargo.destroy({ transaction });
+      await Promise.all(historialPromises);
+
+      await RecargoPlanilla.destroy({
+        where: {
+          id: selectedIds
+        },
+        transaction
+      });
 
       await transaction.commit();
 
+      notificarGlobal("recargo-planilla:eliminado", {
+        usuarioId: req.user.id,
+        usuarioNombre: req.user.nombre,
+        selectedIds
+      })
+
       return res.json({
         success: true,
-        message: 'Recargo eliminado exitosamente'
+        message: `${recargos.length} recargo(s) eliminado(s) exitosamente`,
+        eliminados: recargos.length
       });
 
     } catch (error) {
       await transaction.rollback();
-      console.error('❌ Error eliminando recargo:', error);
+      console.error('❌ Error eliminando recargos:', error);
 
       return res.status(500).json({
         success: false,
@@ -1283,7 +1410,7 @@ class RecargoController {
         where,
         attributes: [
           'id', 'numero_planilla', 'mes', 'año',
-          'total_horas_trabajadas', 'total_dias_laborados', 'estado',
+          'total_horas_trabajadas', 'total_dias_laborados', 'estado', "planilla_s3key",
           'created_at'
         ],
         include: [
@@ -1332,13 +1459,14 @@ class RecargoController {
       const canvasData = recargos.map(recargo => {
         return {
           id: recargo.id,
-          planilla: recargo.numero_planilla,
+          numero_planilla: recargo.numero_planilla,
           conductor: recargo.conductor,
           vehiculo: recargo.vehiculo,
           empresa: recargo.empresa,
           total_horas: recargo.total_horas_trabajadas,
           total_dias: recargo.total_dias_laborados,
           estado: recargo.estado,
+          planilla_s3key: recargo.planilla_s3key,
 
           // ✅ DÍAS CON RECARGOS DESDE DETALLES NORMALIZADOS
           dias_laborales: recargo.dias_laborales?.map(dia => {
@@ -1449,7 +1577,7 @@ class RecargoController {
       // ✅ PROCESAR DATOS CON LA MISMA LÓGICA QUE CANVAS
       const recargoData = {
         id: recargo.id,
-        planilla: recargo.numero_planilla,
+        numero_planilla: recargo.numero_planilla,
         conductor: recargo.conductor,
         vehiculo: recargo.vehiculo,
         empresa: recargo.empresa,

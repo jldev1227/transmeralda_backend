@@ -56,12 +56,6 @@ module.exports = (sequelize) => {
     version_nueva: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      validate: {
-        min: {
-          args: [1],
-          msg: 'La versión nueva debe ser mayor a 0'
-        }
-      },
       comment: 'Nueva versión del recargo',
     },
     datos_anteriores: {

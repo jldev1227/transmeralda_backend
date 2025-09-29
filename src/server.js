@@ -40,6 +40,7 @@ const allowedOrigins = [
   'https://auth.transmeralda.com',
   'https://flota.transmeralda.com',
   'http://flota.midominio.local:3000',
+  'http://servicios.midominio.local:3000',
   'http://auth.midominio.local:3001',
   "http://recargos.midominio.local:3000"
 ];
@@ -69,7 +70,8 @@ const io = socketIO(server, {
       "http://nomina.midominio.local:3000",
       "http://flota.midominio.local",
       "http://recargos.midominio.local:3000",
-      "http://servicios.midominio.local:3000"
+      "http://servicios.midominio.local:3000",
+      "http://recargos.midominio.local:3000",
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "socket-id"],
@@ -426,7 +428,6 @@ app.set('io', io);
 app.set('notifyUser', notifyUser);
 app.set('trust proxy', false);
 
-
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -465,6 +466,8 @@ app.use('/api/documentos-conductor', require('./routes/documentosRequeridosCondu
 app.use('/api/export', require('./routes/exportRoutes'));
 app.use('/api/pdf', require('./routes/desprendibleNominaRoutes'));
 app.use('/api/firmas_desprendible', require('./routes/firmaDesprendibleRoutes'));
+app.use('/api/tipos-recargo', require('./routes/tiposRecargoRoutes.js'));
+app.use('/api/configuraciones-salario', require('./routes/configuracionSalarioRoutes.js'));
 
 // Ruta de verificación de salud
 app.get('/health', (req, res) => {
@@ -488,115 +491,6 @@ app.use((req, res) => {
     message: 'Recurso no encontrado' 
   });
 });
-
-// Función para emitir eventos de liquidación a todos los clientes
-const emitLiquidacionEvent = (eventName, data) => {
-  console.log(`Emitiendo evento ${eventName}:`, data);
-  io.emit(eventName, data);
-};
-
-// Función para emitir eventos de liquidación a un usuario específico
-const emitLiquidacionToUser = (userId, eventName, data) => {
-  if (userSockets.has(userId)) {
-    const userSocketIds = userSockets.get(userId);
-    console.log(`Enviando ${eventName} a usuario ${userId} (${userSocketIds.size} conexiones)`);
-    
-    for (const socketId of userSocketIds) {
-      io.to(socketId).emit(eventName, data);
-    }
-    return true;
-  }
-  console.log(`Usuario ${userId} no está conectado para recibir ${eventName}`);
-  return false;
-};
-
-// Exponer funciones de socket.io para liquidaciones a otros módulos
-app.set('emitLiquidacionEvent', emitLiquidacionEvent);
-app.set('emitLiquidacionToUser', emitLiquidacionToUser);
-
-
-// Función para emitir eventos de vehiculos a todos los clientes
-const emitVehiculoEvent = (eventName, data) => {
-  console.log(`Emitiendo evento ${eventName}:`, data);
-  io.emit(eventName, data);
-};
-
-// Función para emitir eventos de vehiculo a un usuario específico
-const emitVehiculoToUser = (userId, eventName, data) => {
-  if (userSockets.has(userId)) {
-    const userSocketIds = userSockets.get(userId);
-    console.log(`Enviando ${eventName} a usuario ${userId} (${userSocketIds.size} conexiones)`);
-    
-    for (const socketId of userSocketIds) {
-      io.to(socketId).emit(eventName, data);
-    }
-    return true;
-  }
-  console.log(`Usuario ${userId} no está conectado para recibir ${eventName}`);
-  return false;
-};
-
-// Función para emitir eventos de conductores a todos los clientes
-const emitConductorEvent = (eventName, data) => {
-  console.log(`Emitiendo evento ${eventName}:`, data);
-  io.emit(eventName, data);
-};
-
-// Función para emitir eventos de Conductor a un usuario específico
-const emitConductorToUser = (userId, eventName, data) => {
-  if (userSockets.has(userId)) {
-    const userSocketIds = userSockets.get(userId);
-    console.log(`Enviando ${eventName} a usuario ${userId} (${userSocketIds.size} conexiones)`);
-    
-    for (const socketId of userSocketIds) {
-      io.to(socketId).emit(eventName, data);
-    }
-    return true;
-  }
-  console.log(`Usuario ${userId} no está conectado para recibir ${eventName}`);
-  return false;
-};
-
-// Exponer funciones de socket.io para vehiculos a otros módulos
-app.set('emitVehiculoEvent', emitVehiculoEvent);
-app.set('emitVehiculoToUser', emitVehiculoToUser);
-
-// Exponer funciones de socket.io para conductores a otros módulos
-app.set('emitConductorEvent', emitConductorEvent);
-app.set('emitConductorToUser', emitConductorToUser);
-
-// Función para emitir eventos de servicios a todos los clientes
-const emitServicioEvent = (eventName, data) => {
-  console.log(`Emitiendo evento ${eventName}:`, data);
-  io.emit(eventName, data);
-};
-
-// Función para emitir eventos de servicios a todos los clientes
-const emitLiquidacionServicioEvent = (eventName, data) => {
-  console.log(`Emitiendo evento ${eventName}:`, data);
-  io.emit(eventName, data);
-};
-
-// Función para emitir eventos de servicio a un usuario específico
-const emitServicioToUser = (userId, eventName, data) => {
-  if (userSockets.has(userId)) {
-    const userSocketIds = userSockets.get(userId);
-    console.log(`Enviando ${eventName} a usuario ${userId} (${userSocketIds.size} conexiones)`);
-    
-    for (const socketId of userSocketIds) {
-      io.to(socketId).emit(eventName, data);
-    }
-    return true;
-  }
-  console.log(`Usuario ${userId} no está conectado para recibir ${eventName}`);
-  return false;
-};
-
-// Exponer funciones de socket.io para servicios a otros módulos
-app.set('emitServicioEvent', emitServicioEvent);
-app.set('emitServicioToUser', emitServicioToUser);
-app.set('emitLiquidacionServicioEvent', emitLiquidacionServicioEvent);
-
 
 // Middleware para manejo de errores
 app.use((err, req, res, next) => {

@@ -190,70 +190,11 @@ router.put('/:id/estado', protect, async (req, res) => {
 });
 
 /**
- * @route   DELETE /api/recargos/:id
- * @desc    Eliminar (soft delete) un recargo
+ * @route   DELETE /api/recargos/eliminar
+ * @desc    Eliminar (soft delete) múltiples recargos
  * @access  Private
  */
-router.delete('/:id', protect, async (req, res) => {
-  const transaction = await req.app.locals.sequelize.transaction();
-  
-  try {
-    const { RecargoPlanilla, HistorialRecargoPlanilla } = require('../models');
-    const { id } = req.params;
-    const { motivo } = req.body;
-    
-    const recargo = await RecargoPlanilla.findByPk(id, { transaction });
-    
-    if (!recargo) {
-      await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        message: 'Recargo no encontrado'
-      });
-    }
-    
-    // Verificar si se puede eliminar
-    if (['aprobado'].includes(recargo.estado)) {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        message: 'No se puede eliminar un recargo aprobado'
-      });
-    }
-    
-    // Soft delete
-    await recargo.destroy({ transaction });
-    
-    // Registrar en historial
-    await HistorialRecargoPlanilla.create({
-      recargo_planilla_id: id,
-      accion: 'eliminacion',
-      version_anterior: recargo.version,
-      version_nueva: recargo.version,
-      datos_anteriores: recargo.toJSON(),
-      motivo: motivo || 'Eliminación del recargo',
-      realizado_por_id: req.user.id,
-      ip_usuario: req.ip,
-      user_agent: req.get('User-Agent'),
-      fecha_accion: new Date()
-    }, { transaction });
-    
-    await transaction.commit();
-    
-    res.json({
-      success: true,
-      message: 'Recargo eliminado exitosamente'
-    });
-    
-  } catch (error) {
-    await transaction.rollback();
-    res.status(500).json({
-      success: false,
-      message: 'Error eliminando recargo',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-});
+router.delete('/eliminar', protect, controller.eliminar.bind(controller));
 
 // ==========================================
 // RUTAS PARA GESTIÓN DE ARCHIVOS
