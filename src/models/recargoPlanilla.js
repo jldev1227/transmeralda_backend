@@ -1,10 +1,109 @@
 // src/models/recargoPlanilla.js
 const { Model, DataTypes } = require('sequelize');
 
+
 module.exports = (sequelize) => {
+  const crearRegistroHistorial = async (recargo, options) => {
+    try {
+      const camposIgnorados = ['updated_at', 'version'];
+      const cambiosReales = recargo.changed()?.filter(
+        campo => !camposIgnorados.includes(campo)
+      ) || [];
+
+      if (cambiosReales.length === 0) {
+        console.log('⏭️  No hay cambios relevantes, omitiendo historial');
+        return;
+      }
+
+      const datosAnteriores = {};
+      const datosNuevos = {};
+      const camposModificados = [];
+
+      cambiosReales.forEach(campo => {
+        const valorAnterior = recargo._previousDataValues[campo];
+        const valorNuevo = recargo.dataValues[campo];
+
+        if (JSON.stringify(valorAnterior) !== JSON.stringify(valorNuevo)) {
+          datosAnteriores[campo] = valorAnterior;
+          datosNuevos[campo] = valorNuevo;
+          camposModificados.push(campo);
+        }
+      });
+
+      if (camposModificados.length === 0) return;
+
+      await sequelize.models.HistorialRecargoPlanilla.create({
+        recargo_planilla_id: recargo.id,
+        accion: 'actualizacion',
+        version_anterior: recargo.version - 1,
+        version_nueva: recargo.version,
+        datos_anteriores: datosAnteriores,
+        datos_nuevos: datosNuevos,
+        campos_modificados: camposModificados,
+        motivo: options.motivo || 'Actualización del recargo',
+        realizado_por_id: options.userId || recargo.actualizado_por_id,
+        ip_usuario: options.ipAddress || null,
+        user_agent: options.userAgent || null,
+        fecha_accion: new Date()
+      }, { transaction: options.transaction });
+
+      console.log(`📝 Historial registrado v${recargo.version}: ${camposModificados.join(', ')}`);
+
+    } catch (error) {
+      console.error('❌ Error creando historial:', error);
+      // No lanzar error para no bloquear la actualización
+    }
+  };
+
+  const crearSnapshot = async (recargo, options) => {
+    try {
+      // Cargar recargo completo con relaciones
+      const recargoCompleto = await sequelize.models.RecargoPlanilla.findByPk(recargo.id, {
+        include: [
+          {
+            model: sequelize.models.DiaLaboralPlanilla,
+            as: 'dias_laborales',
+            include: [{
+              model: sequelize.models.DetalleRecargosDia,
+              as: 'detallesRecargos',
+              include: [{
+                model: sequelize.models.TipoRecargo,
+                as: 'tipoRecargo'
+              }]
+            }]
+          },
+          { model: sequelize.models.Conductor, as: 'conductor' },
+          { model: sequelize.models.Vehiculo, as: 'vehiculo' },
+          { model: sequelize.models.Empresa, as: 'empresa' }
+        ],
+        transaction: options.transaction
+      });
+
+      const snapshot = recargoCompleto.toJSON();
+      const snapshotJSON = JSON.stringify(snapshot);
+      const tamañoBytes = Buffer.byteLength(snapshotJSON, 'utf8');
+
+      await sequelize.models.SnapshotRecargoPlanilla.create({
+        recargo_planilla_id: recargo.id,
+        version: recargo.version,
+        snapshot_completo: snapshot,
+        es_snapshot_mayor: options.esSnapshotMayor || recargo.version % 10 === 0,
+        tipo_snapshot: options.tipoSnapshot || 'automatico',
+        tamaño_bytes: tamañoBytes,
+        creado_por_id: options.userId || recargo.actualizado_por_id
+      }, { transaction: options.transaction });
+
+      console.log(`📸 Snapshot creado v${recargo.version} (${(tamañoBytes / 1024).toFixed(2)} KB)`);
+
+    } catch (error) {
+      console.error('❌ Error creando snapshot:', error);
+      // No lanzar error para no bloquear la actualización
+    }
+  };
+
   class RecargoPlanilla extends Model {
     // Métodos útiles del modelo
-    
+
     // Verificar si el recargo es editable
     esEditable() {
       return this.estado === 'pendiente' || this.estado === 'liquidada';
@@ -167,7 +266,7 @@ module.exports = (sequelize) => {
 
     // CONTROL DE ESTADO
     estado: {
-      type: DataTypes.ENUM( 'pendiente', 'liquidada', 'facturada'),
+      type: DataTypes.ENUM('pendiente', 'liquidada', 'facturada'),
       defaultValue: 'pendiente',
       allowNull: false,
       comment: 'Estado actual del recargo',
@@ -208,39 +307,78 @@ module.exports = (sequelize) => {
     underscored: true,
     timestamps: true,
     paranoid: true, // Soft deletes
-    
+
     indexes: [],
 
     hooks: {
       beforeValidate: (recargo) => {
-        // Limpiar observaciones vacías
-        if (recargo.observaciones !== null && recargo.observaciones !== undefined && recargo.observaciones.trim() === '') {
+        if (recargo.observaciones !== null &&
+          recargo.observaciones !== undefined &&
+          recargo.observaciones.trim() === '') {
           recargo.observaciones = null;
-        }
-
-        // Generar número de planilla si no existe
-        if (!recargo.numero_planilla && recargo.empresa_id && recargo.año && recargo.mes) {
-          // Este será generado en el hook beforeCreate
         }
       },
 
       beforeUpdate: (recargo) => {
-        // Incrementar versión en cada actualización
         if (recargo.changed() && !recargo.changed('version')) {
           recargo.version = (recargo.version || 1) + 1;
         }
       },
 
-      afterCreate: async (recargo) => {
-        console.log(`✅ Recargo planilla creado: ${recargo.numero_planilla}`);
+      afterCreate: async (recargo, options) => {
+        try {
+          console.log(`✅ Recargo planilla creado: ${recargo.numero_planilla}`);
+
+          // Crear historial de creación
+          await sequelize.models.HistorialRecargoPlanilla.create({
+            recargo_planilla_id: recargo.id,
+            accion: 'creacion',
+            version_anterior: null,
+            version_nueva: 1,
+            datos_anteriores: null,
+            datos_nuevos: {
+              numero_planilla: recargo.numero_planilla,
+              mes: recargo.mes,
+              año: recargo.año,
+              conductor_id: recargo.conductor_id,
+              vehiculo_id: recargo.vehiculo_id,
+              empresa_id: recargo.empresa_id,
+              estado: recargo.estado
+            },
+            campos_modificados: null,
+            motivo: options.motivo || 'Creación inicial del recargo',
+            realizado_por_id: options.userId || recargo.creado_por_id,
+            ip_usuario: options.ipAddress || null,
+            user_agent: options.userAgent || null,
+            fecha_accion: new Date()
+          }, { transaction: options.transaction });
+
+          // Crear snapshot inicial
+          await crearSnapshot(recargo, {
+            ...options,
+            esSnapshotMayor: true,
+            tipoSnapshot: 'automatico'
+          });
+
+        } catch (error) {
+          console.error('❌ Error en afterCreate:', error);
+        }
       },
 
-      afterUpdate: async (recargo) => {
-        console.log(`🔄 Recargo planilla actualizado: ${recargo.numero_planilla} (v${recargo.version})`);
+      afterUpdate: async (recargo, options) => {
+        try {
+          // 1. Crear registro en historial
+          await crearRegistroHistorial(recargo, options);
+
+          console.log(`🔄 Recargo actualizado: ${recargo.numero_planilla} (v${recargo.version})`);
+
+        } catch (error) {
+          console.error('❌ Error en afterUpdate:', error);
+        }
       },
 
       beforeDestroy: async (recargo) => {
-        console.log(`🗑️ Eliminando recargo planilla: ${recargo.numero_planilla}`);
+        console.log(`🗑️  Eliminando recargo planilla: ${recargo.numero_planilla}`);
       }
     }
   });
@@ -298,18 +436,27 @@ module.exports = (sequelize) => {
     }
 
     // Relación con users (auditoría)
-    if (models.Usuario) {
-      RecargoPlanilla.belongsTo(models.Usuario, {
+    if (models.User) {
+      RecargoPlanilla.belongsTo(models.User, {
         foreignKey: 'creado_por_id',
         as: 'creadoPor',
         onDelete: 'SET NULL',
         onUpdate: 'CASCADE',
       });
 
-      RecargoPlanilla.belongsTo(models.Usuario, {
+      RecargoPlanilla.belongsTo(models.User, {
         foreignKey: 'actualizado_por_id',
         as: 'actualizadoPor',
         onDelete: 'SET NULL',
+        onUpdate: 'CASCADE',
+      });
+    }
+
+    if (models.SnapshotRecargoPlanilla) {
+      RecargoPlanilla.hasMany(models.SnapshotRecargoPlanilla, {
+        foreignKey: 'recargo_planilla_id',
+        as: 'snapshots',
+        onDelete: 'CASCADE',
         onUpdate: 'CASCADE',
       });
     }

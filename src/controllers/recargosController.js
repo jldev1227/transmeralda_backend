@@ -6,6 +6,7 @@ const { uploadPlanillaToS3, deletePlanillaFromS3 } = require('./documentoControl
 const fs = require('fs').promises;
 const logger = require('../utils/logger');
 const { notificarGlobal } = require('../utils/notificar');
+const versionService = require('../services/versionService');
 
 const {
   RecargoPlanilla,
@@ -16,6 +17,7 @@ const {
   Conductor,
   Vehiculo,
   Empresa,
+  User,
   sequelize
 } = db;
 
@@ -64,8 +66,8 @@ const upload = multer({
   }
 });
 
-class RecargoController {
 
+class RecargoController {
   convertirHoraDecimalATime(horaDecimal) {
     const numero = parseFloat(horaDecimal);
     if (isNaN(numero) || numero < 0 || numero >= 24) {
@@ -275,7 +277,7 @@ class RecargoController {
 
     // ===== FUNCIÓN CORREGIDA PARA CREAR RECARGOS =====
     const calcularYCrearRecargos = async (diaLaboral, transaction) => {
-      const { hora_inicio, hora_fin, es_domingo, es_festivo, dia, mes, año } = diaLaboral;
+      const { hora_inicio, hora_fin, es_festivo, dia, mes, año } = diaLaboral;
 
       // Usar la función exacta del frontend
       const resultadosCalculo = calcularTodasLasHoras({
@@ -632,184 +634,135 @@ class RecargoController {
       }
     };
 
+    /**
+     * Calcula qué campos cambiaron entre dos estados
+     */
+    const calcularCambios = (estadoAnterior, estadoNuevo, camposComparar) => {
+      const cambios = {
+        campos_modificados: [],
+        datos_anteriores: {},
+        datos_nuevos: {}
+      };
+
+      camposComparar.forEach(campo => {
+        const valorAnterior = estadoAnterior[campo];
+        const valorNuevo = estadoNuevo[campo];
+
+        if (JSON.stringify(valorAnterior) !== JSON.stringify(valorNuevo)) {
+          cambios.campos_modificados.push(campo);
+          cambios.datos_anteriores[campo] = valorAnterior;
+          cambios.datos_nuevos[campo] = valorNuevo;
+        }
+      });
+
+      return cambios;
+    };
+
     const HORAS_LIMITE = {
-      JORNADA_NORMAL: 10,      // ¡IMPORTANTE: 10 horas, no 8!
+      JORNADA_NORMAL: 10,
       INICIO_NOCTURNO: 21,
       FIN_NOCTURNO: 6,
     };
 
-    /**
-     * Verifica si un día específico es domingo
-     */
     const esDomingo = (dia, mes, año) => {
       const fecha = new Date(año, mes - 1, dia);
-      return fecha.getDay() === 0; // 0 = domingo
+      return fecha.getDay() === 0;
     };
 
-    /**
-     * Verifica si un día está en la lista de días festivos
-     */
     const esDiaFestivo = (dia, diasFestivos = []) => {
       return diasFestivos.includes(dia);
     };
 
-    /**
-     * Verifica si un día es domingo O festivo
-     */
     const esDomingoOFestivo = (dia, mes, año, diasFestivos = []) => {
       return esDomingo(dia, mes, año) || esDiaFestivo(dia, diasFestivos);
     };
 
-    /**
-     * Redondea un número a la cantidad de decimales especificada
-     */
     const redondear = (numero, decimales = 2) => {
       const factor = Math.pow(10, decimales);
       return Math.round(numero * factor) / factor;
     };
 
-    /**
-     * Calcula las Horas Extra Diurnas
-     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, 0, IF(F9>10,F9-10,0))
-     */
     const calcularHoraExtraDiurna = (dia, mes, año, totalHoras, diasFestivos = []) => {
-      // Si es domingo o festivo, no hay horas extra diurnas normales
       if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
         return 0;
       }
-
-      // Si trabajó más de 10 horas, calcular extra diurna
       if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL) {
         return redondear(totalHoras - HORAS_LIMITE.JORNADA_NORMAL);
       }
-
       return 0;
     };
 
-    /**
-     * Calcula las Horas Extra Nocturnas
-     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, 0, IF(AND(F9>10,E9>21),E9-21,0))
-     */
     const calcularHoraExtraNocturna = (dia, mes, año, horaFinal, totalHoras, diasFestivos = []) => {
-      // Si es domingo o festivo, no hay horas extra nocturnas normales
       if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
         return 0;
       }
-
-      // Si trabajó más de 10 horas Y terminó después de las 21:00
       if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL && horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
         return redondear(horaFinal - HORAS_LIMITE.INICIO_NOCTURNO);
       }
-
       return 0;
     };
 
-    /**
-     * Calcula las Horas Extra Festivas Diurnas
-     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, IF(F9>10,F9-10,0),0)
-     */
     const calcularHoraExtraFestivaDiurna = (dia, mes, año, totalHoras, diasFestivos = []) => {
-      // Solo si es domingo o festivo
       if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
         if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL) {
           return redondear(totalHoras - HORAS_LIMITE.JORNADA_NORMAL);
         }
       }
-
       return 0;
     };
 
-    /**
-     * Calcula las Horas Extra Festivas Nocturnas
-     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, IF(AND(F9>10,E9>21),E9-21,0), 0)
-     */
     const calcularHoraExtraFestivaNocturna = (dia, mes, año, horaFinal, totalHoras, diasFestivos = []) => {
-      // Solo si es domingo o festivo
       if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
-        // Si trabajó más de 10 horas Y terminó después de las 21:00
         if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL && horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
           return redondear(horaFinal - HORAS_LIMITE.INICIO_NOCTURNO);
         }
       }
-
       return 0;
     };
 
-    /**
-     * Calcula el Recargo Nocturno
-     * Fórmula del frontend: =IF(C9<>"",IF(AND(D9<>"",E9<>""),(IF(D9<6,6-D9)+IF(E9>21,IF((D9>21),E9-D9,E9-21))),0),0)
-     */
     const calcularRecargoNocturno = (dia, horaInicial, horaFinal) => {
-      // Si no hay día registrado, retornar 0
-      if (!dia) {
+      if (!dia || !horaInicial || !horaFinal) {
         return 0;
       }
-
-      // Si no hay horas registradas, retornar 0
-      if (!horaInicial || !horaFinal) {
-        return 0;
-      }
-
       let recargoNocturno = 0;
-
-      // Recargo por iniciar antes de las 6:00 AM
       if (horaInicial < HORAS_LIMITE.FIN_NOCTURNO) {
         recargoNocturno += HORAS_LIMITE.FIN_NOCTURNO - horaInicial;
       }
-
-      // Recargo por terminar después de las 21:00 (9:00 PM)
       if (horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
         if (horaInicial > HORAS_LIMITE.INICIO_NOCTURNO) {
-          // Si también inició después de las 21:00, es toda la jornada
           recargoNocturno += horaFinal - horaInicial;
         } else {
-          // Solo las horas después de las 21:00
           recargoNocturno += horaFinal - HORAS_LIMITE.INICIO_NOCTURNO;
         }
       }
-
       return redondear(recargoNocturno);
     };
 
-    /**
-     * Calcula el Recargo Dominical
-     * Fórmula del frontend: =IF(COUNTIF($R$6:$S$12,C9) > 0, IF(F9<=10,F9,10), 0)
-     */
     const calcularRecargoDominical = (dia, mes, año, totalHoras, diasFestivos = []) => {
-      // Solo si es domingo o festivo
       if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
-        // Si trabajó 10 horas o menos, todas son recargo dominical
-        // Si trabajó más de 10, solo las primeras 10 son recargo dominical
         return redondear(
           totalHoras <= HORAS_LIMITE.JORNADA_NORMAL
             ? totalHoras
             : HORAS_LIMITE.JORNADA_NORMAL
         );
       }
-
       return 0;
     };
 
-    /**
-     * Función principal que calcula todos los tipos de horas y recargos
-     * BASADA EXACTAMENTE EN EL FRONTEND
-     */
     const calcularTodasLasHoras = (parametros) => {
       const { dia, mes, año, horaInicial, horaFinal, diasFestivos = [] } = parametros;
 
-      // Calcular total de horas trabajadas
       let totalHoras = horaFinal - horaInicial;
-      if (totalHoras < 0) totalHoras += 24; // Cruzó medianoche
+      if (totalHoras < 0) totalHoras += 24;
       totalHoras = redondear(totalHoras);
 
-      // Calcular todos los tipos usando las fórmulas exactas del frontend
       const horaExtraNocturna = calcularHoraExtraNocturna(dia, mes, año, horaFinal, totalHoras, diasFestivos);
       const horaExtraDiurna = calcularHoraExtraDiurna(dia, mes, año, totalHoras, diasFestivos) - horaExtraNocturna;
-      const horaExtraFestivaNocturna = calcularHoraExtraFestivaNocturna(dia, mes, año, horaFinal, totalHoras, diasFestivos)
+      const horaExtraFestivaNocturna = calcularHoraExtraFestivaNocturna(dia, mes, año, horaFinal, totalHoras, diasFestivos);
 
       const resultados = {
         totalHoras,
-        horaExtraDiurna: horaExtraDiurna, // No puede ser negativo
+        horaExtraDiurna: horaExtraDiurna,
         horaExtraNocturna,
         horaExtraFestivaNocturna,
         horaExtraFestivaDiurna: calcularHoraExtraFestivaDiurna(dia, mes, año, totalHoras, diasFestivos) - horaExtraFestivaNocturna,
@@ -823,11 +776,9 @@ class RecargoController {
       return resultados;
     };
 
-    // ===== FUNCIÓN CORREGIDA PARA CREAR RECARGOS =====
     const calcularYCrearRecargos = async (diaLaboral, transaction) => {
       const { hora_inicio, hora_fin, es_domingo, es_festivo, dia, mes, año } = diaLaboral;
 
-      // Usar la función exacta del frontend
       const resultadosCalculo = calcularTodasLasHoras({
         dia: parseInt(dia),
         mes: mes || new Date().getMonth() + 1,
@@ -837,7 +788,6 @@ class RecargoController {
         diasFestivos: es_festivo ? [parseInt(dia)] : []
       });
 
-      // Obtener tipos de recargos de la base de datos
       const tiposRecargos = await TipoRecargo.findAll({
         where: { activo: true },
         transaction
@@ -851,7 +801,6 @@ class RecargoController {
       const recargos = {};
       const detallesCreados = [];
 
-      // Mapear resultados a códigos de base de datos
       const mappingRecargos = [
         { campo: 'horaExtraDiurna', codigo: 'HED', nombre: 'Horas Extra Diurnas' },
         { campo: 'horaExtraNocturna', codigo: 'HEN', nombre: 'Horas Extra Nocturnas' },
@@ -861,7 +810,6 @@ class RecargoController {
         { campo: 'recargoDominical', codigo: 'RD', nombre: 'Recargo Dominical/Festivo' }
       ];
 
-      // Crear recargos basados en los resultados
       for (const mapping of mappingRecargos) {
         const horas = resultadosCalculo[mapping.campo];
 
@@ -879,7 +827,6 @@ class RecargoController {
         }
       }
 
-      // Actualizar total_horas del día
       await diaLaboral.update({
         total_horas: parseFloat(resultadosCalculo.totalHoras.toFixed(4))
       }, { transaction });
@@ -892,7 +839,6 @@ class RecargoController {
       };
     };
 
-    // ===== FUNCIÓN COMPLETA PARA CALCULAR TOTALES =====
     const calcularTotalesRecargoDesdeDetalles = async (recargoId, transaction) => {
       const query = `
       SELECT 
@@ -928,7 +874,6 @@ class RecargoController {
       const totales = {
         total_horas_trabajadas: 0,
         total_dias_laborados: 0,
-        // Inicializar todos los tipos de recargo
         total_hed: 0,
         total_hen: 0,
         total_hefd: 0,
@@ -942,7 +887,6 @@ class RecargoController {
           totales.total_horas_trabajadas = parseFloat(row.total_horas) || 0;
           totales.total_dias_laborados = parseInt(row.total_dias) || 0;
         } else if (row.codigo && row.total_horas_tipo) {
-          // Mapear códigos a campos de totales
           switch (row.codigo) {
             case 'HED':
               totales.total_hed = parseFloat(row.total_horas_tipo) || 0;
@@ -980,7 +924,7 @@ class RecargoController {
         });
       }
 
-      // Buscar recargo existente
+      // Buscar recargo existente CON estado anterior completo
       const recargoExistente = await RecargoPlanilla.findByPk(id, {
         include: [{ model: DiaLaboralPlanilla, as: 'dias_laborales' }],
         transaction
@@ -994,7 +938,6 @@ class RecargoController {
         });
       }
 
-      // Verificar si es editable
       if (!recargoExistente.esEditable()) {
         await safeRollback(transaction);
         return res.status(400).json({
@@ -1003,7 +946,20 @@ class RecargoController {
         });
       }
 
-      // Procesar datos de manera consistente con crear
+      // ✅ GUARDAR ESTADO ANTERIOR (solo campos relevantes)
+      const estadoAnterior = {
+        numero_planilla: recargoExistente.numero_planilla,
+        estado: recargoExistente.estado,
+        observaciones: recargoExistente.observaciones,
+        total_dias_laborados: recargoExistente.total_dias_laborados,
+        total_horas_trabajadas: recargoExistente.total_horas_trabajadas,
+        planilla_s3key: recargoExistente.planilla_s3key,
+        conductor_id: recargoExistente.conductor_id,
+        vehiculo_id: recargoExistente.vehiculo_id,
+        empresa_id: recargoExistente.empresa_id
+      };
+
+      // Procesar datos
       let data;
       let archivoInfo = null;
 
@@ -1030,12 +986,9 @@ class RecargoController {
         });
       }
 
-      
       // Handle file upload
       if (req.file) {
-        // Validaciones del archivo
         if (!req.file.originalname || req.file.size === 0) {
-          // Limpiar archivo temporal
           if (req.file && req.file.path) {
             try {
               await fs.unlink(req.file.path);
@@ -1053,25 +1006,17 @@ class RecargoController {
           mimeType: req.file.mimetype
         });
 
-        // Extraer S3 key anterior para eliminación
-        const oldS3Key = recargoExistente.s3_key ||
-          (recargoExistente.archivo_planilla_url &&
-            recargoExistente.archivo_planilla_url.startsWith('planillas/') ?
-            recargoExistente.archivo_planilla_url : null);
-
-        // Subir nuevo archivo a S3
+        const oldS3Key = recargoExistente.planilla_s3key;
         archivoInfo = await uploadPlanillaToS3(req.file, id, oldS3Key || undefined);
 
         if (!archivoInfo || !archivoInfo.s3_key) {
           throw new Error('No se recibió información válida del archivo subido');
         }
 
-        // Actualizar BD - continúa con el resto de operaciones
         await recargoExistente.update({
           planilla_s3key: archivoInfo.s3_key
         }, { transaction });
 
-        // Limpiar archivo temporal
         if (req.file && req.file.path) {
           try {
             await fs.unlink(req.file.path);
@@ -1087,17 +1032,13 @@ class RecargoController {
         });
 
       } else if (recargoExistente.planilla_s3key) {
-        // CASO 2: Eliminar planilla existente (no se envió archivo)
-
         const s3KeyToDelete = recargoExistente.planilla_s3key;
         logger.info(`Eliminando planilla existente para recargo ${id}: ${s3KeyToDelete}`);
 
-        // Actualizar BD primero
         await recargoExistente.update({
           planilla_s3key: null
         }, { transaction });
 
-        // Eliminar de S3
         const s3keyEliminado = await deletePlanillaFromS3(s3KeyToDelete);
 
         if (!s3keyEliminado) {
@@ -1109,15 +1050,29 @@ class RecargoController {
         });
 
       } else {
-        // CASO 3: No hay archivo nuevo ni planilla existente - continuar normalmente
         logger.info(`Recargo ${id} - sin cambios en planilla`);
       }
 
-      // Rest of your database operations...
-      const datosAnteriores = {
-        recargo: recargoExistente.toJSON(),
-        dias_laborales: recargoExistente.dias_laborales
-      };
+      // ✅ CREAR SNAPSHOT ANTES de eliminar días (si corresponde)
+      const cambiosDelRecargo = recargoExistente.changed();
+      const tieneCambiosCriticos = Array.isArray(cambiosDelRecargo) &&
+        cambiosDelRecargo.some(campo => ['estado', 'numero_planilla', 'planilla_s3key'].includes(campo));
+
+      const debeCrearSnapshotPrevio =
+        (recargoExistente.version + 1) % 10 === 0 || // Siguiente versión será múltiplo de 10
+        tieneCambiosCriticos; // Habrá cambios críti
+
+      if (debeCrearSnapshotPrevio) {
+        console.log(`📸 Creando snapshot previo a actualización (v${recargoExistente.version})`);
+
+        // Importar la función desde el modelo o crear inline
+        await versionService.crearSnapshotManual(
+          recargoExistente.id,
+          userId,
+          'Snapshot previo a actualización masiva',
+          transaction
+        );
+      }
 
       // Delete existing details and days
       const diasExistentes = await DiaLaboralPlanilla.findAll({
@@ -1160,7 +1115,6 @@ class RecargoController {
         const horaInicio = parseFloat(diaOriginal.horaInicio);
         const horaFin = parseFloat(diaOriginal.horaFin);
 
-        // Validations
         if (isNaN(horaInicio) || isNaN(horaFin)) {
           await safeRollback(transaction);
           return res.status(400).json({
@@ -1169,12 +1123,10 @@ class RecargoController {
           });
         }
 
-        // Determine if it's Sunday or holiday
         const fecha = new Date(parseInt(data.año), parseInt(data.mes) - 1, parseInt(diaOriginal.dia));
         const esDomingoCalculado = fecha.getDay() === 0;
         const esFestivoCalculado = Boolean(diaOriginal.esFestivo);
 
-        // CREATE WORK DAY
         const diaCreado = await DiaLaboralPlanilla.create({
           recargo_planilla_id: id,
           dia: parseInt(diaOriginal.dia),
@@ -1191,7 +1143,6 @@ class RecargoController {
         diaCreado.mes = parseInt(data.mes);
         diaCreado.año = parseInt(data.año);
 
-        // CALCULATE AND CREATE SURCHARGES
         const resultadoCalculo = await calcularYCrearRecargos(diaCreado, transaction);
         diasCreados.push({
           ...diaCreado.toJSON(),
@@ -1206,75 +1157,177 @@ class RecargoController {
         actualizado_por_id: userId
       }, { transaction });
 
-      // Create history record
-      await HistorialRecargoPlanilla.create({
-        recargo_planilla_id: id,
-        accion: 'actualizacion',
-        version_anterior: recargoExistente.version - 1,
-        version_nueva: recargoExistente.version,
-        datos_anteriores: datosAnteriores,
-        datos_nuevos: {
-          recargo: recargoExistente.toJSON(),
-          dias_laborales: diasCreados
-        },
-        realizado_por_id: userId,
-        ip_usuario: req.ip,
-        user_agent: req.get('User-Agent'),
-        fecha_accion: new Date()
-      }, { transaction });
+      // ✅ OBTENER ESTADO NUEVO (después de todas las actualizaciones)
+      const estadoNuevo = {
+        numero_planilla: recargoExistente.numero_planilla,
+        estado: recargoExistente.estado,
+        observaciones: recargoExistente.observaciones,
+        total_dias_laborados: recargoExistente.total_dias_laborados,
+        total_horas_trabajadas: recargoExistente.total_horas_trabajadas,
+        planilla_s3key: recargoExistente.planilla_s3key,
+        conductor_id: recargoExistente.conductor_id,
+        vehiculo_id: recargoExistente.vehiculo_id,
+        empresa_id: recargoExistente.empresa_id
+      };
+
+      // ✅ CALCULAR CAMBIOS
+      const camposComparar = [
+        'numero_planilla', 'estado', 'observaciones',
+        'total_dias_laborados', 'total_horas_trabajadas',
+        'planilla_s3key', 'conductor_id', 'vehiculo_id', 'empresa_id'
+      ];
+
+      const cambios = calcularCambios(estadoAnterior, estadoNuevo, camposComparar);
+
+      // Detectar cambios en días laborales
+      const cantidadDiasAnterior = estadoAnterior.total_dias_laborados || 0;
+      const cantidadDiasNueva = diasCreados.length;
+
+      if (cantidadDiasAnterior !== cantidadDiasNueva) {
+        if (!cambios.campos_modificados.includes('dias_laborales')) {
+          cambios.campos_modificados.push('dias_laborales');
+        }
+        cambios.datos_anteriores.dias_laborales_count = cantidadDiasAnterior;
+        cambios.datos_nuevos.dias_laborales_count = cantidadDiasNueva;
+      }
+
+      // ✅ CREAR HISTORIAL SOLO SI HUBO CAMBIOS
+      if (cambios.campos_modificados.length > 0) {
+        await HistorialRecargoPlanilla.create({
+          recargo_planilla_id: id,
+          accion: 'actualizacion',
+          version_anterior: recargoExistente.version - 1,
+          version_nueva: recargoExistente.version,
+          datos_anteriores: cambios.datos_anteriores,  // Solo campos modificados
+          datos_nuevos: cambios.datos_nuevos,          // Solo campos modificados
+          campos_modificados: cambios.campos_modificados, // Array de campos
+          motivo: data.motivo || 'Actualización del recargo',
+          realizado_por_id: userId,
+          ip_usuario: req.ip,
+          user_agent: req.get('User-Agent'),
+          fecha_accion: new Date()
+        }, { transaction });
+
+        logger.info(`Historial creado para recargo ${id}:`, {
+          campos: cambios.campos_modificados,
+          version: recargoExistente.version
+        });
+      } else {
+        logger.info(`Sin cambios detectados en recargo ${id}, historial omitido`);
+      }
 
       // COMMIT TRANSACTION
       await transaction.commit();
 
       // Get updated recargo with all relations
       const recargoActualizado = await RecargoPlanilla.findByPk(id, {
+        attributes: [
+          'id', 'numero_planilla', 'mes', 'año',
+          'total_horas_trabajadas', 'total_dias_laborados',
+          'estado', 'planilla_s3key', 'version', 'created_at', 'updated_at'
+        ],
         include: [
-          { model: DiaLaboralPlanilla, as: 'dias_laborales' },
-          { model: Conductor, as: 'conductor', attributes: ['id', 'nombre', 'apellido', 'numero_identificacion'] },
-          { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'marca', 'modelo'] },
-          { model: Empresa, as: 'empresa', attributes: ['id', 'nombre', 'nit'] }
-        ]
+          {
+            model: Conductor,
+            as: 'conductor',
+            attributes: ['id', 'nombre', 'apellido', 'numero_identificacion']
+          },
+          {
+            model: Vehiculo,
+            as: 'vehiculo',
+            attributes: ['id', 'placa', 'marca', 'modelo']
+          },
+          {
+            model: Empresa,
+            as: 'empresa',
+            attributes: ['id', 'nombre', 'nit']
+          },
+          {
+            model: DiaLaboralPlanilla,
+            as: 'dias_laborales',
+            attributes: [
+              'id', 'dia', 'hora_inicio', 'hora_fin',
+              'total_horas', 'es_domingo', 'es_festivo'
+            ],
+            include: [
+              {
+                model: DetalleRecargosDia,
+                as: 'detallesRecargos',
+                attributes: ['id', 'horas'],
+                include: [
+                  {
+                    model: TipoRecargo,
+                    as: 'tipoRecargo',
+                    attributes: ['id', 'codigo', 'nombre', 'porcentaje']
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        nest: true
       });
 
+      // Normalizar estructura del recargo actualizado
+      const recargoNormalizado = (() => {
+        const dias = recargoActualizado.dias_laborales?.map(dia => {
+          const recargosDelDia = { hed: 0, hen: 0, hefd: 0, hefn: 0, rn: 0, rd: 0 };
+
+          dia.detallesRecargos?.forEach(detalle => {
+            const codigo = detalle.tipoRecargo.codigo.toLowerCase();
+            recargosDelDia[codigo] = parseFloat(detalle.horas) || 0;
+          });
+
+          return {
+            id: dia.id,
+            dia: dia.dia,
+            hora_inicio: dia.hora_inicio,
+            hora_fin: dia.hora_fin,
+            total_horas: dia.total_horas,
+            es_especial: dia.es_domingo || dia.es_festivo,
+            es_domingo: dia.es_domingo,
+            es_festivo: dia.es_festivo,
+            ...recargosDelDia
+          };
+        }) || [];
+
+        return {
+          id: recargoActualizado.id,
+          numero_planilla: recargoActualizado.numero_planilla,
+          conductor: recargoActualizado.conductor,
+          vehiculo: recargoActualizado.vehiculo,
+          empresa: recargoActualizado.empresa,
+          total_horas: recargoActualizado.total_horas_trabajadas,
+          total_dias: recargoActualizado.total_dias_laborados,
+          estado: recargoActualizado.estado,
+          planilla_s3key: recargoActualizado.planilla_s3key,
+          version: recargoActualizado.version,
+          dias_laborales: dias
+        };
+      })();
+
+      // Notificar a todos los clientes
       notificarGlobal("recargo-planilla:actualizado", {
-        data: recargoActualizado,
+        data: recargoNormalizado,
         usuarioId: req.user.id,
         usuarioNombre: req.user.nombre
-      })
+      });
 
-      return res.json({
+      return res.status(200).json({
         success: true,
         message: 'Recargo actualizado exitosamente',
-        data: {
-          recargo: recargoActualizado,
-          resumen: {
-            total_horas: totalesRecargo.total_horas_trabajadas,
-            total_dias: diasCreados.length,
-            archivo_adjunto: !!archivoInfo,
-            version: recargoActualizado.version,
-            totales: totalesRecargo,
-            dias_actualizados: diasCreados.map(d => ({
-              id: d.id,
-              dia: d.dia,
-              total_horas: d.total_horas,
-              recargos: d.recargos
-            }))
-          }
-        }
+        data: recargoNormalizado
       });
 
     } catch (error) {
-      // SAFE ROLLBACK - Check transaction state before rolling back
       await safeRollback(transaction);
+      console.error('Error actualizando recargo:', error);
 
-      console.error('❌ Error actualizando recargo:', error);
-
-      // Clean up file if uploaded but failed
       if (req.file && req.file.path) {
         try {
           await fs.unlink(req.file.path);
         } catch (unlinkError) {
-          console.error('⚠️ Error eliminando archivo:', unlinkError.message);
+          console.error('Error eliminando archivo:', unlinkError.message);
         }
       }
 
@@ -1511,20 +1564,18 @@ class RecargoController {
     }
   }
 
-  // Obtener recargo por ID
+  // Obtener recargo por ID con historial
   async obtenerPorId(req, res) {
     try {
       const { id } = req.params;
 
-      // ✅ CONSULTA ULTRA OPTIMIZADA IGUAL QUE CANVAS (filtrada por ID)
       const recargo = await RecargoPlanilla.findOne({
-        where: {
-          id,
-        },
+        where: { id },
         attributes: [
           'id', 'numero_planilla', 'mes', 'año',
           'total_horas_trabajadas', 'total_dias_laborados', 'planilla_s3key',
-          'created_at'
+          'version', 'estado', 'observaciones',
+          'created_at', 'updated_at', 'creado_por_id', 'actualizado_por_id' // ✅ Ya los tienes aquí
         ],
         include: [
           {
@@ -1561,6 +1612,32 @@ class RecargoController {
               }
             ],
             order: [['dia', 'ASC']]
+          },
+          {
+            model: User,
+            as: 'creadoPor',
+            attributes: ['id', 'nombre', 'correo']
+          },
+          {
+            model: User,
+            as: 'actualizadoPor',
+            attributes: ['id', 'nombre', 'correo']
+          },
+          {
+            model: HistorialRecargoPlanilla,
+            as: 'historial',
+            attributes: [
+              'id', 'accion', 'version_anterior', 'version_nueva',
+              'campos_modificados', 'motivo', 'fecha_accion'
+            ],
+            include: [
+              {
+                model: User,
+                as: 'usuario',
+                attributes: ['id', 'nombre', 'correo']
+              }
+            ],
+            order: [['fecha_accion', 'DESC']]
           }
         ],
         raw: false,
@@ -1574,7 +1651,7 @@ class RecargoController {
         });
       }
 
-      // ✅ PROCESAR DATOS CON LA MISMA LÓGICA QUE CANVAS
+      // Procesar datos
       const recargoData = {
         id: recargo.id,
         numero_planilla: recargo.numero_planilla,
@@ -1584,10 +1661,42 @@ class RecargoController {
         total_horas: recargo.total_horas_trabajadas,
         total_dias: recargo.total_dias_laborados,
         planilla_s3key: recargo.planilla_s3key,
+        version: recargo.version,
+        estado: recargo.estado,
+        observaciones: recargo.observaciones,
 
-        // ✅ DÍAS CON RECARGOS DESDE DETALLES NORMALIZADOS
+        // ✅ USAR dataValues para acceder a los timestamps
+        auditoria: {
+          creado_por: recargo.creadoPor ? {
+            id: recargo.creadoPor.id,
+            nombre: recargo.creadoPor.nombre,
+            correo: recargo.creadoPor.correo
+          } : null,
+          fecha_creacion: recargo.dataValues.created_at,        // ✅ AQUÍ
+          actualizado_por: recargo.actualizadoPor ? {
+            id: recargo.actualizadoPor.id,
+            nombre: recargo.actualizadoPor.nombre,
+            correo: recargo.actualizadoPor.correo
+          } : null,
+          fecha_actualizacion: recargo.dataValues.updated_at    // ✅ AQUÍ
+        },
+
+        historial: recargo.historial?.map(h => ({
+          id: h.id,
+          accion: h.accion,
+          version_anterior: h.version_anterior,
+          version_nueva: h.version_nueva,
+          campos_modificados: h.campos_modificados,
+          motivo: h.motivo,
+          fecha: h.fecha_accion,
+          usuario: h.usuario ? {
+            id: h.usuario.id,
+            nombre: h.usuario.nombre,
+            correo: h.usuario.correo
+          } : null
+        })) || [],
+
         dias_laborales: recargo.dias_laborales?.map(dia => {
-          // Convertir detalles a formato esperado
           const recargosDelDia = { hed: 0, hen: 0, hefd: 0, hefn: 0, rn: 0, rd: 0 };
 
           dia.detallesRecargos?.forEach(detalle => {
@@ -1604,7 +1713,7 @@ class RecargoController {
             es_especial: dia.es_domingo || dia.es_festivo,
             es_domingo: dia.es_domingo,
             es_festivo: dia.es_festivo,
-            ...recargosDelDia // hed, hen, hefd, hefn, rn, rd
+            ...recargosDelDia
           };
         }) || []
       };
@@ -1614,8 +1723,8 @@ class RecargoController {
         data: {
           mes: recargo.mes,
           año: recargo.año,
-          total_recargos: 1, // Siempre será 1 porque es un solo recargo
-          recargo: recargoData // Mismo formato que en canvas
+          total_recargos: 1,
+          recargo: recargoData
         }
       });
 
