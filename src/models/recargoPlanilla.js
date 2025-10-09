@@ -159,14 +159,13 @@ module.exports = (sequelize) => {
     numero_planilla: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      unique: true,
       validate: {
         len: {
           args: [0, 50],
           msg: 'El número de planilla no puede exceder 50 caracteres'
         }
       },
-      comment: 'Número único de la planilla (ej: PL-2025-07-001)',
+      comment: 'Número de la planilla (ej: PL-2025-07-001)',
     },
 
     mes: {

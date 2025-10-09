@@ -561,27 +561,94 @@ class RecargoController {
 
       // ✅ OBTENER RECARGO COMPLETO CON RELACIONES PARA LA NOTIFICACIÓN
       const recargoCompleto = await RecargoPlanilla.findByPk(recargo.id, {
+        attributes: [
+          'id', 'numero_planilla', 'mes', 'año',
+          'total_horas_trabajadas', 'total_dias_laborados',
+          'estado', 'planilla_s3key', 'version', 'created_at', 'updated_at'
+        ],
         include: [
           {
             model: Conductor,
             as: 'conductor',
-            attributes: ['id', 'nombre', 'apellido', 'numero_identificacion']
+            attributes: ['id', 'nombre', 'apellido']
           },
           {
             model: Vehiculo,
             as: 'vehiculo',
-            attributes: ['id', 'placa', 'marca', 'modelo']
+            attributes: ['id', 'placa']
           },
           {
             model: Empresa,
             as: 'empresa',
             attributes: ['id', 'nombre', 'nit']
+          },
+          {
+            model: DiaLaboralPlanilla,
+            as: 'dias_laborales',
+            attributes: [
+              'id', 'dia', 'hora_inicio', 'hora_fin',
+              'total_horas', 'es_domingo', 'es_festivo'
+            ],
+            include: [
+              {
+                model: DetalleRecargosDia,
+                as: 'detallesRecargos',
+                attributes: ['id', 'horas'],
+                include: [
+                  {
+                    model: TipoRecargo,
+                    as: 'tipoRecargo',
+                    attributes: ['id', 'codigo', 'nombre', 'porcentaje']
+                  }
+                ]
+              }
+            ]
           }
-        ]
+        ],
+        nest: true
       });
 
+      // ✅ Normalizar estructura del recargo completo
+      const recargoNormalizado = (() => {
+        const dias = recargoCompleto.dias_laborales?.map(dia => {
+          const recargosDelDia = { hed: 0, hen: 0, hefd: 0, hefn: 0, rn: 0, rd: 0 };
+
+          dia.detallesRecargos?.forEach(detalle => {
+            const codigo = detalle.tipoRecargo.codigo.toLowerCase();
+            recargosDelDia[codigo] = parseFloat(detalle.horas) || 0;
+          });
+
+          return {
+            id: dia.id,
+            dia: dia.dia,
+            hora_inicio: dia.hora_inicio,
+            hora_fin: dia.hora_fin,
+            total_horas: dia.total_horas,
+            es_especial: dia.es_domingo || dia.es_festivo,
+            es_domingo: dia.es_domingo,
+            es_festivo: dia.es_festivo,
+            ...recargosDelDia
+          };
+        }) || [];
+
+        return {
+          id: recargoCompleto.id,
+          numero_planilla: recargoCompleto.numero_planilla,
+          conductor: recargoCompleto.conductor,
+          vehiculo: recargoCompleto.vehiculo,
+          empresa: recargoCompleto.empresa,
+          total_horas: recargoCompleto.total_horas_trabajadas,
+          total_dias: recargoCompleto.total_dias_laborados,
+          estado: recargoCompleto.estado,
+          planilla_s3key: recargoCompleto.planilla_s3key,
+          version: recargoCompleto.version,
+          dias_laborales: dias
+        };
+      })();
+
+      // ✅ Notificar a todos los clientes
       notificarGlobal("recargo-planilla:creado", {
-        data: recargoCompleto,
+        data: recargoNormalizado,
         usuarioId: req.user.id,
         usuarioNombre: req.user.nombre
       });
@@ -589,21 +656,9 @@ class RecargoController {
       return res.status(201).json({
         success: true,
         message: 'Recargo registrado exitosamente',
-        data: {
-          recargo_id: recargo.id,
-          numero_planilla: recargo.numero_planilla,
-          planilla_s3key: recargo.planilla_s3key, // ✅ Incluir en la respuesta
-          total_dias: diasCreados.length,
-          totales: totalesRecargo,
-          dias_creados: diasCreados.map(d => ({
-            id: d.id,
-            dia: d.dia,
-            total_horas: d.total_horas,
-            recargos: d.recargos
-          }))
-        }
+        data: recargoNormalizado
       });
-
+      
     } catch (error) {
       await transaction.rollback();
       console.error('❌ Error creando recargo:', error);
@@ -1230,12 +1285,12 @@ class RecargoController {
           {
             model: Conductor,
             as: 'conductor',
-            attributes: ['id', 'nombre', 'apellido', 'numero_identificacion']
+            attributes: ['id', 'nombre', 'apellido']
           },
           {
             model: Vehiculo,
             as: 'vehiculo',
-            attributes: ['id', 'placa', 'marca', 'modelo']
+            attributes: ['id', 'placa']
           },
           {
             model: Empresa,
@@ -1427,6 +1482,143 @@ class RecargoController {
     } catch (error) {
       await transaction.rollback();
       console.error('❌ Error eliminando recargos:', error);
+
+      return res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  // Liquidar recargo
+  async liquidar(req, res) {
+    const transaction = await sequelize.transaction();
+    logger.info('Iniciando liquidación de recargos', { body: req.body, userId: req.user?.id });
+
+    try {
+      const selectedIds = req.body?.data?.selectedIds;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        logger.warn('Usuario no autenticado en liquidar');
+        return res.status(401).json({
+          success: false,
+          message: 'Usuario no autenticado'
+        });
+      }
+
+      if (!selectedIds || !Array.isArray(selectedIds) || selectedIds.length === 0) {
+        logger.warn('IDs para liquidar no proporcionados o vacíos', { selectedIds });
+        return res.status(400).json({
+          success: false,
+          message: 'Debe proporcionar al menos un ID para liquidar'
+        });
+      }
+
+      logger.info('Buscando recargos para liquidar', { selectedIds });
+      const recargos = await RecargoPlanilla.findAll({
+        where: {
+          id: selectedIds
+        },
+        transaction
+      });
+
+      logger.info('Recargos encontrados', { cantidad: recargos.length, ids: recargos.map(r => r.id) });
+
+      if (recargos.length === 0) {
+        logger.warn('No se encontraron recargos con los IDs proporcionados', { selectedIds });
+        await transaction.rollback();
+        return res.status(404).json({
+          success: false,
+          message: 'No se encontraron recargos con los IDs proporcionados'
+        });
+      }
+
+      const recargosNoEditables = recargos.filter(recargo => !recargo.esEditable());
+      logger.info('Recargos no editables', { cantidad: recargosNoEditables.length, ids: recargosNoEditables.map(r => r.id) });
+
+      if (recargosNoEditables.length > 0) {
+        await transaction.rollback();
+        logger.warn('Algunos recargos no pueden ser liquidados', { recargosNoEditables });
+        return res.status(400).json({
+          success: false,
+          message: `${recargosNoEditables.length} recargo(s) no pueden ser liquidados en su estado actual`
+        });
+      }
+
+      // Extraer números de planilla ANTES de actualizar
+      const numerosPlanilla = recargos
+        .map(r => r.numero_planilla)
+        .filter(Boolean);
+
+      // Crear historial ANTES de actualizar
+      logger.info('Creando historial de liquidación para recargos');
+      const historialPromises = recargos.map(recargo => {
+        const datosAnteriores = {
+          estado: recargo.estado,
+          version: recargo.version
+        };
+
+        const datosNuevos = {
+          estado: 'liquidada',
+          version: recargo.version + 1
+        };
+
+        return HistorialRecargoPlanilla.create({
+          recargo_planilla_id: recargo.id,
+          accion: 'actualizacion',
+          version_anterior: recargo.version,
+          version_nueva: recargo.version + 1,
+          datos_anteriores: datosAnteriores,
+          datos_nuevos: datosNuevos,
+          realizado_por_id: userId,
+          ip_usuario: req.ip || null,
+          user_agent: req.get('User-Agent') || null,
+          fecha_accion: new Date()
+        }, { transaction });
+      });
+
+      await Promise.all(historialPromises);
+
+      // Actualizar recargos: cambiar estado a 'liquidado' e incrementar versión
+      logger.info('Actualizando estado de recargos a liquidado', { selectedIds });
+      await RecargoPlanilla.update(
+        {
+          estado: 'liquidada',
+          version: sequelize.literal('version + 1'),
+          actualizado_por_id: userId
+        },
+        {
+          where: { id: selectedIds },
+          transaction
+        }
+      );
+
+      await transaction.commit();
+      logger.info('Liquidación de recargos completada', { selectedIds });
+
+      notificarGlobal("recargo-planilla:liquidado", {
+        usuarioId: req.user.id,
+        usuarioNombre: req.user.nombre,
+        selectedIds,
+        numerosPlanilla // Agregar números de planilla
+      });
+
+      return res.json({
+        success: true,
+        message: `${recargos.length} recargo(s) liquidado(s) exitosamente`,
+        liquidados: recargos.length,
+        numerosPlanilla // También incluir en la respuesta
+      });
+
+    } catch (error) {
+      await transaction.rollback();
+      logger.error('❌ Error liquidando recargos:', {
+        error: error.message,
+        stack: error.stack,
+        name: error.name
+      });
 
       return res.status(500).json({
         success: false,

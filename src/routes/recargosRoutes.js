@@ -196,6 +196,13 @@ router.put('/:id/estado', protect, async (req, res) => {
  */
 router.delete('/eliminar', protect, controller.eliminar.bind(controller));
 
+/**
+ * @route   PATCH /api/recargos/liquidar
+ * @desc    Liquidar múltiples recargos
+ * @access  Private
+ */
+router.patch('/liquidar', protect, controller.liquidar.bind(controller));
+
 // ==========================================
 // RUTAS PARA GESTIÓN DE ARCHIVOS
 // ==========================================
