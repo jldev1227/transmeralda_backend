@@ -163,7 +163,7 @@ module.exports = (sequelize) => {
     },
 
     horas: {
-      type: DataTypes.DECIMAL(6, 4),
+      type: DataTypes.DECIMAL(6, 1),
       allowNull: false,
       defaultValue: 0,
       validate: {
