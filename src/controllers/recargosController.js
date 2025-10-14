@@ -1695,7 +1695,7 @@ class RecargoController {
             order: [['dia', 'ASC']]
           }
         ],
-        order: [['numero_planilla', 'ASC']],
+        order: [['created_at', 'DESC']],
         raw: false,
         nest: true
       });
