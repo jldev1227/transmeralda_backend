@@ -58,6 +58,16 @@ module.exports = (sequelize) => {
             },
             comment: 'Valor por hora del trabajador',
         },
+        sede: {
+            type: DataTypes.ENUM('YOPAL', 'VILLANUEVA', 'TAURAMENA'),
+            allowNull: true,
+            validate: {
+                isIn: {
+                    args: [['YOPAL', 'VILLANUEVA', 'TAURAMENA']],
+                    msg: 'La sede de trabajo debe ser Yopal, Villanueva o Tauramena'
+                }
+            }
+        },
         horas_mensuales_base: {
             type: DataTypes.INTEGER,
             defaultValue: 240,

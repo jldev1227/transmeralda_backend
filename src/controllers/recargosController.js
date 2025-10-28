@@ -570,12 +570,12 @@ class RecargoController {
           {
             model: Conductor,
             as: 'conductor',
-            attributes: ['id', 'nombre', 'apellido']
+            attributes: ['id', 'nombre', 'apellido', 'sede_trabajo']
           },
           {
             model: Vehiculo,
             as: 'vehiculo',
-            attributes: ['id', 'placa']
+            attributes: ['id', 'placa', 'marca']
           },
           {
             model: Empresa,
@@ -658,7 +658,7 @@ class RecargoController {
         message: 'Recargo registrado exitosamente',
         data: recargoNormalizado
       });
-      
+
     } catch (error) {
       await transaction.rollback();
       console.error('❌ Error creando recargo:', error);
@@ -1285,12 +1285,12 @@ class RecargoController {
           {
             model: Conductor,
             as: 'conductor',
-            attributes: ['id', 'nombre', 'apellido']
+            attributes: ['id', 'nombre', 'apellido', 'sede_trabajo']
           },
           {
             model: Vehiculo,
             as: 'vehiculo',
-            attributes: ['id', 'placa']
+            attributes: ['id', 'placa', 'marca']
           },
           {
             model: Empresa,
@@ -1662,7 +1662,7 @@ class RecargoController {
           {
             model: Conductor,
             as: 'conductor',
-            attributes: ['id', 'nombre', 'apellido']
+            attributes: ['id', 'nombre', 'apellido', 'sede_trabajo']
           },
           {
             model: Vehiculo,

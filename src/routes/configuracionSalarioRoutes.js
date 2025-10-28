@@ -40,7 +40,6 @@ const validacionesConfigSalario = [
 
 // Rutas principales
 router.get('/', ConfiguracionSalarioController.obtenerTodas);
-router.get('/vigente', ConfiguracionSalarioController.obtenerVigente);
 router.post('/calcular-valor-hora', ConfiguracionSalarioController.calcularValorHora);
 
 router.get('/:id', [

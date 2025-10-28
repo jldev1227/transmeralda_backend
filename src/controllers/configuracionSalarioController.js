@@ -1,3 +1,4 @@
+const { validationResult } = require('express-validator');
 const { ConfiguracionSalario, Empresa } = require('../models');
 const { Op } = require('sequelize');
 
@@ -6,20 +7,20 @@ class ConfiguracionSalarioController {
   // GET /api/configuraciones-salario - Obtener todas las configuraciones
   static async obtenerTodas(req, res) {
     try {
-      const { 
-        empresa_id, 
-        activo = 'true', 
+      const {
+        empresa_id,
+        activo = 'true',
         vigente = 'true',
-        page = 1, 
-        limit = 20 
+        page = 1,
+        limit = 20
       } = req.query;
 
       const where = {};
-      
+
       if (empresa_id) {
         where.empresa_id = empresa_id;
       }
-      
+
       if (activo !== 'all') {
         where.activo = activo === 'true';
       }
@@ -76,72 +77,6 @@ class ConfiguracionSalarioController {
     }
   }
 
-  // GET /api/configuraciones-salario/vigente - Obtener configuración vigente
-  static async obtenerVigente(req, res) {
-    try {
-      const { empresa_id } = req.query;
-      const ahora = new Date();
-
-      const where = {
-        activo: true,
-        vigencia_desde: { [Op.lte]: ahora },
-        [Op.or]: [
-          { vigencia_hasta: null },
-          { vigencia_hasta: { [Op.gte]: ahora } }
-        ]
-      };
-
-      // Buscar primero por empresa específica, luego configuración global
-      if (empresa_id) {
-        where.empresa_id = empresa_id;
-      }
-
-      let configuracion = await ConfiguracionSalario.findOne({
-        where,
-        include: [
-          {
-            model: Empresa,
-            as: 'empresa',
-            attributes: ['id', 'nombre', 'nit'],
-            required: false
-          }
-        ],
-        order: [['vigencia_desde', 'DESC']]
-      });
-
-      // Si no hay configuración específica para la empresa, buscar la global
-      if (!configuracion && empresa_id) {
-        const whereGlobal = { ...where };
-        whereGlobal.empresa_id = null;
-        
-        configuracion = await ConfiguracionSalario.findOne({
-          where: whereGlobal,
-          order: [['vigencia_desde', 'DESC']]
-        });
-      }
-
-      if (!configuracion) {
-        return res.status(404).json({
-          success: false,
-          message: 'No se encontró configuración de salario vigente'
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        data: configuracion
-      });
-
-    } catch (error) {
-      console.error('Error obteniendo configuración vigente:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error obteniendo configuración vigente',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
-      });
-    }
-  }
-
   // GET /api/configuraciones-salario/:id - Obtener configuración específica
   static async obtenerPorId(req, res) {
     try {
@@ -193,17 +128,21 @@ class ConfiguracionSalarioController {
 
       const {
         empresa_id,
+        sede,
         salario_basico,
         horas_mensuales_base = 240,
         vigencia_desde,
         observaciones
       } = req.body;
 
+      console.log(req.body)
+
       // Calcular valor hora trabajador
       const valor_hora_trabajador = parseFloat(salario_basico) / parseInt(horas_mensuales_base);
 
       const nuevaConfiguracion = await ConfiguracionSalario.create({
         empresa_id,
+        sede,
         salario_basico: parseFloat(salario_basico),
         valor_hora_trabajador: parseFloat(valor_hora_trabajador.toFixed(4)),
         horas_mensuales_base: parseInt(horas_mensuales_base),
@@ -300,7 +239,7 @@ class ConfiguracionSalarioController {
         });
       }
 
-      await configuracion.update({ 
+      await configuracion.update({
         activo: false,
         vigencia_hasta: new Date()
       });
