@@ -528,6 +528,7 @@ class RecargoController {
           total_horas: 0, // Se calculará automáticamente
           es_domingo: esDomingoCalculado,
           es_festivo: esFestivoCalculado,
+          disponibilidad: diaOriginal.disponibilidad,
           observaciones: diaOriginal.observaciones || null,
           creado_por_id: userId,
           actualizado_por_id: userId
@@ -587,7 +588,7 @@ class RecargoController {
             as: 'dias_laborales',
             attributes: [
               'id', 'dia', 'hora_inicio', 'hora_fin',
-              'total_horas', 'es_domingo', 'es_festivo'
+              'total_horas', 'es_domingo', 'es_festivo', 'disponibilidad'
             ],
             include: [
               {
@@ -627,6 +628,7 @@ class RecargoController {
             es_especial: dia.es_domingo || dia.es_festivo,
             es_domingo: dia.es_domingo,
             es_festivo: dia.es_festivo,
+            disponibilidad: dia.disponibilidad,
             ...recargosDelDia
           };
         }) || [];
@@ -832,7 +834,7 @@ class RecargoController {
     };
 
     const calcularYCrearRecargos = async (diaLaboral, transaction) => {
-      const { hora_inicio, hora_fin, es_domingo, es_festivo, dia, mes, año } = diaLaboral;
+      const { hora_inicio, hora_fin, es_festivo, dia, mes, año } = diaLaboral;
 
       const resultadosCalculo = calcularTodasLasHoras({
         dia: parseInt(dia),
@@ -1190,6 +1192,7 @@ class RecargoController {
           total_horas: 0,
           es_domingo: esDomingoCalculado,
           es_festivo: esFestivoCalculado,
+          disponibilidad: diaOriginal.disponibilidad,
           observaciones: diaOriginal.observaciones || null,
           creado_por_id: userId,
           actualizado_por_id: userId
@@ -1302,7 +1305,7 @@ class RecargoController {
             as: 'dias_laborales',
             attributes: [
               'id', 'dia', 'hora_inicio', 'hora_fin',
-              'total_horas', 'es_domingo', 'es_festivo'
+              'total_horas', 'es_domingo', 'es_festivo', 'disponibilidad'
             ],
             include: [
               {
@@ -1342,6 +1345,7 @@ class RecargoController {
             es_especial: dia.es_domingo || dia.es_festivo,
             es_domingo: dia.es_domingo,
             es_festivo: dia.es_festivo,
+            disponibilidad: dia.disponibilidad,
             ...recargosDelDia
           };
         }) || [];
@@ -1677,7 +1681,7 @@ class RecargoController {
           {
             model: DiaLaboralPlanilla,
             as: 'dias_laborales',
-            attributes: ['id', 'dia', 'hora_inicio', 'hora_fin', 'total_horas', 'es_domingo', 'es_festivo'],
+            attributes: ['id', 'dia', 'hora_inicio', 'hora_fin', 'total_horas', 'es_domingo', 'es_festivo', 'disponibilidad'],
             include: [
               {
                 model: DetalleRecargosDia,
@@ -1732,6 +1736,7 @@ class RecargoController {
               es_especial: dia.es_domingo || dia.es_festivo,
               es_domingo: dia.es_domingo,
               es_festivo: dia.es_festivo,
+              disponibilidad: dia.disponibilidad,
               ...recargosDelDia // hed, hen, hefd, hefn, rn, rd
             };
           }) || []
@@ -1788,7 +1793,7 @@ class RecargoController {
           {
             model: DiaLaboralPlanilla,
             as: 'dias_laborales',
-            attributes: ['id', 'dia', 'hora_inicio', 'hora_fin', 'total_horas', 'es_domingo', 'es_festivo'],
+            attributes: ['id', 'dia', 'hora_inicio', 'hora_fin', 'total_horas', 'es_domingo', 'es_festivo', 'disponibilidad'],
             include: [
               {
                 model: DetalleRecargosDia,
@@ -1905,6 +1910,7 @@ class RecargoController {
             es_especial: dia.es_domingo || dia.es_festivo,
             es_domingo: dia.es_domingo,
             es_festivo: dia.es_festivo,
+            disponibilidad: dia.disponibilidad,
             ...recargosDelDia
           };
         }) || []
@@ -2151,6 +2157,7 @@ class RecargoController {
         rd: parseFloat(dia.rd || 0),
         es_festivo: Boolean(dia.es_festivo),
         es_domingo: Boolean(dia.es_domingo),
+        disponibilidad: Boolean(dia.disponibilidad),
         es_dia_laborable: !Boolean(dia.es_festivo) && !Boolean(dia.es_domingo),
         observaciones: dia.observaciones || null
       };

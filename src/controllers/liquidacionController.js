@@ -268,7 +268,7 @@ const obtenerRecargosPlanillaPorPeriodo = async (conductorId, periodoStart, peri
         {
           model: DiaLaboralPlanilla,
           as: 'dias_laborales',
-          attributes: ['id', 'dia', 'hora_inicio', 'hora_fin', 'total_horas', 'es_domingo', 'es_festivo'],
+          attributes: ['id', 'dia', 'hora_inicio', 'hora_fin', 'total_horas', 'es_domingo', 'es_festivo', 'disponibilidad'],
           include: [
             {
               model: DetalleRecargosDia,
@@ -411,6 +411,7 @@ const procesarRecargosPorPeriodoConSalarios = async (recargos, periodoStart, per
           es_especial: dia.es_domingo || dia.es_festivo,
           es_domingo: dia.es_domingo,
           es_festivo: dia.es_festivo,
+          disponibilidad: dia.disponibilidad,
           ...recargosDelDia,
           tipos_recargos: tiposRecargosDelDia
         };
