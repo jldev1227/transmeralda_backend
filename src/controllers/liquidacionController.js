@@ -253,7 +253,7 @@ const obtenerRecargosPlanillaPorPeriodo = async (conductorId, periodoStart, peri
         {
           model: Conductor,
           as: 'conductor',
-          attributes: ['id', 'nombre', 'apellido']
+          attributes: ['id', 'nombre', 'apellido', 'sede_trabajo']
         },
         {
           model: Vehiculo,
