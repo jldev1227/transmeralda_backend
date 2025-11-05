@@ -308,6 +308,50 @@ module.exports = (sequelize) => {
       liquidado_por_id: {
         type: DataTypes.UUID,
         allowNull: true,
+      },
+      conceptos_adicionales: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        defaultValue: [],
+        validate: {
+          isValidConceptos(value) {
+            if (value === null || value === undefined) return true;
+            
+            if (!Array.isArray(value)) {
+              throw new Error('conceptos_adicionales debe ser un array');
+            }
+            
+            if (value.length > 20) {
+              throw new Error('No se pueden agregar más de 20 conceptos adicionales');
+            }
+            
+            value.forEach((concepto, index) => {
+              if (typeof concepto.valor !== 'number') {
+                throw new Error(`Concepto ${index + 1}: valor debe ser un número`);
+              }
+              
+              if (concepto.valor === 0) {
+                throw new Error(`Concepto ${index + 1}: valor no puede ser cero`);
+              }
+              
+              if (Math.abs(concepto.valor) > 10000000) {
+                throw new Error(`Concepto ${index + 1}: valor excede el límite permitido (10 millones)`);
+              }
+              
+              if (!concepto.observaciones || typeof concepto.observaciones !== 'string') {
+                throw new Error(`Concepto ${index + 1}: observaciones es requerido`);
+              }
+              
+              if (concepto.observaciones.trim().length < 3) {
+                throw new Error(`Concepto ${index + 1}: observaciones debe tener al menos 3 caracteres`);
+              }
+              
+              if (concepto.observaciones.length > 500) {
+                throw new Error(`Concepto ${index + 1}: observaciones no puede exceder 500 caracteres`);
+              }
+            });
+          }
+        }
       }
     },
     {
