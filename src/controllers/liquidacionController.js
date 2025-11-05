@@ -443,6 +443,58 @@ const procesarRecargosPorPeriodoConSalarios = async (recargos, periodoStart, per
   }
 };
 
+// Función para validar conceptos adicionales
+const validarConceptosAdicionales = (conceptos) => {
+  if (!conceptos) return true; // Es opcional
+  
+  if (!Array.isArray(conceptos)) {
+    throw new Error("conceptos_adicionales debe ser un array");
+  }
+  
+  if (conceptos.length > 20) {
+    throw new Error("No se pueden agregar más de 20 conceptos adicionales por liquidación");
+  }
+  
+  conceptos.forEach((concepto, index) => {
+    // Validar valor
+    if (typeof concepto.valor !== 'number') {
+      throw new Error(`Concepto ${index + 1}: valor debe ser un número`);
+    }
+    
+    if (concepto.valor === 0) {
+      throw new Error(`Concepto ${index + 1}: valor no puede ser cero`);
+    }
+    
+    if (Math.abs(concepto.valor) > 10000000) { // 10 millones
+      throw new Error(`Concepto ${index + 1}: valor excede el límite permitido (10 millones)`);
+    }
+    
+    // Validar observaciones
+    if (!concepto.observaciones || typeof concepto.observaciones !== 'string') {
+      throw new Error(`Concepto ${index + 1}: observaciones es requerido`);
+    }
+    
+    if (concepto.observaciones.trim().length < 3) {
+      throw new Error(`Concepto ${index + 1}: observaciones debe tener al menos 3 caracteres`);
+    }
+    
+    if (concepto.observaciones.length > 500) {
+      throw new Error(`Concepto ${index + 1}: observaciones no puede exceder 500 caracteres`);
+    }
+  });
+  
+  return true;
+};
+
+// Función para calcular el total de conceptos adicionales
+const calcularTotalConceptosAdicionales = (conceptos) => {
+  if (!conceptos || !Array.isArray(conceptos)) return 0;
+  
+  return conceptos.reduce((total, concepto) => {
+    return total + (parseFloat(concepto.valor) || 0);
+  }, 0);
+};
+
 // Crear liquidación con anticipos integrados
 exports.crearLiquidacion = async (req, res) => {
   const transaction = await Liquidacion.sequelize.transaction();
@@ -476,6 +528,7 @@ exports.crearLiquidacion = async (req, res) => {
       pernotes,
       recargos,
       anticipos, // Nuevo campo para los anticipos desde frontend
+      conceptos_adicionales = [], // Nuevo campo para conceptos adicionales
       salud,
       ajuste_parex,
       ajuste_salarial_por_dia,
@@ -487,6 +540,16 @@ exports.crearLiquidacion = async (req, res) => {
 
     // Obtener el ID del usuario desde el contexto
     const usuario_id = req.user.id;
+
+    // Validar conceptos adicionales
+    try {
+      validarConceptosAdicionales(conceptos_adicionales);
+    } catch (validationError) {
+      return res.status(400).json({
+        success: false,
+        message: validationError.message
+      });
+    }
 
     // Verificar si el conductor existe
     const conductor = await Conductor.findByPk(conductor_id, {
@@ -560,6 +623,7 @@ exports.crearLiquidacion = async (req, res) => {
         cesantias,
         interes_cesantias,
         estado,
+        conceptos_adicionales,
       },
       {
         transaction,
@@ -740,6 +804,7 @@ exports.editarLiquidacion = async (req, res) => {
       pernotes,
       recargos,
       anticipos, // Puede venir vacío o undefined cuando se eliminan todos los anticipos
+      conceptos_adicionales = [], // Nuevo campo para conceptos adicionales
       salud,
       pension,
       cesantias,
@@ -748,6 +813,16 @@ exports.editarLiquidacion = async (req, res) => {
     } = req.body;
 
     const usuario_id = req.user.id;
+
+    // Validar conceptos adicionales
+    try {
+      validarConceptosAdicionales(conceptos_adicionales);
+    } catch (validationError) {
+      return res.status(400).json({
+        success: false,
+        message: validationError.message
+      });
+    }
 
     // Buscar la liquidación existente
     const liquidacion = await Liquidacion.findByPk(id, { transaction });
@@ -804,6 +879,7 @@ exports.editarLiquidacion = async (req, res) => {
         cesantias,
         interes_cesantias,
         estado,
+        conceptos_adicionales,
       },
       {
         transaction,
@@ -1279,3 +1355,5 @@ exports.eliminarLiquidacion = async (req, res) => {
 exports.obtenerConfiguracionesSalario = obtenerConfiguracionesSalario;
 exports.obtenerRecargosPlanillaPorPeriodo = obtenerRecargosPlanillaPorPeriodo;
 exports.procesarRecargosPorPeriodoConSalarios = procesarRecargosPorPeriodoConSalarios;
+exports.validarConceptosAdicionales = validarConceptosAdicionales;
+exports.calcularTotalConceptosAdicionales = calcularTotalConceptosAdicionales;
