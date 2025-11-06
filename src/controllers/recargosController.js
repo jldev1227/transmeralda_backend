@@ -997,14 +997,6 @@ class RecargoController {
         });
       }
 
-      if (!recargoExistente.esEditable()) {
-        await safeRollback(transaction);
-        return res.status(400).json({
-          success: false,
-          message: 'El recargo no puede ser editado en su estado actual'
-        });
-      }
-
       // ✅ GUARDAR ESTADO ANTERIOR (solo campos relevantes)
       const estadoAnterior = {
         numero_planilla: recargoExistente.numero_planilla,
