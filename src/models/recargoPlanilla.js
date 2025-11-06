@@ -103,11 +103,6 @@ module.exports = (sequelize) => {
 
   class RecargoPlanilla extends Model {
     // Métodos útiles del modelo
-
-    // Verificar si el recargo es editable
-    esEditable() {
-      return this.estado === 'pendiente' || this.estado === 'liquidada';
-    }
   }
 
   RecargoPlanilla.init({
@@ -265,7 +260,8 @@ module.exports = (sequelize) => {
 
     // CONTROL DE ESTADO
     estado: {
-      type: DataTypes.ENUM('pendiente', 'liquidada', 'facturada'),
+      // Se amplían los estados para cubrir flags usados por acciones masivas
+      type: DataTypes.ENUM('pendiente', 'liquidada', 'facturada', 'no_esta', 'encontrada'),
       defaultValue: 'pendiente',
       allowNull: false,
       comment: 'Estado actual del recargo',

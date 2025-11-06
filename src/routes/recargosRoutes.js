@@ -203,6 +203,14 @@ router.delete('/eliminar', protect, controller.eliminar.bind(controller));
  */
 router.patch('/liquidar', protect, controller.liquidar.bind(controller));
 
+/**
+ * @route   PATCH /api/recargos/acciones
+ * @desc    Aplicar acción genérica a múltiples recargos (marcar pendiente/no_esta/facturada/encontrada)
+ * @access  Private
+ * @body    { data: { action: string, selectedIds: number[] } }
+ */
+router.patch('/acciones', protect, controller.acciones.bind(controller));
+
 // ==========================================
 // RUTAS PARA GESTIÓN DE ARCHIVOS
 // ==========================================

@@ -32,12 +32,19 @@ module.exports = (sequelize) => {
       onUpdate: 'CASCADE',
     },
     accion: {
-      type: DataTypes.ENUM('creacion', 'actualizacion', 'eliminacion', 'restauracion', 'aprobacion', 'rechazo'),
+      // Se agregan acciones que provienen del frontend para operaciones masivas
+      type: DataTypes.ENUM(
+        'creacion', 'actualizacion', 'eliminacion', 'restauracion', 'aprobacion', 'rechazo',
+        'marcar_pendiente', 'marcar_no_esta', 'marcar_facturada', 'marcar_encontrada'
+      ),
       allowNull: false,
       validate: {
         isIn: {
-          args: [['creacion', 'actualizacion', 'eliminacion', 'restauracion', 'aprobacion', 'rechazo']],
-          msg: 'La acción debe ser: creacion, actualizacion, eliminacion, restauracion, aprobacion o rechazo'
+          args: [[
+            'creacion', 'actualizacion', 'eliminacion', 'restauracion', 'aprobacion', 'rechazo',
+            'marcar_pendiente', 'marcar_no_esta', 'marcar_facturada', 'marcar_encontrada'
+          ]],
+          msg: 'La acción debe ser una de las permitidas: creacion, actualizacion, eliminacion, restauracion, aprobacion, rechazo, marcar_pendiente, marcar_no_esta, marcar_facturada o marcar_encontrada'
         }
       },
       comment: 'Tipo de acción realizada',
