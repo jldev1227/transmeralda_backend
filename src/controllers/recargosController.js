@@ -675,6 +675,8 @@ class RecargoController {
 
   // Actualizar recargo existente
   async actualizar(req, res) {
+
+    console.log(req.body, req.file)
     const transaction = await RecargoPlanilla.sequelize.transaction();
 
     // Helper function to safely rollback transaction
@@ -1018,7 +1020,9 @@ class RecargoController {
 
       // Procesar datos
       let data;
-      let archivoInfo = null;
+      // archivoInfo será un objeto con información sobre la planilla (si se sube)
+      // usar objeto vacío para poder usar spread later sin errores
+      let archivoInfo = {};
 
       if (req.body.recargo_data) {
         data = JSON.parse(req.body.recargo_data);
@@ -1044,6 +1048,26 @@ class RecargoController {
       }
 
       // Handle file upload
+
+      // Normalizar lectura del recargoData cuando viene en multipart (recargo_data como string)
+      let incomingRecargoData = {};
+      if (req.body && req.body.recargo_data) {
+        try {
+          incomingRecargoData = JSON.parse(req.body.recargo_data);
+        } catch (err) {
+          incomingRecargoData = req.body.recargo_data || {};
+        }
+      } else {
+        incomingRecargoData = req.body || {};
+      }
+
+      // Determinar si el cliente pide explícitamente conservar la planilla
+      const incomingKeepPlanilla = (
+        (req.body && (req.body.keep_planilla === 'true' || req.body.keep_planilla === true)) ||
+        Boolean(req.body && req.body.planilla_s3key) ||
+        Boolean(incomingRecargoData && incomingRecargoData.planilla_s3key)
+      );
+
       if (req.file) {
         if (!req.file.originalname || req.file.size === 0) {
           if (req.file && req.file.path) {
@@ -1088,26 +1112,34 @@ class RecargoController {
           newS3Key: archivoInfo.s3_key
         });
 
-      } else if (recargoExistente.planilla_s3key) {
+      } else if (recargoExistente.planilla_s3key && !incomingKeepPlanilla) {
+        // No llegó nuevo archivo, pero sí existía uno; solo eliminar si el cliente
+        // NO indicó explícitamente conservar la planilla (incomingKeepPlanilla)
         const s3KeyToDelete = recargoExistente.planilla_s3key;
         logger.info(`Eliminando planilla existente para recargo ${id}: ${s3KeyToDelete}`);
 
+        // Actualizar en la base de datos dentro de la transacción
         await recargoExistente.update({
           planilla_s3key: null
         }, { transaction });
 
+        // Intentar eliminar del almacenamiento remoto
         const s3keyEliminado = await deletePlanillaFromS3(s3KeyToDelete);
 
         if (!s3keyEliminado) {
           throw new Error(`Error al eliminar la planilla ${s3KeyToDelete} del almacenamiento S3`);
         }
 
+        // Asegurarse de propagar la eliminación en los datos de actualización
+        archivoInfo.planilla_s3key = null;
+
         logger.info(`Planilla eliminada exitosamente para recargo ${id}`, {
           deletedS3Key: s3KeyToDelete
         });
 
       } else {
-        logger.info(`Recargo ${id} - sin cambios en planilla`);
+        // Mantener la planilla tal y como está (o no había ninguna)
+        logger.info(`Recargo ${id} - sin cambios en planilla (keepPlanilla=${incomingKeepPlanilla})`);
       }
 
       // ✅ CREAR SNAPSHOT ANTES de eliminar días (si corresponde)
@@ -1398,6 +1430,92 @@ class RecargoController {
     }
   }
 
+  // Acción masiva para múltiples recargos (marcar pendiente / no_esta / facturada / encontrada)
+  async acciones(req, res) {
+    const transaction = await RecargoPlanilla.sequelize.transaction();
+
+    try {
+      const userId = req.user?.id;
+
+      if (!userId) return res.status(401).json({ success: false, message: 'Usuario no autenticado' });
+
+      const body = req.body?.data ?? req.body;
+      const action = body?.action;
+      const selectedIds = Array.isArray(body?.selectedIds) ? body.selectedIds : [];
+
+      if (!action || selectedIds.length === 0) {
+        if (!transaction.finished) await transaction.rollback();
+        return res.status(400).json({ success: false, message: 'Debe indicar action y selectedIds.' });
+      }
+
+      const actionToEstado = {
+        marcar_pendiente: 'pendiente',
+        marcar_no_esta: 'no_esta',
+        marcar_facturada: 'facturada',
+        marcar_encontrada: 'encontrada'
+      };
+
+      const nuevoEstado = actionToEstado[action];
+      if (!nuevoEstado)
+        return res.status(400).json({ success: false, message: `Acción desconocida: ${action}` });
+
+      const recargos = await RecargoPlanilla.findAll({ where: { id: selectedIds }, transaction });
+      const updatedIds = [];
+
+      for (const rec of recargos) {
+        if (rec.estado === nuevoEstado) continue;
+
+        await rec.update({ estado: nuevoEstado, actualizado_por_id: userId }, { transaction });
+
+        await HistorialRecargoPlanilla.create({
+          recargo_planilla_id: rec.id,
+          accion: action,
+          version_anterior: rec.version - 1,
+          version_nueva: rec.version,
+          datos_anteriores: { estado: rec.estado },
+          datos_nuevos: { estado: nuevoEstado },
+          campos_modificados: ['estado'],
+          motivo: `Acción masiva: ${action}`,
+          realizado_por_id: userId,
+          ip_usuario: req.ip,
+          user_agent: req.get('User-Agent'),
+          fecha_accion: new Date()
+        }, { transaction });
+
+        updatedIds.push(rec.id);
+      }
+
+      await transaction.commit();
+
+      const usuario = await User.findByPk(userId);
+
+      // 🔥 Notificar en formato consistente
+      notificarGlobal("recargo-planilla:acciones", {
+        action,
+        selectedIds: updatedIds,
+        usuarioId: userId,
+        usuarioNombre: `${usuario?.nombre} ${usuario?.apellido}`,
+        recargos: await RecargoPlanilla.findAll({ where: { id: updatedIds } })
+      });
+
+      res.json({ success: true, message: 'Acción aplicada', data: { action, updatedIds } });
+
+    } catch (error) {
+      if (transaction && !transaction.finished) {
+        try {
+          await transaction.rollback();
+        } catch (_) { }
+      }
+
+      console.error('Error aplicando acciones masivas:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor',
+      });
+    }
+  }
+
+
   // Eliminar recargo (soft delete)
   async eliminar(req, res) {
     const transaction = await sequelize.transaction();
@@ -1536,18 +1654,6 @@ class RecargoController {
         return res.status(404).json({
           success: false,
           message: 'No se encontraron recargos con los IDs proporcionados'
-        });
-      }
-
-      const recargosNoEditables = recargos.filter(recargo => !recargo.esEditable());
-      logger.info('Recargos no editables', { cantidad: recargosNoEditables.length, ids: recargosNoEditables.map(r => r.id) });
-
-      if (recargosNoEditables.length > 0) {
-        await transaction.rollback();
-        logger.warn('Algunos recargos no pueden ser liquidados', { recargosNoEditables });
-        return res.status(400).json({
-          success: false,
-          message: `${recargosNoEditables.length} recargo(s) no pueden ser liquidados en su estado actual`
         });
       }
 
