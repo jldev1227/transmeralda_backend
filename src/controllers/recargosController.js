@@ -675,6 +675,8 @@ class RecargoController {
 
   // Actualizar recargo existente
   async actualizar(req, res) {
+
+    console.log(req.body, req.file)
     const transaction = await RecargoPlanilla.sequelize.transaction();
 
     // Helper function to safely rollback transaction
@@ -1016,9 +1018,11 @@ class RecargoController {
         empresa_id: recargoExistente.empresa_id
       };
 
-      // Procesar datos
-      let data;
-      let archivoInfo = null;
+  // Procesar datos
+  let data;
+  // archivoInfo será un objeto con información sobre la planilla (si se sube)
+  // usar objeto vacío para poder usar spread later sin errores
+  let archivoInfo = {};
 
       if (req.body.recargo_data) {
         data = JSON.parse(req.body.recargo_data);
@@ -1044,6 +1048,26 @@ class RecargoController {
       }
 
       // Handle file upload
+
+      // Normalizar lectura del recargoData cuando viene en multipart (recargo_data como string)
+      let incomingRecargoData = {};
+      if (req.body && req.body.recargo_data) {
+        try {
+          incomingRecargoData = JSON.parse(req.body.recargo_data);
+        } catch (err) {
+          incomingRecargoData = req.body.recargo_data || {};
+        }
+      } else {
+        incomingRecargoData = req.body || {};
+      }
+
+      // Determinar si el cliente pide explícitamente conservar la planilla
+      const incomingKeepPlanilla = (
+        (req.body && (req.body.keep_planilla === 'true' || req.body.keep_planilla === true)) ||
+        Boolean(req.body && req.body.planilla_s3key) ||
+        Boolean(incomingRecargoData && incomingRecargoData.planilla_s3key)
+      );
+
       if (req.file) {
         if (!req.file.originalname || req.file.size === 0) {
           if (req.file && req.file.path) {
@@ -1088,26 +1112,34 @@ class RecargoController {
           newS3Key: archivoInfo.s3_key
         });
 
-      } else if (recargoExistente.planilla_s3key) {
+      } else if (recargoExistente.planilla_s3key && !incomingKeepPlanilla) {
+        // No llegó nuevo archivo, pero sí existía uno; solo eliminar si el cliente
+        // NO indicó explícitamente conservar la planilla (incomingKeepPlanilla)
         const s3KeyToDelete = recargoExistente.planilla_s3key;
         logger.info(`Eliminando planilla existente para recargo ${id}: ${s3KeyToDelete}`);
 
+        // Actualizar en la base de datos dentro de la transacción
         await recargoExistente.update({
           planilla_s3key: null
         }, { transaction });
 
+        // Intentar eliminar del almacenamiento remoto
         const s3keyEliminado = await deletePlanillaFromS3(s3KeyToDelete);
 
         if (!s3keyEliminado) {
           throw new Error(`Error al eliminar la planilla ${s3KeyToDelete} del almacenamiento S3`);
         }
 
+        // Asegurarse de propagar la eliminación en los datos de actualización
+        archivoInfo.planilla_s3key = null;
+
         logger.info(`Planilla eliminada exitosamente para recargo ${id}`, {
           deletedS3Key: s3KeyToDelete
         });
 
       } else {
-        logger.info(`Recargo ${id} - sin cambios en planilla`);
+        // Mantener la planilla tal y como está (o no había ninguna)
+        logger.info(`Recargo ${id} - sin cambios en planilla (keepPlanilla=${incomingKeepPlanilla})`);
       }
 
       // ✅ CREAR SNAPSHOT ANTES de eliminar días (si corresponde)
