@@ -1545,15 +1545,6 @@ class RecargoController {
         });
       }
 
-      const recargosNoEditables = recargos.filter(recargo => !recargo.esEditable());
-      if (recargosNoEditables.length > 0) {
-        await transaction.rollback();
-        return res.status(400).json({
-          success: false,
-          message: `${recargosNoEditables.length} recargo(s) no pueden ser eliminados en su estado actual`
-        });
-      }
-
       // Crear registros en historial con version_nueva
       const historialPromises = recargos.map(recargo =>
         HistorialRecargoPlanilla.create({
