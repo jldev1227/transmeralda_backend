@@ -1205,7 +1205,9 @@ async function generatePDF(liquidacion) {
         liquidacion.configuraciones_salario,
         {
           periodo_start: liquidacion.periodo_start,
-          periodo_end: liquidacion.periodo_end
+          periodo_end: liquidacion.periodo_end,
+          liquidacion_id: liquidacion.id,
+          conductor_sede: liquidacion.conductor?.sede_trabajo || null
         }
       );
 
@@ -1818,7 +1820,140 @@ async function generatePDF(liquidacion) {
 
       doc.moveDown(2);
 
-      // PERIOD
+      // CONCEPTOS ADICIONALES (si existen)
+      if (
+        liquidacion.conceptos_adicionales &&
+        Array.isArray(liquidacion.conceptos_adicionales) &&
+        liquidacion.conceptos_adicionales.length > 0
+      ) {
+
+        // Título con línea separadora
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(12)
+          .fillColor("#2E8B57")
+          .text("CONCEPTOS ADICIONALES", 40, doc.y, {
+            width: doc.page.width - 80,
+            align: "left",
+          });
+
+        liquidacion.conceptos_adicionales.forEach((concepto, index) => {
+          const additionalConceptsTop = doc.y;
+          const col1Width = tableWidth * 0.28;
+          const col2Width = tableWidth * 0.41; 
+          const col3Width = tableWidth * 0.14;
+          const col4Width = tableWidth * 0.17;
+
+          let currentAdditionalY = additionalConceptsTop + 10;
+
+          liquidacion.conceptos_adicionales.forEach((concepto, index) => {
+            const cantidad = concepto.cantidad ? concepto.cantidad : "1";
+            const rowHeight = 32;
+
+            // Draw row background and borders
+            doc.rect(40, currentAdditionalY, col1Width, rowHeight).stroke("#E0E0E0");
+            doc
+              .rect(40 + col1Width, currentAdditionalY, col2Width, rowHeight)
+              .stroke("#E0E0E0");
+            doc
+              .rect(40 + col1Width + col2Width, currentAdditionalY, col3Width, rowHeight)
+              .stroke("#E0E0E0");
+            doc
+              .rect(
+                40 + col1Width + col2Width + col3Width,
+                currentAdditionalY,
+                col4Width,
+                rowHeight
+              )
+              .stroke("#E0E0E0");
+
+            // Write concept name
+            doc
+              .fillColor("#000000")
+              .font("Helvetica")
+              .fontSize(12)
+              .text(concepto.nombre || "Ajuste adicional", 48, currentAdditionalY + 8);
+
+            // Observation with smaller font size
+            doc
+              .fontSize(10)
+              .text(concepto.observaciones || "", 40 + col1Width + 8, currentAdditionalY + 6, {
+                width: col2Width - 16,
+                align: "left"
+              });
+
+            // Quantity column
+            doc
+              .fontSize(12)
+              .text(cantidad, 40 + col1Width + col2Width + 6, currentAdditionalY + 8, {
+                width: col3Width - 12,
+                align: "center",
+              });
+
+            // Value column
+            // Verificar si el valor es positivo o negativo para el símbolo
+            const valorConcepto = parseFloat(concepto.valor) || 0;
+            const simbolo = valorConcepto > 0 ? "+" : (valorConcepto < 0 ? "-" : "");
+            const valorAbsoluto = Math.abs(valorConcepto);
+            const textoValor = simbolo + formatToCOP(valorAbsoluto);
+
+            // Calcular ancho del texto para el fondo
+            const anchoTexto = doc.widthOfString(textoValor) + 16;
+            const bordeDerechoColumna = 40 + col1Width + col2Width + col3Width + col4Width;
+
+            // Dibujar fondo similar al salario total
+            doc
+              .roundedRect(
+              bordeDerechoColumna - anchoTexto - 8,
+              currentAdditionalY + 4,
+              anchoTexto,
+              rowHeight - 8,
+              3
+              )
+              .fill("#F3F8F5");
+
+            // Calcular posicionamiento centrado
+            const alturaTexto = 20; // Altura limitada para el texto
+            const centroX = 40 + col1Width + col2Width + col3Width + (col4Width / 2);
+            const centroY = currentAdditionalY + (rowHeight / 2);
+            
+            // Dibujar fondo centrado con altura limitada
+            doc
+              .roundedRect(
+              centroX - (anchoTexto / 2),
+              centroY - (alturaTexto / 2),
+              anchoTexto,
+              alturaTexto,
+              3
+              )
+              .fill("#F3F8F5");
+
+            // Texto centrado dentro del fondo
+            doc
+              .fontSize(12)
+              .fillColor("#2E8B57")
+              .text(
+              textoValor,
+              centroX - (anchoTexto / 2),
+              centroY - 6, // Ajuste vertical para centrar el texto
+              {
+                width: anchoTexto,
+                align: "center",
+              }
+              );
+
+            currentAdditionalY += rowHeight;
+          });
+
+          // Actualizar la posición Y del documento
+          doc.y = currentAdditionalY;
+        });
+
+        doc.moveDown(1.2); // Separación limpia antes de deducciones
+      }
+
+
+      // DEDUCCIONES
       doc
         .fontSize(12)
         .fillColor("#2E8B57")
@@ -2005,12 +2140,33 @@ async function generatePDF(liquidacion) {
         // Función helper para formatear hora
         function formatearHora(hora) {
           if (!hora) return "00:00";
+
+          // Si ya es un string con formato de hora, devolverlo tal como está
           if (typeof hora === 'string' && hora.includes(':')) return hora;
+
+          // Si es un número (ej: 8.5)
           if (typeof hora === 'number') {
             const horas = Math.floor(hora);
-            const minutos = Math.round((hora - horas) * 60);
+            const decimales = hora - horas;
+
+            // Convertir decimales a minutos (0.5 = 30 minutos, 0.25 = 15 minutos, etc.)
+            const minutos = Math.round(decimales * 60);
+
             return `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}`;
           }
+
+          // Si es un string que representa un número (ej: "8.5")
+          if (typeof hora === 'string') {
+            const numeroHora = parseFloat(hora);
+            if (!isNaN(numeroHora)) {
+              const horas = Math.floor(numeroHora);
+              const decimales = numeroHora - horas;
+              const minutos = Math.round(decimales * 60);
+
+              return `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}`;
+            }
+          }
+
           return hora.toString();
         }
 
@@ -2027,6 +2183,16 @@ async function generatePDF(liquidacion) {
 
           let yActual;
 
+          const tableWidth = doc.page.width - 80;
+
+          // 4. Filas de datos (SIN control de páginas interno) - mostrar días repetidos y marcar disponibilidad
+          const diasFuente = (grupo.dias_laborales && Array.isArray(grupo.dias_laborales) ? grupo.dias_laborales
+            : (grupo.dias && Array.isArray(grupo.dias) ? grupo.dias
+              : (grupo.dias_laborales_unificados && Array.isArray(grupo.dias_laborales_unificados) ? grupo.dias_laborales_unificados : [])));
+
+          const hayDiasFestivosODomingos = diasFuente.some(d => d && ((d.es_festivo === true) || (d.es_domingo === true)));
+          const hayDiasDisponibles = diasFuente.some(d => d && (d.disponibilidad === true || d.es_disponible === true));
+
           // Control de páginas unificado
           if (esPrimerGrupo) {
             // Primera vez: crear página con título
@@ -2038,7 +2204,34 @@ async function generatePDF(liquidacion) {
               .text('HORAS EXTRAS Y RECARGOS', 40, 30, {
                 align: "center"
               });
-            yActual = 80;
+            yActual = 55;
+
+
+            // Aviso sobre días dominicales o festivos
+            if (hayDiasFestivosODomingos) {
+              doc
+                .font("Helvetica-Bold")
+                .fontSize(9)
+                .fillColor("#92400E")
+                .text("Aviso: Los días dominicales o festivos se resaltan en naranja.", 40, yActual + 6, {
+                  width: tableWidth,
+                  align: 'left'
+                });
+              yActual += 20;
+            }
+
+            if (hayDiasDisponibles) {
+              doc
+                .font("Helvetica-Bold")
+                .fontSize(9)
+                .fillColor("#B91C1C")
+                .text("Aviso: Los días marcados como disponibilidad no son reconocidos. Se muestran en rojo y no suman a los totales.", 40, yActual + 6, {
+                  width: tableWidth,
+                  align: 'left'
+                });
+              yActual += 20;
+            }
+
             esPrimerGrupo = false;
           } else {
             // Grupos siguientes: verificar si cabe en página actual
@@ -2053,8 +2246,6 @@ async function generatePDF(liquidacion) {
               yActual = doc.y + 30;
             }
           }
-
-          const tableWidth = doc.page.width - 80;
 
           // === RENDERIZAR GRUPO COMPLETO (SIN MÁS CONTROLES DE PÁGINA) ===
 
@@ -2085,9 +2276,12 @@ async function generatePDF(liquidacion) {
             .font("Helvetica-Bold")
             .fontSize(11)
             .fillColor("#000000")
-            .text("EMPRESA:", 45, yActual + 8)
+            .text(`EMPRESA: `, 45, yActual + 8, { continued: true })
             .font("Helvetica")
-            .text(`${grupo.empresa.nombre} - NIT: ${grupo.empresa.nit}`, 105, yActual + 8);
+            .text(`${grupo.empresa.nombre}`, {
+              width: tableWidth - 50,  // Ancho máximo respetando los márgenes
+              align: 'left'
+            });
 
           doc
             .font("Helvetica")
@@ -2148,25 +2342,69 @@ async function generatePDF(liquidacion) {
 
           yActual += 25;
 
-          // 4. Filas de datos (SIN control de páginas interno)
-          grupo.dias_laborales_unificados?.filter((dia) => dia).forEach((dia, diaIndex) => {
+          const totalesVisibles = {
+            total_dias: 0,
+            total_horas: 0,
+            total_hed: 0,
+            total_rn: 0,
+            total_hen: 0,
+            total_rd: 0,
+            total_hefd: 0,
+            total_hefn: 0
+          };
+
+          const filasRender = diasFuente.filter(d => d);
+
+          filasRender.forEach((dia, diaIndex) => {
             let xPos = 40;
             const rowHeight = 20;
+
+            const esDisponible = dia.disponibilidad === true || dia.es_disponible === true;
+            const esEspecial = dia.es_domingo === true || dia.es_festivo === true;
+
+            const vTotal = parseFloat(dia.total_horas) || 0;
+            const vHED = parseFloat(dia.hed) || 0;
+            const vRN = parseFloat(dia.rn) || 0;
+            const vHEN = parseFloat(dia.hen) || 0;
+            const vRD = parseFloat(dia.rd) || 0;
+            const vHEFD = parseFloat(dia.hefd) || 0;
+            const vHEFN = parseFloat(dia.hefn) || 0;
+
+            const mostrarTotal = esDisponible ? 0 : vTotal;
+            const mostrarHED = esDisponible ? 0 : vHED;
+            const mostrarRN = esDisponible ? 0 : vRN;
+            const mostrarHEN = esDisponible ? 0 : vHEN;
+            const mostrarRD = esDisponible ? 0 : vRD;
+            const mostrarHEFD = esDisponible ? 0 : vHEFD;
+            const mostrarHEFN = esDisponible ? 0 : vHEFN;
+
+            if (!esDisponible) {
+              totalesVisibles.total_dias += 1;
+              totalesVisibles.total_horas += mostrarTotal;
+              totalesVisibles.total_hed += mostrarHED;
+              totalesVisibles.total_rn += mostrarRN;
+              totalesVisibles.total_hen += mostrarHEN;
+              totalesVisibles.total_rd += mostrarRD;
+              totalesVisibles.total_hefd += mostrarHEFD;
+              totalesVisibles.total_hefn += mostrarHEFN;
+            }
 
             const datosColumnas = [
               { valor: dia.dia, ancho: colDia },
               { valor: `${formatearHora(dia.hora_inicio)}-${formatearHora(dia.hora_fin)}`, ancho: colHorario },
-              { valor: dia.total_horas, ancho: colHoras },
-              { valor: (dia.hed || 0) !== 0 ? `${dia.hed}` : "-", ancho: colHED },
-              { valor: (dia.rn || 0) !== 0 ? `${dia.rn}` : "-", ancho: colRN },
-              { valor: (dia.hen || 0) !== 0 ? `${dia.hen}` : "-", ancho: colHEN },
-              { valor: (dia.rd || 0) !== 0 ? `${dia.rd}` : "-", ancho: colRD },
-              { valor: (dia.hefd || 0) !== 0 ? `${dia.hefd}` : "-", ancho: colHEFD },
-              { valor: (dia.hefn || 0) !== 0 ? `${dia.hefn}` : "-", ancho: colHEFN }
+              { valor: mostrarTotal, ancho: colHoras },
+              { valor: mostrarHED !== 0 ? `${mostrarHED}` : "-", ancho: colHED },
+              { valor: mostrarRN !== 0 ? `${mostrarRN}` : "-", ancho: colRN },
+              { valor: mostrarHEN !== 0 ? `${mostrarHEN}` : "-", ancho: colHEN },
+              { valor: mostrarRD !== 0 ? `${mostrarRD}` : "-", ancho: colRD },
+              { valor: mostrarHEFD !== 0 ? `${mostrarHEFD}` : "-", ancho: colHEFD },
+              { valor: mostrarHEFN !== 0 ? `${mostrarHEFN}` : "-", ancho: colHEFN }
             ];
 
-            datosColumnas.forEach((columna, colIndex) => {
-              const colorFondo = diaIndex % 2 === 0 ? "#ffffff" : "#f9f9f9";
+            datosColumnas.forEach((columna) => {
+              const colorFondoBase = diaIndex % 2 === 0 ? "#ffffff" : "#f9f9f9";
+              // Rojo claro para disponibilidad, Naranja claro para dominical/festivo
+              const colorFondo = esDisponible ? "#FEE2E2" : (esEspecial ? "#FEF3C7" : colorFondoBase);
 
               doc.rect(xPos, yActual, columna.ancho, rowHeight)
                 .fillAndStroke(colorFondo, "#E0E0E0");
@@ -2174,7 +2412,7 @@ async function generatePDF(liquidacion) {
               doc
                 .font("Helvetica")
                 .fontSize(9)
-                .fillColor("#333333")
+                .fillColor(esDisponible ? "#B91C1C" : (esEspecial ? "#92400E" : "#333333"))
                 .text(
                   columna.valor.toString(),
                   xPos,
@@ -2220,15 +2458,15 @@ async function generatePDF(liquidacion) {
           const rowHeight = 22;
 
           const totalesData = [
-            grupo.totales.total_dias,
+            totalesVisibles.total_dias,
             "-",
-            formatearTotal(grupo.totales.total_horas),
-            formatearTotal(grupo.totales.total_hed),
-            formatearTotal(grupo.totales.total_rn),
-            formatearTotal(grupo.totales.total_hen),
-            formatearTotal(grupo.totales.total_rd),
-            formatearTotal(grupo.totales.total_hefd),
-            formatearTotal(grupo.totales.total_hefn)
+            formatearTotal(totalesVisibles.total_horas),
+            formatearTotal(totalesVisibles.total_hed),
+            formatearTotal(totalesVisibles.total_rn),
+            formatearTotal(totalesVisibles.total_hen),
+            formatearTotal(totalesVisibles.total_rd),
+            formatearTotal(totalesVisibles.total_hefd),
+            formatearTotal(totalesVisibles.total_hefn)
           ];
 
           const anchosColumnas = [colDia, colHorario, colHoras, colHED, colRN, colHEN, colRD, colHEFD, colHEFN];
@@ -2256,15 +2494,46 @@ async function generatePDF(liquidacion) {
 
           yActual += rowHeight;
 
-          // 6. Tipos de recargos (si existen)
+          // 6. Tipos de recargos (si existen) - recalculados excluyendo días de disponibilidad
           if (grupo.tipos_recargos_consolidados && grupo.tipos_recargos_consolidados.length > 0) {
+            const horasPorCodigo = { HED: 0, RN: 0, HEN: 0, RD: 0, HEFD: 0, HEFN: 0 };
+            filasRender.forEach(dia => {
+              const esDisponible = dia.disponibilidad === true || dia.es_disponible === true;
+              if (esDisponible) return;
+              horasPorCodigo.HED += parseFloat(dia.hed) || 0;
+              horasPorCodigo.RN += parseFloat(dia.rn) || 0;
+              horasPorCodigo.HEN += parseFloat(dia.hen) || 0;
+              horasPorCodigo.RD += parseFloat(dia.rd) || 0;
+              horasPorCodigo.HEFD += parseFloat(dia.hefd) || 0;
+              horasPorCodigo.HEFN += parseFloat(dia.hefn) || 0;
+            });
+
+            const metaPorCodigo = {};
+            grupo.tipos_recargos_consolidados.forEach(tipo => { if (tipo && tipo.codigo) metaPorCodigo[tipo.codigo] = tipo; });
+
+            const tiposConsolidadosVisibles = Object.keys(horasPorCodigo).map(codigo => {
+              const meta = metaPorCodigo[codigo] || {};
+              const horas = horasPorCodigo[codigo] || 0;
+              const valorHoraBase = meta.valor_hora_base || grupo.valor_hora_base || 0;
+              const valorHoraConRecargo = meta.valor_hora_con_recargo || valorHoraBase;
+              const porcentaje = meta.porcentaje || 0;
+              const nombre = meta.nombre || (meta.codigo || '').toUpperCase();
+              const valorCalculado = horas * valorHoraConRecargo;
+              return { nombre, codigo, porcentaje, valor_hora_base: valorHoraBase, valor_hora_con_recargo: valorHoraConRecargo, horas, valor_calculado: valorCalculado };
+            }).filter(item => item.horas !== 0);
             const tipoRecargosWidth = tableWidth;
-            const col1 = tipoRecargosWidth * 0.47;
-            const col2 = tipoRecargosWidth * 0.106;
-            const col3 = tipoRecargosWidth * 0.106;
-            const col4 = tipoRecargosWidth * 0.106;
-            const col5 = tipoRecargosWidth * 0.106;
-            const col6 = tipoRecargosWidth * 0.106;
+
+            // Calcular ancho base de una columna (igual que en la tabla de días)
+            const totalColumnas = 9;
+            const anchoBase = tableWidth / (totalColumnas + 0.5);
+
+            // TIPO RECARGO ocupa 4 columnas equivalentes, el resto 1 columna cada una
+            const col1 = anchoBase * 4.5;     // TIPO RECARGO (4 columnas)
+            const col2 = anchoBase;         // %
+            const col3 = anchoBase;         // V/BASE
+            const col4 = anchoBase;         // V/+ %
+            const col5 = anchoBase;         // CANTIDAD
+            const col6 = anchoBase;         // TOTAL
 
             // Encabezado de tipos de recargos
             const headerHeight = 25;
@@ -2302,14 +2571,14 @@ async function generatePDF(liquidacion) {
 
             yActual += headerHeight;
 
-            // Filas de tipos de recargos
-            grupo.tipos_recargos_consolidados.forEach((tipo, tipoIndex) => {
+            // Filas de tipos de recargos visibles (excluyendo disponibilidad)
+            tiposConsolidadosVisibles.forEach((tipo, tipoIndex) => {
               xPos = 40;
               const rowHeight = 20;
 
               const filaDatos = [
                 {
-                  texto: tipo.nombre.toUpperCase(),
+                  texto: (tipo.nombre || '').toUpperCase(),
                   ancho: col1,
                   align: 'left',
                   color: '#333333',
@@ -2390,7 +2659,7 @@ async function generatePDF(liquidacion) {
               yActual += rowHeight;
             });
 
-            // TOTAL
+            // TOTAL recalculado sólo con visibles
             const total = 25;
             doc.rect(40, yActual, tipoRecargosWidth, total)
               .fillAndStroke("#2E8B57", "#E0E0E0");
@@ -2400,7 +2669,7 @@ async function generatePDF(liquidacion) {
               .fontSize(10)
               .fillColor("#ffffff")
               .text("TOTAL", 45, yActual + 8)
-              .text(`$${Math.round(grupo.totales.valor_total).toLocaleString()}`, 40, yActual + 8, {
+              .text(`$${Math.round(tiposConsolidadosVisibles.reduce((acc, t) => acc + (t.valor_calculado || 0), 0)).toLocaleString()}`, 40, yActual + 8, {
                 width: tipoRecargosWidth - 6,
                 align: 'right'
               });
@@ -2646,29 +2915,66 @@ const agruparRecargos = (
   const crearClave = (recargo) =>
     `${recargo.vehiculo.placa}-${recargo.mes}-${recargo.año}-${recargo.empresa.nit}`;
 
-  const obtenerConfiguracion = (empresaId) => {
+  const obtenerConfiguracion = (empresaId, sedeConductor) => {
     if (!configuraciones_salario) {
-      console.warn("No hay configuraciones de salario disponibles");
+      console.warn("[DESPRENDIBLE][CONFIG] No hay configuraciones de salario disponibles");
       return null;
     }
-
-    const configEmpresa = configuraciones_salario.find(
-      (config) => config.empresa_id === empresaId && config.activo === true,
-    );
-
-    if (configEmpresa) {
-      return configEmpresa;
+    const sedeLower = (sedeConductor || '').toLowerCase();
+    let matchReason = 'no_match';
+    let cfg = configuraciones_salario.find(c => c.sede && c.sede.toLowerCase() === sedeLower && c.empresa_id === empresaId && c.activo);
+    if (cfg) {
+      matchReason = 'sede+empresa';
+    } else {
+      cfg = configuraciones_salario.find(c => c.sede && c.sede.toLowerCase() === sedeLower && !c.empresa_id && c.activo);
+      if (cfg) {
+        matchReason = 'solo_sede_global';
+      } else {
+        cfg = configuraciones_salario.find(c => c.empresa_id === empresaId && !c.sede && c.activo);
+        if (cfg) {
+          matchReason = 'solo_empresa';
+        } else {
+          cfg = configuraciones_salario.find(c => c.empresa_id === empresaId && c.sede && c.activo);
+          if (cfg) {
+            matchReason = 'empresa_con_cualquier_sede';
+          } else {
+            cfg = configuraciones_salario.find(c => c.empresa_id === null && !c.sede && c.activo);
+            if (cfg) {
+              matchReason = 'global_sin_sede';
+            } else {
+              cfg = configuraciones_salario.find(c => c.empresa_id === null && c.activo);
+              if (cfg) {
+                matchReason = 'global_con_sede';
+              }
+            }
+          }
+        }
+      }
     }
-
-    const configBase = configuraciones_salario.find(
-      (config) => config.empresa_id === null && config.activo === true,
-    );
-
-    return configBase || null;
+    try {
+      console.info(JSON.stringify({
+        scope: 'SALARIO_MATCH',
+        contexto: 'agruparRecargos',
+        liquidacion_id: opciones.liquidacion_id || null,
+        empresa_id: empresaId,
+        conductor_sede: sedeConductor || null,
+        match_reason: matchReason,
+        configuracion: cfg ? {
+          id: cfg.id,
+          empresa_id: cfg.empresa_id,
+          sede: cfg.sede || null,
+          salario_basico: cfg.salario_basico || null,
+          valor_hora_trabajador: cfg.valor_hora_trabajador || null,
+          vigencia_desde: cfg.vigencia_desde || null,
+          vigencia_hasta: cfg.vigencia_hasta || null
+        } : null
+      }));
+    } catch (_e) { /* noop */ }
+    return cfg || null;
   };
 
   const inicializarGrupo = (recargo) => {
-    const configuracion = obtenerConfiguracion(recargo.empresa.id);
+    const configuracion = obtenerConfiguracion(recargo.empresa.id, opciones.conductor_sede);
     if (!configuracion) return;
 
     return {

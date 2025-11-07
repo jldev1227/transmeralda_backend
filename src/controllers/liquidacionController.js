@@ -326,7 +326,19 @@ const obtenerConfiguracionesSalario = async (periodoStart, periodoEnd) => {
       nest: true
     });
 
-    return configuraciones;
+    // Ordenar configuraciones para priorizar: primero sede específica, luego empresa específica, luego global
+    const configuracionesOrdenadas = configuraciones.sort((a, b) => {
+      const prioridad = (cfg) => {
+        // Prioridad 3: sede + empresa, 2: sólo sede, 1: sólo empresa, 0: global
+        if (cfg.sede && cfg.empresa_id) return 3;
+        if (cfg.sede && !cfg.empresa_id) return 2;
+        if (!cfg.sede && cfg.empresa_id) return 1;
+        return 0;
+      };
+      return prioridad(b) - prioridad(a);
+    });
+
+    return configuracionesOrdenadas;
   } catch (error) {
     console.error('❌ Error obteniendo configuraciones de salario:', error);
     throw error;
@@ -336,10 +348,90 @@ const obtenerConfiguracionesSalario = async (periodoStart, periodoEnd) => {
 // ✅ FUNCIÓN MEJORADA: Procesar recargos con cálculo de valores usando configuración salarial
 const procesarRecargosPorPeriodoConSalarios = async (recargos, periodoStart, periodoEnd, configuracionesSalario) => {
   try {
-    return recargos.map(recargo => {
-      const configSalario = configuracionesSalario.find(config =>
-        config.empresa_id === recargo.empresa.id || config.empresa_id === null
+  return recargos.map(recargo => {
+      // Selección priorizada de configuración salarial:
+      // 1. Coincidencia por sede (case-insensitive) si el conductor tiene sede_trabajo y la config tiene sede.
+      // 2. Coincidencia por empresa_id.
+      // 3. Configuración global (empresa_id === null) como fallback.
+      const sedeConductor = (recargo.conductor?.sede_trabajo || '').toLowerCase();
+      let configSalario = null;
+      let matchReason = 'no_match';
+      // 1) sede + empresa
+      configSalario = configuracionesSalario.find(
+        (cfg) => cfg.sede && cfg.sede.toLowerCase() === sedeConductor && cfg.empresa_id === recargo.empresa.id
       );
+      if (configSalario) {
+        matchReason = 'sede+empresa';
+      } else {
+        // 2) solo sede (global por empresa)
+        configSalario = configuracionesSalario.find(
+          (cfg) => cfg.sede && cfg.sede.toLowerCase() === sedeConductor && !cfg.empresa_id
+        );
+        if (configSalario) {
+          matchReason = 'solo_sede';
+        } else {
+          // 3) solo empresa (sin sede)
+          configSalario = configuracionesSalario.find(
+            (cfg) => cfg.empresa_id === recargo.empresa.id && !cfg.sede
+          );
+          if (configSalario) {
+            matchReason = 'solo_empresa';
+          } else {
+            // 4) empresa con alguna sede
+            configSalario = configuracionesSalario.find(
+              (cfg) => cfg.empresa_id === recargo.empresa.id && cfg.sede
+            );
+            if (configSalario) {
+              matchReason = 'empresa_con_sede_distinta';
+            } else {
+              // 5) global sin sede
+              configSalario = configuracionesSalario.find(
+                (cfg) => cfg.empresa_id === null && !cfg.sede
+              );
+              if (configSalario) {
+                matchReason = 'global_sin_sede';
+              } else {
+                // 6) global con sede definida (raro)
+                configSalario = configuracionesSalario.find((cfg) => cfg.empresa_id === null);
+                if (configSalario) {
+                  matchReason = 'global_con_sede';
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Log estructurado de la configuración elegida para este recargo
+      try {
+        const logPayload = {
+          scope: 'SALARIO_MATCH',
+          contexto: 'procesarRecargosPorPeriodoConSalarios',
+          periodo: { start: periodoStart, end: periodoEnd },
+          conductor: {
+            id: recargo.conductor?.id,
+            nombre: `${recargo.conductor?.nombre || ''} ${recargo.conductor?.apellido || ''}`.trim(),
+            sede_trabajo: recargo.conductor?.sede_trabajo || null,
+          },
+          empresa: { id: recargo.empresa?.id, nombre: recargo.empresa?.nombre },
+          recargoPlanillaId: recargo.id,
+          match_reason: matchReason,
+          configuracion: configSalario
+            ? {
+                id: configSalario.id,
+                empresa_id: configSalario.empresa_id,
+                sede: configSalario.sede || null,
+                vigencia_desde: configSalario.vigencia_desde || null,
+                vigencia_hasta: configSalario.vigencia_hasta || null,
+                valor_hora_trabajador: configSalario.valor_hora_trabajador || null,
+                salario_basico: configSalario.salario_basico || null,
+              }
+            : null,
+        };
+        console.info(JSON.stringify(logPayload));
+      } catch (_e) {
+        // noop
+      }
 
       // CORREGIDO: Filtrar días usando la misma lógica que el frontend
       const diasDentroDelPeriodo = recargo.dias_laborales?.filter(dia => {
@@ -381,7 +473,7 @@ const procesarRecargosPorPeriodoConSalarios = async (recargos, periodoStart, per
 
           // Calcular valor usando configuración salarial
           let valorCalculado = 0;
-          if (configSalario && horas > 0) {
+          if (configSalario && horas !== 0) {
             const valorHora = parseFloat(configSalario.valor_hora_trabajador);
             const porcentaje = parseFloat(detalle.tipoRecargo.porcentaje) / 100;
             valorCalculado = valorHora * porcentaje * horas;
