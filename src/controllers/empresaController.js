@@ -132,7 +132,7 @@ exports.createEmpresa = async (req, res) => {
 
     // Verificar si ya existe una empresa con el mismo nit
     const empresaExistente = await Empresa.findOne({
-      where: { nit }
+      where: nit ? { nit } : { nit: null }
     });
 
     if (empresaExistente) {
