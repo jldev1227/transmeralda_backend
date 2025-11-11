@@ -130,16 +130,18 @@ exports.createEmpresa = async (req, res) => {
       paga_recargos
     } = req.body;
 
-    // Verificar si ya existe una empresa con el mismo nit
-    const empresaExistente = await Empresa.findOne({
-      where: nit ? { nit } : { nit: null }
-    });
+    // Verificar si ya existe una empresa con el mismo nit (solo si nit no es null o undefined)
+    if (nit) {
+      const empresaExistente = await Empresa.findOne({
+      where: { nit }
+      });
 
-    if (empresaExistente) {
+      if (empresaExistente) {
       return res.status(400).json({
         success: false,
         message: `Ya existe una empresa con el nit ${nit}`
       });
+      }
     }
 
     // Crear la nueva empresa
