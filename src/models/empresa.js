@@ -19,62 +19,44 @@ module.exports = (sequelize) => {
       },
       nit: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
         field: 'nit',
         unique: true,
         validate: {
-          notEmpty: {
-            msg: 'El nit no puede estar vacío'
-          },
           isValidNIT(value) {
-            // Eliminar puntos de miles y espacios
-            const cleanNIT = value.replace(/\./g, '').trim();
+            if (value == null) return; // Si llega null, no validar
 
-            // Verificar que solo contenga números y posiblemente un guion para el dígito de verificación
+            const cleanNIT = value.toString().replace(/\./g, '').trim();
+
             if (!/^[0-9]+(-[0-9])?$/.test(cleanNIT)) {
               throw new Error('El nit debe contener solo números y opcionalmente un guion con el dígito de verificación');
             }
 
-            // Si llega aquí, el valor es válido, así que asignamos el valor limpio
             this.setDataValue('nit', cleanNIT);
           }
         },
         set(value) {
-          if (value) {
-            // Eliminar puntos de miles y espacios al guardar
-            const cleanValue = value.replace(/\./g, '').trim();
-            this.setDataValue('nit', cleanValue);
+          // Si llega undefined o cadena vacía → guardamos null
+          if (value == null || value.toString().trim() === '') {
+            this.setDataValue('nit', null);
+            return;
           }
+
+          const cleanValue = value.toString().replace(/\./g, '').trim();
+          this.setDataValue('nit', cleanValue);
         }
       },
       nombre: {
         type: DataTypes.STRING,
         allowNull: false,
-        validate: {
-          notEmpty: {
-            msg: 'El nombre de la empresa no puede estar vacío'
-          }
-        }
       },
       representante: {
         type: DataTypes.STRING,
         allowNull: true,
-        validate: {
-          // Solo validamos si hay un valor, pero permitimos null
-          notEmpty: {
-            msg: 'El nombre del representante no puede estar vacío'
-          }
-        }
       },
       cedula: {
         type: DataTypes.STRING,
         allowNull: true,
-        validate: {
-          // Solo validamos si hay un valor, pero permitimos null
-          notEmpty: {
-            msg: 'La cédula no puede estar vacía'
-          }
-        }
       },
       telefono: {
         type: DataTypes.STRING,
