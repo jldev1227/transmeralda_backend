@@ -660,7 +660,7 @@ const createVehiculoBasico = async (req, res) => {
     const vehiculoData = req.body;
 
     // Verificar campos mínimos obligatorios
-    const camposObligatorios = ['placa', 'marca', 'modelo', 'clase_vehiculo'];
+    const camposObligatorios = ['placa', 'clase_vehiculo'];
     const camposFaltantes = camposObligatorios.filter(campo => !vehiculoData[campo]);
 
     if (camposFaltantes.length > 0) {
@@ -1359,7 +1359,7 @@ async function generateVehiculoPDF(vehiculo, documentos) {
         .fontSize(13)
         .fillColor("#2E8B57")
         .font("Helvetica-Bold")
-        .text("TRANSPORTES Y SERVICIOS ESMERALDA S.A.S ZOMAC", 40, 30, {
+        .text("TRANSPORTES Y SERVICIOS ESMERALDA S.A.S", 40, 30, {
           width: 300,
         });
 
