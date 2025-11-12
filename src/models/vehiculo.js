@@ -21,11 +21,7 @@ module.exports = (sequelize) => {
     },
     marca: {
       type: DataTypes.STRING,
-      allowNull: false,
-      validate: {
-        notNull: { msg: 'La marca es obligatoria' },
-        notEmpty: { msg: 'La marca no puede estar vacía' }
-      }
+      allowNull: true,
     },
     linea: {
       type: DataTypes.STRING,
@@ -33,11 +29,7 @@ module.exports = (sequelize) => {
     },
     modelo: {
       type: DataTypes.STRING,
-      allowNull: false,
-      validate: {
-        notNull: { msg: 'El modelo es obligatorio' },
-        notEmpty: { msg: 'El modelo no puede estar vacío' }
-      }
+      allowNull: true,
     },
     color: {
       type: DataTypes.STRING,
@@ -173,10 +165,10 @@ module.exports = (sequelize) => {
 
   Vehiculo.associate = (models) => {
     if (models.User) {
-      Vehiculo.belongsTo(models.User, {
-        foreignKey: 'propietario_id',
-        as: 'propietario'
-      });
+      // Vehiculo.belongsTo(models.User, {
+      //   foreignKey: 'propietario_id',
+      //   as: 'propietario'
+      // });
 
       Vehiculo.belongsTo(models.Conductor, {
         foreignKey: 'conductor_id',
