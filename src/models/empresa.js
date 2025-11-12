@@ -21,7 +21,6 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING,
         allowNull: true,
         field: 'nit',
-        unique: true,
         validate: {
           isValidNIT(value) {
             if (value == null) return; // Si llega null, no validar
