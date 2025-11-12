@@ -479,9 +479,7 @@ exports.establecerNuevaPassword = async (req, res) => {
 
 exports.getAllUsers = async (req, res) => {
   try {
-    const usuarios = await User.findAll({
-      attributes: ['id', 'nombre', "correo", "role", "permisos"]
-    });
+    const usuarios = await User.findAll();
 
     res.status(200).json({
       success: true,
