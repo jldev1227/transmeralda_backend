@@ -68,7 +68,7 @@ const verificarDisponibilidad = async (conductorId, vehiculoId, servicioIdExclui
   return errores;
 };
 
-// Obtener todos los servicios
+// Obtener todos los servicios (paginado)
 exports.obtenerTodos = async (req, res) => {
   try {
     const usuarioActualId = req.user?.id;
@@ -80,8 +80,52 @@ exports.obtenerTodos = async (req, res) => {
       });
     }
 
-    // Primero obtenemos todos los servicios
-    const servicios = await Servicio.findAll({
+    // Parámetros de paginación
+    const page = Math.max(parseInt(req.query.page || '1', 10), 1);
+    const limitRaw = parseInt(req.query.limit || '20', 10);
+    const limit = Math.min(Math.max(limitRaw || 20, 1), 100); // 1..100
+    const offset = (page - 1) * limit;
+
+    // Orden opcional
+    const requestedSort = (req.query.sort || 'created_at').toString();
+    const allowedSort = ['created_at', 'updated_at', 'id', 'fecha_solicitud'];
+    const sort = allowedSort.includes(requestedSort) ? requestedSort : 'id';
+    const order = (req.query.order || 'DESC').toString().toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+    // Filtros
+    const where = {};
+    const { Op } = require('sequelize');
+
+    const {
+      estado,
+      proposito_servicio,
+      conductor_id,
+      cliente_id,
+      vehiculo_id,
+      origen_id,
+      destino_id,
+      fecha_solicitud: fecha_inicio,
+      fecha_realizacion: fecha_fin
+    } = req.query || {};
+
+    if (estado) where.estado = estado;
+    if (proposito_servicio) where.proposito_servicio = proposito_servicio;
+    if (conductor_id) where.conductor_id = conductor_id;
+    if (cliente_id) where.cliente_id = cliente_id;
+    if (vehiculo_id) where.vehiculo_id = vehiculo_id;
+    if (origen_id) where.origen_id = origen_id;
+    if (destino_id) where.destino_id = destino_id;
+    if (fecha_inicio && fecha_fin) {
+      where.fecha_solicitud = { [Op.between]: [new Date(fecha_inicio), new Date(fecha_fin)] };
+    } else if (fecha_inicio) {
+      where.fecha_solicitud = { [Op.gte]: new Date(fecha_inicio) };
+    } else if (fecha_fin) {
+      where.fecha_solicitud = { [Op.lte]: new Date(fecha_fin) };
+    }
+
+    // Obtener servicios con paginación, filtros y count total
+    const { count, rows } = await Servicio.findAndCountAll({
+      where,
       include: [
         { model: Municipio, as: 'origen', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
         { model: Municipio, as: 'destino', attributes: ['id', 'nombre_municipio', 'nombre_departamento', 'latitud', 'longitud'] },
@@ -113,11 +157,15 @@ exports.obtenerTodos = async (req, res) => {
         },
         { model: Vehiculo, as: 'vehiculo', attributes: ['id', 'placa', 'modelo', "marca", "linea", "color", "clase_vehiculo"] },
         { model: Empresa, as: 'cliente', attributes: ['id', 'nombre', "nit", "requiere_osi"] }
-      ]
+      ],
+      limit,
+      offset,
+      order: [[sort, order]],
+      distinct: true // asegura count correcto con joins
     });
 
     // Obtenemos los IDs de todos los servicios
-    const servicioIds = servicios.map(s => s.id);
+    const servicioIds = rows.map(s => s.id);
 
     // Consulta separada para obtener los creadores
     const historicosCreacion = await ServicioHistorico.findAll({
@@ -139,7 +187,7 @@ exports.obtenerTodos = async (req, res) => {
     });
 
     // Procesar los servicios para agregar el identificador de creador
-    const serviciosConCreador = servicios.map(servicio => {
+    const serviciosConCreador = rows.map(servicio => {
       const servicioData = servicio.toJSON();
       const creadorId = mapaCreadores[servicio.id] || null;
 
@@ -149,10 +197,49 @@ exports.obtenerTodos = async (req, res) => {
       return servicioData;
     });
 
+    // Stats agregados por estado bajo los mismos filtros
+    // Total general filtrado
+    const totalFiltrado = await Servicio.count({ where });
+
+    // Conteos por estado usando GROUP BY
+    const agregados = await Servicio.findAll({
+      where,
+      attributes: [
+        'estado',
+        [Servicio.sequelize.fn('COUNT', Servicio.sequelize.col('*')), 'count']
+      ],
+      group: ['estado'],
+      raw: true
+    });
+
+    const baseStats = {
+      total: totalFiltrado,
+      en_curso: 0,
+      realizado: 0,
+      solicitado: 0,
+      planificado: 0,
+      cancelado: 0
+    };
+
+    for (const row of agregados) {
+      const estadoKey = row.estado;
+      const value = parseInt(row.count, 10) || 0;
+      if (estadoKey && Object.prototype.hasOwnProperty.call(baseStats, estadoKey)) {
+        baseStats[estadoKey] = value;
+      }
+    }
+
     return res.status(200).json({
       success: true,
       data: serviciosConCreador,
-      total: serviciosConCreador.length
+      meta: {
+        page,
+        limit,
+        total: count,
+        totalPages: Math.ceil(count / limit),
+        count: serviciosConCreador.length
+      },
+      stats: baseStats
     });
   } catch (error) {
     console.error('Error al obtener servicios:', error);

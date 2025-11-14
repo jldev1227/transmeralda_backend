@@ -98,6 +98,10 @@ module.exports = (sequelize) => {
         }
       }
     },
+    no_conformidades: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
     fecha_solicitud: {
       type: DataTypes.DATE,
       allowNull: false,
