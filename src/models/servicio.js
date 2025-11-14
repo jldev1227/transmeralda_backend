@@ -100,7 +100,7 @@ module.exports = (sequelize) => {
     },
     no_conformidades: {
       type: DataTypes.TEXT,
-      allowNull: false,
+      allowNull: true,
     },
     fecha_solicitud: {
       type: DataTypes.DATE,
