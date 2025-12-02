@@ -3379,3 +3379,174 @@ const formatToCOP = (amount) => {
   }
   return `$ ${amount.toLocaleString("es-CO")}`;
 };
+
+/**
+ * Controlador para generar PDFs comprimidos para descarga
+ */
+exports.downloadPDFs = async (req, res) => {
+  const archiver = require('archiver');
+  const { PDFDocument } = require('pdf-lib');
+  
+  try {
+    const { liquidacionIds } = req.body;
+
+    if (
+      !liquidacionIds ||
+      !Array.isArray(liquidacionIds) ||
+      liquidacionIds.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Se requiere al menos un ID de liquidación",
+      });
+    }
+
+    console.log(`📥 Generando ${liquidacionIds.length} desprendibles para descarga`);
+
+    // Obtener liquidaciones con datos de conductor
+    const liquidaciones = await Liquidacion.findAll({
+      where: { id: liquidacionIds },
+      include: [
+        { model: Conductor, as: "conductor" },
+        { model: Bonificacion, as: "bonificaciones" },
+        { model: Pernote, as: "pernotes" },
+        { model: Recargo, as: "recargos" },
+        { model: Anticipo, as: "anticipos" },
+      ],
+    });
+
+    if (liquidaciones.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No se encontraron liquidaciones",
+      });
+    }
+
+    // Configurar headers para descarga
+    const fechaDescarga = new Date().toISOString().split('T')[0];
+    const nombreArchivo = `desprendibles_nomina_${fechaDescarga}.zip`;
+    
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+
+    // Crear archivo ZIP
+    const archive = archiver('zip', {
+      zlib: { level: 9 } // Máxima compresión
+    });
+
+    // Manejar errores del archive
+    archive.on('error', (err) => {
+      console.error('❌ Error al crear archivo ZIP:', err);
+      throw err;
+    });
+
+    // Pipe del archive a la respuesta
+    archive.pipe(res);
+
+    // Generar PDFs para cada liquidación (con el mismo procesamiento que en pdfQueue)
+    for (const liquidacion of liquidaciones) {
+      try {
+        console.log(`📄 Generando PDF para conductor: ${liquidacion.conductor?.nombre} ${liquidacion.conductor?.apellido}`);
+        
+        // ✅ PASO 1: Obtener configuraciones de salario
+        const configuracionesSalario = await obtenerConfiguracionesSalario(
+          liquidacion.periodo_start,
+          liquidacion.periodo_end
+        );
+
+        // ✅ PASO 2: Obtener recargos planilla del conductor
+        let recargosDelPeriodo = [];
+        if (liquidacion.conductor?.id) {
+          recargosDelPeriodo = await obtenerRecargosPlanillaPorPeriodo(
+            liquidacion.conductor.id,
+            liquidacion.periodo_start,
+            liquidacion.periodo_end
+          );
+        } else {
+          console.warn(`⚠️ Liquidación ${liquidacion.id} no tiene conductor válido`);
+        }
+
+        // ✅ PASO 3: Procesar recargos con configuración salarial
+        let recargosProcessados = [];
+        if (recargosDelPeriodo.length > 0) {
+          recargosProcessados = await procesarRecargosPorPeriodoConSalarios(
+            recargosDelPeriodo,
+            liquidacion.periodo_start,
+            liquidacion.periodo_end,
+            configuracionesSalario
+          );
+        }
+
+        // ✅ PASO 4: Construir liquidación completa para PDF
+        const liquidacionCompleta = {
+          ...liquidacion.toJSON(),
+          configuraciones_salario: configuracionesSalario,
+          recargos_planilla: {
+            periodo_start: liquidacion.periodo_start,
+            periodo_end: liquidacion.periodo_end,
+            total_recargos: recargosProcessados.length,
+            total_dias_laborados: recargosProcessados.reduce((total, recargo) =>
+              total + (recargo.dias_laborales?.length || 0), 0),
+            total_horas_trabajadas: recargosProcessados.reduce((total, recargo) =>
+              total + (parseFloat(recargo.total_horas) || 0), 0),
+            recargos: recargosProcessados,
+          },
+        };
+        
+        // Obtener fecha del periodo_end para el nombre del archivo
+        const periodoEnd = new Date(liquidacion.periodo_end);
+        const mesNombre = periodoEnd.toLocaleDateString('es-CO', { month: 'long' }).toUpperCase();
+        
+        // Formatear nombre del conductor (reemplazar espacios por guiones bajos, eliminar caracteres especiales)
+        const nombreCompleto = `${liquidacion.conductor?.nombre || ''} ${liquidacion.conductor?.apellido || ''}`.trim();
+        const nombreFormateado = nombreCompleto
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "") // Eliminar acentos
+          .replace(/[^a-zA-Z0-9\s]/g, '') // Eliminar caracteres especiales
+          .replace(/\s+/g, '_') // Reemplazar espacios por guiones bajos
+          .toUpperCase();
+        
+        const nombreArchivoPDF = `${nombreFormateado}_${mesNombre}.pdf`;
+
+        // ✅ PASO 5: Generar PDF completo con la función existente
+        const pdfCompletoBuffer = await generatePDF(liquidacionCompleta);
+        
+        // ✅ PASO 6: Extraer solo la primera página usando pdf-lib
+        const pdfCompleto = await PDFDocument.load(pdfCompletoBuffer);
+        const pdfPagina1 = await PDFDocument.create();
+        
+        // Copiar solo la primera página
+        const [primeraPagina] = await pdfPagina1.copyPages(pdfCompleto, [0]);
+        pdfPagina1.addPage(primeraPagina);
+        
+        // Convertir a buffer
+        const pdfPagina1Buffer = await pdfPagina1.save();
+        
+        // Agregar PDF (solo página 1) al ZIP
+        archive.append(Buffer.from(pdfPagina1Buffer), { name: nombreArchivoPDF });
+        
+        console.log(`✅ PDF generado (página 1): ${nombreArchivoPDF}`);
+      } catch (error) {
+        console.error(`❌ Error generando PDF para liquidación ${liquidacion.id}:`, error);
+        // Continuar con las demás liquidaciones
+      }
+    }
+
+    // Finalizar el archivo ZIP
+    await archive.finalize();
+    
+    console.log(`✅ Archivo ZIP generado exitosamente con ${liquidaciones.length} desprendibles`);
+
+  } catch (error) {
+    console.error("❌ Error al generar PDFs para descarga:", error);
+    
+    // Si ya se enviaron headers, no podemos enviar JSON
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "Error al generar los desprendibles",
+        error: process.env.NODE_ENV === "development" ? error.message : undefined,
+      });
+    }
+  }
+};

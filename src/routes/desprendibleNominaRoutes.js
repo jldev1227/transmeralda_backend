@@ -10,4 +10,7 @@ router.post('/generate', protect, desprendibleNomina.generatePDFs);
 // Ruta para consultar el estado de un trabajo
 router.get('/job-status/:jobId', protect, desprendibleNomina.checkJobStatus);
 
+// Ruta para descargar PDFs comprimidos
+router.post('/download', protect, desprendibleNomina.downloadPDFs);
+
 module.exports = router;
