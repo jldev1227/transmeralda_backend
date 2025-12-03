@@ -3385,7 +3385,6 @@ const formatToCOP = (amount) => {
  */
 exports.downloadPDFs = async (req, res) => {
   const archiver = require('archiver');
-  const { PDFDocument } = require('pdf-lib');
   
   try {
     const { liquidacionIds } = req.body;
@@ -3508,24 +3507,13 @@ exports.downloadPDFs = async (req, res) => {
         
         const nombreArchivoPDF = `${nombreFormateado}_${mesNombre}.pdf`;
 
-        // ✅ PASO 5: Generar PDF completo con la función existente
-        const pdfCompletoBuffer = await generatePDF(liquidacionCompleta);
+        // ✅ PASO 5: Generar PDF completo con la función existente (con todos los detalles de recargos)
+        const pdfBuffer = await generatePDF(liquidacionCompleta);
         
-        // ✅ PASO 6: Extraer solo la primera página usando pdf-lib
-        const pdfCompleto = await PDFDocument.load(pdfCompletoBuffer);
-        const pdfPagina1 = await PDFDocument.create();
+        // Agregar PDF completo al ZIP
+        archive.append(pdfBuffer, { name: nombreArchivoPDF });
         
-        // Copiar solo la primera página
-        const [primeraPagina] = await pdfPagina1.copyPages(pdfCompleto, [0]);
-        pdfPagina1.addPage(primeraPagina);
-        
-        // Convertir a buffer
-        const pdfPagina1Buffer = await pdfPagina1.save();
-        
-        // Agregar PDF (solo página 1) al ZIP
-        archive.append(Buffer.from(pdfPagina1Buffer), { name: nombreArchivoPDF });
-        
-        console.log(`✅ PDF generado (página 1): ${nombreArchivoPDF}`);
+        console.log(`✅ PDF generado con detalles completos: ${nombreArchivoPDF}`);
       } catch (error) {
         console.error(`❌ Error generando PDF para liquidación ${liquidacion.id}:`, error);
         // Continuar con las demás liquidaciones
