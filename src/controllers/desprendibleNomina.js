@@ -1194,10 +1194,10 @@ async function sendEmail(options) {
 async function generatePDF(liquidacion) {
   return new Promise((resolve, reject) => {
     try {
-      // Create a new PDFDocument
+      // Create a new PDFDocument with 2% larger size to accommodate more content
       const doc = new PDFDocument({
         margins: { top: 30, bottom: 15, left: 40, right: 40 },
-        size: "A4",
+        size: [607.19, 858.73], // A4 aumentado 2% (595.28 x 1.02, 841.89 x 1.02)
       });
 
       const recargosAgrupados = agruparRecargos(
