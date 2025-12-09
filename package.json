@@ -16,6 +16,9 @@
     "@aws-sdk/client-s3": "^3.787.0",
     "@aws-sdk/lib-storage": "^3.787.0",
     "@aws-sdk/s3-request-presigner": "^3.787.0",
+    "@azure-rest/ai-inference": "latest",
+    "@azure/core-auth": "latest",
+    "@azure/core-sse": "latest",
     "@react-pdf/renderer": "^4.3.0",
     "archiver": "^7.0.1",
     "axios": "^1.8.4",
@@ -41,10 +44,7 @@
     "sequelize": "^6.37.6",
     "socket.io": "^4.8.1",
     "uuid": "^11.1.0",
-    "winston": "^3.17.0",
-    "@azure-rest/ai-inference": "latest",
-    "@azure/core-auth": "latest",
-    "@azure/core-sse": "latest"
+    "winston": "^3.17.0"
   },
   "devDependencies": {
     "@bull-board/api": "^6.7.10",

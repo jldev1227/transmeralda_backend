@@ -528,6 +528,8 @@ class RecargoController {
           total_horas: 0, // Se calculará automáticamente
           es_domingo: esDomingoCalculado,
           es_festivo: esFestivoCalculado,
+          kilometraje_inicial: diaOriginal.kilometraje_inicial ? parseFloat(diaOriginal.kilometraje_inicial) : null,
+          kilometraje_final: diaOriginal.kilometraje_final ? parseFloat(diaOriginal.kilometraje_final) : null,
           disponibilidad: diaOriginal.disponibilidad,
           observaciones: diaOriginal.observaciones || null,
           creado_por_id: userId,
@@ -588,7 +590,8 @@ class RecargoController {
             as: 'dias_laborales',
             attributes: [
               'id', 'dia', 'hora_inicio', 'hora_fin',
-              'total_horas', 'es_domingo', 'es_festivo', 'disponibilidad'
+              'total_horas', 'es_domingo', 'es_festivo', 'disponibilidad',
+              'kilometraje_inicial', 'kilometraje_final'
             ],
             include: [
               {
@@ -628,6 +631,8 @@ class RecargoController {
             es_especial: dia.es_domingo || dia.es_festivo,
             es_domingo: dia.es_domingo,
             es_festivo: dia.es_festivo,
+            kilometraje_inicial: dia.kilometraje_inicial,
+            kilometraje_final: dia.kilometraje_final,
             disponibilidad: dia.disponibilidad,
             ...recargosDelDia
           };
@@ -1216,6 +1221,8 @@ class RecargoController {
           total_horas: 0,
           es_domingo: esDomingoCalculado,
           es_festivo: esFestivoCalculado,
+          kilometraje_inicial: diaOriginal.kilometraje_inicial ? parseFloat(diaOriginal.kilometraje_inicial) : null,
+          kilometraje_final: diaOriginal.kilometraje_final ? parseFloat(diaOriginal.kilometraje_final) : null,
           disponibilidad: diaOriginal.disponibilidad,
           observaciones: diaOriginal.observaciones || null,
           creado_por_id: userId,
@@ -1329,7 +1336,8 @@ class RecargoController {
             as: 'dias_laborales',
             attributes: [
               'id', 'dia', 'hora_inicio', 'hora_fin',
-              'total_horas', 'es_domingo', 'es_festivo', 'disponibilidad'
+              'total_horas', 'es_domingo', 'es_festivo', 'disponibilidad',
+              'kilometraje_inicial', 'kilometraje_final'
             ],
             include: [
               {
@@ -1369,6 +1377,8 @@ class RecargoController {
             es_especial: dia.es_domingo || dia.es_festivo,
             es_domingo: dia.es_domingo,
             es_festivo: dia.es_festivo,
+            kilometraje_inicial: dia.kilometraje_inicial,
+            kilometraje_final: dia.kilometraje_final,
             disponibilidad: dia.disponibilidad,
             ...recargosDelDia
           };
@@ -1770,7 +1780,7 @@ class RecargoController {
           {
             model: DiaLaboralPlanilla,
             as: 'dias_laborales',
-            attributes: ['id', 'dia', 'hora_inicio', 'hora_fin', 'total_horas', 'es_domingo', 'es_festivo', 'disponibilidad'],
+            attributes: ['id', 'dia', 'hora_inicio', 'hora_fin', 'total_horas', 'es_domingo', 'es_festivo', 'disponibilidad', 'kilometraje_inicial', 'kilometraje_final'],
             include: [
               {
                 model: DetalleRecargosDia,
@@ -1825,6 +1835,8 @@ class RecargoController {
               es_especial: dia.es_domingo || dia.es_festivo,
               es_domingo: dia.es_domingo,
               es_festivo: dia.es_festivo,
+              kilometraje_inicial: dia.kilometraje_inicial,
+              kilometraje_final: dia.kilometraje_final,
               disponibilidad: dia.disponibilidad,
               ...recargosDelDia // hed, hen, hefd, hefn, rn, rd
             };
@@ -1882,7 +1894,7 @@ class RecargoController {
           {
             model: DiaLaboralPlanilla,
             as: 'dias_laborales',
-            attributes: ['id', 'dia', 'hora_inicio', 'hora_fin', 'total_horas', 'es_domingo', 'es_festivo', 'disponibilidad'],
+            attributes: ['id', 'dia', 'hora_inicio', 'hora_fin', 'total_horas', 'es_domingo', 'es_festivo', 'disponibilidad', 'kilometraje_inicial', 'kilometraje_final'],
             include: [
               {
                 model: DetalleRecargosDia,
@@ -1999,6 +2011,8 @@ class RecargoController {
             es_especial: dia.es_domingo || dia.es_festivo,
             es_domingo: dia.es_domingo,
             es_festivo: dia.es_festivo,
+            kilometraje_inicial: dia.kilometraje_inicial,
+            kilometraje_final: dia.kilometraje_final,
             disponibilidad: dia.disponibilidad,
             ...recargosDelDia
           };

@@ -468,6 +468,7 @@ app.use('/api/pdf', require('./routes/desprendibleNominaRoutes'));
 app.use('/api/firmas_desprendible', require('./routes/firmaDesprendibleRoutes'));
 app.use('/api/tipos-recargo', require('./routes/tiposRecargoRoutes.js'));
 app.use('/api/configuraciones-salario', require('./routes/configuracionSalarioRoutes.js'));
+app.use('/api/stats', require('./routes/statsRoutes.js'));
 
 // Ruta de verificación de salud
 app.get('/health', (req, res) => {

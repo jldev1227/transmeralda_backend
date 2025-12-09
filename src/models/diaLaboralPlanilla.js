@@ -133,6 +133,30 @@ module.exports = (sequelize) => {
       defaultValue: false,
       allowNull: false,
     },
+    kilometraje_inicial: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: null,
+      validate: {
+        min: { args: [0], msg: 'El kilometraje inicial no puede ser negativo' }
+      },
+      get() {
+        const value = this.getDataValue('kilometraje_inicial');
+        return value === null ? null : parseFloat(value);
+      },
+    },
+    kilometraje_final: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: null,
+      validate: {
+        min: { args: [0], msg: 'El kilometraje final no puede ser negativo' }
+      },
+      get() {
+        const value = this.getDataValue('kilometraje_final');
+        return value === null ? null : parseFloat(value);
+      },
+    },
     disponibilidad: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
