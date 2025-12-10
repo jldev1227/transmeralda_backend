@@ -1029,7 +1029,8 @@ class RecargoController {
         }
 
         // Verificar que SOLO se estén actualizando campos de kilometraje en días laborales
-        const diasLaboralesNuevos = datosActualizar?.diasLaborales || [];
+        // Soporta tanto diasLaborales (camelCase) como dias_laborales (snake_case)
+        const diasLaboralesNuevos = datosActualizar?.dias_laborales || datosActualizar?.diasLaborales || [];
         const diasLaboralesExistentes = recargoExistente.dias_laborales || [];
 
         // Validar que no se agreguen o eliminen días
