@@ -1012,67 +1012,13 @@ class RecargoController {
         });
       }
 
-      // ✅ Validaciones específicas para rol kilometraje
+      // ✅ Validaciones específicas para rol kilometraje - DESHABILITADAS
+      // Todos los usuarios ahora pueden actualizar sin restricciones
+      /*
       if (userRole === 'kilometraje') {
-        // Parsear datos del body
-        let datosActualizar;
-        try {
-          datosActualizar = typeof req.body.recargo === 'string' 
-            ? JSON.parse(req.body.recargo) 
-            : req.body.recargo;
-        } catch (parseError) {
-          await safeRollback(transaction);
-          return res.status(400).json({
-            success: false,
-            message: 'Datos de recargo inválidos'
-          });
-        }
-
-        // Verificar que SOLO se estén actualizando campos de kilometraje en días laborales
-        // Soporta tanto diasLaborales (camelCase) como dias_laborales (snake_case)
-        const diasLaboralesNuevos = datosActualizar?.dias_laborales || datosActualizar?.diasLaborales || [];
-        const diasLaboralesExistentes = recargoExistente.dias_laborales || [];
-
-        // Validar que no se agreguen o eliminen días
-        if (diasLaboralesNuevos.length !== diasLaboralesExistentes.length) {
-          await safeRollback(transaction);
-          return res.status(403).json({
-            success: false,
-            message: 'El rol kilometraje no puede agregar o eliminar días laborales'
-          });
-        }
-
-        // Validar que solo se modifiquen campos de kilometraje
-        for (let i = 0; i < diasLaboralesNuevos.length; i++) {
-          const diaNew = diasLaboralesNuevos[i];
-          const diaExistente = diasLaboralesExistentes[i];
-
-          // Campos que NO pueden cambiar para rol kilometraje
-          const camposProhibidos = ['dia', 'hora_inicio', 'hora_fin', 'es_festivo', 'es_domingo', 'disponibilidad'];
-          
-          for (const campo of camposProhibidos) {
-            if (diaNew[campo] !== undefined && diaNew[campo] !== diaExistente[campo]) {
-              await safeRollback(transaction);
-              return res.status(403).json({
-                success: false,
-                message: `El rol kilometraje solo puede modificar kilometraje_inicial y kilometraje_final. No puede modificar: ${campo}`
-              });
-            }
-          }
-        }
-
-        // Validar que no se cambien datos generales del recargo
-        const camposProhibidosRecargo = ['conductor_id', 'vehiculo_id', 'empresa_id', 'numero_planilla', 'estado'];
-        for (const campo of camposProhibidosRecargo) {
-          if (datosActualizar[campo] !== undefined && datosActualizar[campo] !== recargoExistente[campo]) {
-            await safeRollback(transaction);
-            return res.status(403).json({
-              success: false,
-              message: `El rol kilometraje no puede modificar: ${campo}`
-            });
-          }
-        }
+        // Validaciones comentadas temporalmente
       }
+      */
 
       // ✅ GUARDAR ESTADO ANTERIOR (solo campos relevantes)
       const estadoAnterior = {
