@@ -84,6 +84,15 @@ class RecargoController {
   async crear(req, res) {
     const transaction = await sequelize.transaction();
 
+    // Verificar si el usuario tiene rol kilometraje
+    if (req.user?.role === 'kilometraje') {
+      if (!transaction.finished) await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        message: 'El rol kilometraje no tiene permisos para crear nuevos recargos'
+      });
+    }
+
     const HORAS_LIMITE = {
       JORNADA_NORMAL: 10,      // ¡IMPORTANTE: 10 horas, no 8!
       INICIO_NOCTURNO: 21,
@@ -979,6 +988,7 @@ class RecargoController {
     try {
       const { id } = req.params;
       const userId = req.user?.id;
+      const userRole = req.user?.role;
 
       if (!userId) {
         await safeRollback(transaction);
@@ -1000,6 +1010,67 @@ class RecargoController {
           success: false,
           message: 'Recargo no encontrado'
         });
+      }
+
+      // ✅ Validaciones específicas para rol kilometraje
+      if (userRole === 'kilometraje') {
+        // Parsear datos del body
+        let datosActualizar;
+        try {
+          datosActualizar = typeof req.body.recargo === 'string' 
+            ? JSON.parse(req.body.recargo) 
+            : req.body.recargo;
+        } catch (parseError) {
+          await safeRollback(transaction);
+          return res.status(400).json({
+            success: false,
+            message: 'Datos de recargo inválidos'
+          });
+        }
+
+        // Verificar que SOLO se estén actualizando campos de kilometraje en días laborales
+        const diasLaboralesNuevos = datosActualizar?.diasLaborales || [];
+        const diasLaboralesExistentes = recargoExistente.dias_laborales || [];
+
+        // Validar que no se agreguen o eliminen días
+        if (diasLaboralesNuevos.length !== diasLaboralesExistentes.length) {
+          await safeRollback(transaction);
+          return res.status(403).json({
+            success: false,
+            message: 'El rol kilometraje no puede agregar o eliminar días laborales'
+          });
+        }
+
+        // Validar que solo se modifiquen campos de kilometraje
+        for (let i = 0; i < diasLaboralesNuevos.length; i++) {
+          const diaNew = diasLaboralesNuevos[i];
+          const diaExistente = diasLaboralesExistentes[i];
+
+          // Campos que NO pueden cambiar para rol kilometraje
+          const camposProhibidos = ['dia', 'hora_inicio', 'hora_fin', 'es_festivo', 'es_domingo', 'disponibilidad'];
+          
+          for (const campo of camposProhibidos) {
+            if (diaNew[campo] !== undefined && diaNew[campo] !== diaExistente[campo]) {
+              await safeRollback(transaction);
+              return res.status(403).json({
+                success: false,
+                message: `El rol kilometraje solo puede modificar kilometraje_inicial y kilometraje_final. No puede modificar: ${campo}`
+              });
+            }
+          }
+        }
+
+        // Validar que no se cambien datos generales del recargo
+        const camposProhibidosRecargo = ['conductor_id', 'vehiculo_id', 'empresa_id', 'numero_planilla', 'estado'];
+        for (const campo of camposProhibidosRecargo) {
+          if (datosActualizar[campo] !== undefined && datosActualizar[campo] !== recargoExistente[campo]) {
+            await safeRollback(transaction);
+            return res.status(403).json({
+              success: false,
+              message: `El rol kilometraje no puede modificar: ${campo}`
+            });
+          }
+        }
       }
 
       // ✅ GUARDAR ESTADO ANTERIOR (solo campos relevantes)
@@ -1441,6 +1512,15 @@ class RecargoController {
 
       if (!userId) return res.status(401).json({ success: false, message: 'Usuario no autenticado' });
 
+      // Verificar si el usuario tiene rol kilometraje
+      if (req.user?.role === 'kilometraje') {
+        if (!transaction.finished) await transaction.rollback();
+        return res.status(403).json({
+          success: false,
+          message: 'El rol kilometraje no tiene permisos para cambiar estados de recargos'
+        });
+      }
+
       const body = req.body?.data ?? req.body;
       const action = body?.action;
       const selectedIds = Array.isArray(body?.selectedIds) ? body.selectedIds : [];
@@ -1533,6 +1613,14 @@ class RecargoController {
         });
       }
 
+      // Verificar si el usuario tiene rol kilometraje
+      if (req.user?.role === 'kilometraje') {
+        return res.status(403).json({
+          success: false,
+          message: 'El rol kilometraje no tiene permisos para eliminar recargos'
+        });
+      }
+
       if (!selectedIds || !Array.isArray(selectedIds) || selectedIds.length === 0) {
         return res.status(400).json({
           success: false,
@@ -1620,6 +1708,15 @@ class RecargoController {
         return res.status(401).json({
           success: false,
           message: 'Usuario no autenticado'
+        });
+      }
+
+      // Verificar si el usuario tiene rol kilometraje
+      if (req.user?.role === 'kilometraje') {
+        if (!transaction.finished) await transaction.rollback();
+        return res.status(403).json({
+          success: false,
+          message: 'El rol kilometraje no tiene permisos para liquidar recargos'
         });
       }
 
