@@ -56,7 +56,7 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING
     },
     role: {
-      type: DataTypes.ENUM('admin', 'gestor_servicio', 'gestor_planillas', 'liquidador', 'facturador', 'aprobador', 'gestor_flota', 'gestor_nomina', 'kilometraje', 'usuario'),
+      type: DataTypes.ENUM('admin', 'gestor_servicio', 'gestor_planillas', 'liquidador', 'facturador', 'aprobador', 'gestor_flota', 'gestor_nomina', 'kilometraje', 'consulta', 'usuario'),
       defaultValue: 'usuario'
     },
     permisos: {
