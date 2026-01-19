@@ -1427,17 +1427,40 @@ exports.generarEnlacePublico = async (req, res) => {
       });
     }
 
-    // Importar la función para generar JWT
-    const { generarJWTPublico } = require('../middleware/publicJWT');
-    const token = generarJWTPublico(id);
+    // Si ya tiene un token válido, reutilizarlo
+    if (servicio.share_token) {
+      // Verificar si el token expiró (si tiene fecha de expiración)
+      if (!servicio.share_token_expires_at || new Date(servicio.share_token_expires_at) > new Date()) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            share_token: servicio.share_token,
+            expires_at: servicio.share_token_expires_at,
+            servicio_id: id
+          }
+        });
+      }
+    }
 
-    const enlacePublico = `${process.env.SERVICIOS_FRONTEND_URL || 'http://localhost:3000'}/servicio/${id}?token=${token}`;
+    // Generar nuevo token único
+    const crypto = require('crypto');
+    const token = crypto.randomBytes(32).toString('hex');
+
+    // Configurar expiración (opcional, null = sin expiración)
+    // Para habilitar expiración, descomentar la siguiente línea:
+    // const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 días
+
+    // Actualizar servicio con el token
+    await servicio.update({
+      share_token: token,
+      share_token_expires_at: null // o expiresAt si quieres expiración
+    });
 
     return res.status(200).json({
       success: true,
       data: {
-        enlace: enlacePublico,
-        token,
+        share_token: token,
+        expires_at: servicio.share_token_expires_at,
         servicio_id: id
       }
     });

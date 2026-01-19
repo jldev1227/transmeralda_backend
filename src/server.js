@@ -42,11 +42,29 @@ const allowedOrigins = [
   'http://flota.midominio.local:3000',
   'http://servicios.midominio.local:3000',
   'http://auth.midominio.local:3001',
-  "http://recargos.midominio.local:3000"
+  "http://recargos.midominio.local:3000",
+  "http://localhost:3000" // Para desarrollo con localhost
 ];
 
 const corsOptions = {
-  origin: allowedOrigins,
+  origin: function (origin, callback) {
+    console.log('🌍 [CORS] Origen de la petición:', origin || 'sin origen (mismo dominio)');
+    
+    // Permitir peticiones sin origen (como Postman, curl, etc.)
+    if (!origin) {
+      console.log('✅ [CORS] Permitido: sin origen (herramienta de desarrollo)');
+      return callback(null, true);
+    }
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      console.log('✅ [CORS] Permitido:', origin);
+      callback(null, true);
+    } else {
+      console.log('❌ [CORS] Bloqueado:', origin);
+      console.log('📋 [CORS] Orígenes permitidos:', allowedOrigins);
+      callback(new Error('No permitido por CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: [
@@ -69,7 +87,6 @@ const io = socketIO(server, {
     origin: [
       "http://nomina.midominio.local:3000",
       "http://flota.midominio.local",
-      "http://recargos.midominio.local:3000",
       "http://servicios.midominio.local:3000",
       "http://recargos.midominio.local:3000",
     ],

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
+const logger = require('../utils/logger');
 
 exports.protect = async (req, res, next) => {
   let token;
@@ -36,6 +37,16 @@ exports.protect = async (req, res, next) => {
 
     // Añadir usuario a la request
     req.user = usuario;
+    
+    logger.info('Middleware protect - Usuario autenticado', {
+      user_id: usuario.id,
+      username: usuario.username,
+      role: usuario.role,
+      method: req.method,
+      path: req.path,
+      params: req.params
+    });
+    
     next();
   } catch (error) {
     return res.status(401).json({

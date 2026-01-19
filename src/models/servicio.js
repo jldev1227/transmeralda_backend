@@ -218,6 +218,17 @@ module.exports = (sequelize) => {
     observaciones: {
       type: DataTypes.TEXT,
       allowNull: true
+    },
+    share_token: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      unique: true,
+      comment: 'Token único para compartir el servicio públicamente'
+    },
+    share_token_expires_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Fecha de expiración del token compartido'
     }
   }, {
     sequelize,
