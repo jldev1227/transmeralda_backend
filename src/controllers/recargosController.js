@@ -157,7 +157,7 @@ class RecargoController {
         return 0;
       }
 
-      // Si trabajó más de 10 horas Y terminó después de las 21:00
+      // Si trabajó más de 10 horas Y terminó después de las 19:00 (7 PM)
       if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL && horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
         return redondear(horaFinal - HORAS_LIMITE.INICIO_NOCTURNO);
       }
@@ -187,7 +187,7 @@ class RecargoController {
     const calcularHoraExtraFestivaNocturna = (dia, mes, año, horaFinal, totalHoras, diasFestivos = []) => {
       // Solo si es domingo o festivo
       if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
-        // Si trabajó más de 10 horas Y terminó después de las 21:00
+        // Si trabajó más de 10 horas Y terminó después de las 19:00 (7 PM)
         if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL && horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
           return redondear(horaFinal - HORAS_LIMITE.INICIO_NOCTURNO);
         }
@@ -218,13 +218,13 @@ class RecargoController {
         recargoNocturno += HORAS_LIMITE.FIN_NOCTURNO - horaInicial;
       }
 
-      // Recargo por terminar después de las 21:00 (9:00 PM)
+      // Recargo por terminar después de las 19:00 (7:00 PM)
       if (horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
         if (horaInicial > HORAS_LIMITE.INICIO_NOCTURNO) {
-          // Si también inició después de las 21:00, es toda la jornada
+          // Si también inició después de las 19:00, es toda la jornada
           recargoNocturno += horaFinal - horaInicial;
         } else {
-          // Solo las horas después de las 21:00
+          // Solo las horas después de las 19:00
           recargoNocturno += horaFinal - HORAS_LIMITE.INICIO_NOCTURNO;
         }
       }
