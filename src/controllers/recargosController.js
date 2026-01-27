@@ -95,7 +95,7 @@ class RecargoController {
 
     const HORAS_LIMITE = {
       JORNADA_NORMAL: 10,      // ¡IMPORTANTE: 10 horas, no 8!
-      INICIO_NOCTURNO: 21,
+      INICIO_NOCTURNO: 19,     // Cambiado de 21 a 19 (7 PM)
       FIN_NOCTURNO: 6,
     };
 
