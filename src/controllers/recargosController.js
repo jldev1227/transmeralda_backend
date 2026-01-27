@@ -733,7 +733,7 @@ class RecargoController {
 
     const HORAS_LIMITE = {
       JORNADA_NORMAL: 10,
-      INICIO_NOCTURNO: 21,
+      INICIO_NOCTURNO: 19,  // 7 PM (19:00) - Cambiado de 21:00
       FIN_NOCTURNO: 6,
     };
 
@@ -769,6 +769,7 @@ class RecargoController {
       if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
         return 0;
       }
+      // Si hay horas extras Y la hora final pasa de las 7 PM (19:00)
       if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL && horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
         return redondear(horaFinal - HORAS_LIMITE.INICIO_NOCTURNO);
       }
@@ -786,6 +787,7 @@ class RecargoController {
 
     const calcularHoraExtraFestivaNocturna = (dia, mes, año, horaFinal, totalHoras, diasFestivos = []) => {
       if (esDomingoOFestivo(dia, mes, año, diasFestivos)) {
+        // Si hay horas extras Y la hora final pasa de las 7 PM (19:00)
         if (totalHoras > HORAS_LIMITE.JORNADA_NORMAL && horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
           return redondear(horaFinal - HORAS_LIMITE.INICIO_NOCTURNO);
         }
@@ -798,9 +800,11 @@ class RecargoController {
         return 0;
       }
       let recargoNocturno = 0;
+      // Si empieza antes de las 6 AM (madrugada)
       if (horaInicial < HORAS_LIMITE.FIN_NOCTURNO) {
         recargoNocturno += HORAS_LIMITE.FIN_NOCTURNO - horaInicial;
       }
+      // Si termina después de las 7 PM (19:00 - noche)
       if (horaFinal > HORAS_LIMITE.INICIO_NOCTURNO) {
         if (horaInicial > HORAS_LIMITE.INICIO_NOCTURNO) {
           recargoNocturno += horaFinal - horaInicial;
