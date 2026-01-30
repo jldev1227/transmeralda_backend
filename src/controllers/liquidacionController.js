@@ -628,6 +628,7 @@ exports.crearLiquidacion = async (req, res) => {
       cesantias,
       interes_cesantias,
       prima,
+      prima_pendiente,
       estado,
     } = req.body;
 
@@ -716,6 +717,7 @@ exports.crearLiquidacion = async (req, res) => {
         cesantias,
         interes_cesantias,
         prima: prima || 0,
+        prima_pendiente: prima_pendiente || null,
         estado,
         conceptos_adicionales,
       },
@@ -904,6 +906,7 @@ exports.editarLiquidacion = async (req, res) => {
       cesantias,
       interes_cesantias,
       prima,
+      prima_pendiente,
       estado,
     } = req.body;
 
@@ -974,6 +977,7 @@ exports.editarLiquidacion = async (req, res) => {
         cesantias,
         interes_cesantias,
         prima: prima || 0,
+        prima_pendiente: prima_pendiente || null,
         estado,
         conceptos_adicionales,
       },

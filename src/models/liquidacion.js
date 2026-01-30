@@ -298,6 +298,20 @@ module.exports = (sequelize) => {
           return value === null ? null : parseFloat(value);
         }
       },
+      prima_pendiente: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: null,
+        validate: {
+          isDecimal: {
+            msg: "El valor de prima pendiente debe ser un valor numérico",
+          },
+        },
+        get() {
+          const value = this.getDataValue('prima_pendiente');
+          return value === null ? null : parseFloat(value);
+        }
+      },
       estado: {
         type: DataTypes.ENUM("Pendiente", "Liquidado"),
         allowNull: false,
