@@ -220,6 +220,12 @@ module.exports = (sequelize) => {
         // Remover validate ya que no aplica para boolean
         // Remover get() ya que no necesitas parsing para boolean
       },
+      es_cotransmeq: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment: 'Indica si la liquidación es para COTRANSMEQ'
+      },
       valor_incapacidad: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
