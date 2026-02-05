@@ -487,7 +487,7 @@ emailQueue.process(async (job, done) => {
         email: liquidacion.conductor.email,
         conductorId: liquidacion.conductor.id,
         conductorNombre: `${liquidacion.conductor.nombre} ${liquidacion.conductor.apellido}`,
-        firmaDesprendible: totalRecargosParex > 0,
+        firmaDesprendible: true, // ✅ TODOS los desprendibles requieren firma
         totalRecargos: totalRecargosParex,
         recargosCount: recargosParex.length,
         periodoEnd: liquidacion.periodo_end,
