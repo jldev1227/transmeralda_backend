@@ -491,7 +491,8 @@ emailQueue.process(async (job, done) => {
         totalRecargos: totalRecargosParex,
         recargosCount: recargosParex.length,
         periodoEnd: liquidacion.periodo_end,
-        periodoStart: liquidacion.periodo_start
+        periodoStart: liquidacion.periodo_start,
+        es_cotransmeq: liquidacion.es_cotransmeq || false
       };
     });
 
@@ -597,6 +598,7 @@ emailQueue.process(async (job, done) => {
             firmaDesprendible: datosLiquidacion.firmaDesprendible,
             totalRecargos: datosLiquidacion.totalRecargos,
             periodoFormateado: getMesyAño(datosLiquidacion.periodoEnd),
+            es_cotransmeq: datosLiquidacion.es_cotransmeq || false,
             attachment: {
               filename: pdf.filename,
               content: pdfContent,
@@ -616,6 +618,7 @@ emailQueue.process(async (job, done) => {
             firmaDesprendible: datosLiquidacion.firmaDesprendible,
             totalRecargos: datosLiquidacion.totalRecargos,
             periodoFormateado: getMesyAño(datosLiquidacion.periodoEnd),
+            es_cotransmeq: datosLiquidacion.es_cotransmeq || false,
             attachment: {
               filename: pdf.filename,
               content: fallbackPdf,
@@ -660,7 +663,8 @@ emailQueue.process(async (job, done) => {
         attachments: [],
         liquidacionesParaFirma: [],
         hasAttachments: false,
-        mensajeContextual: ""
+        mensajeContextual: "",
+        es_cotransmeq: data.liquidaciones[0].es_cotransmeq || false
       };
 
       if (liquidacionesConFirma.length === 0) {
@@ -758,11 +762,26 @@ function createEmailTemplate(content, options = {}) {
     firmaDesprendible = false,
     liquidacionesParaFirma = [],
     hasAttachments = false,
-    mensajeContextual = ''
+    mensajeContextual = '',
+    es_cotransmeq = false
   } = options;
 
+  // Definir colores y datos según la empresa
+  const primaryColor = es_cotransmeq ? '#FF9500' : '#059669';
+  const primaryColorDark = es_cotransmeq ? '#E68A00' : '#047857';
+  const lightBg = es_cotransmeq ? '#FFF4E6' : '#ecfdf5';
+  const borderColor = es_cotransmeq ? '#FFA726' : '#10b981';
+  const textColor = es_cotransmeq ? '#92400E' : '#065f46';
+  const finalCompanyName = es_cotransmeq 
+    ? 'Servicios y Transportes Cotransmeq S.A.S' 
+    : companyName;
+  const finalLogoFileName = es_cotransmeq ? 'cotransmeq.png' : logoFileName;
+
   // Construir URL del logo desde S3
-  const logoUrl = showLogo ? getS3PublicUrl(logoFileName) : null;
+  const logoUrl = showLogo ? getS3PublicUrl(finalLogoFileName) : null;
+
+  // Obtener año actual
+  const currentYear = new Date().getFullYear();
 
   // Generar contenido dinámico según el tipo de envío
   let desprendiblesSection = '';
@@ -852,7 +871,7 @@ function createEmailTemplate(content, options = {}) {
         }
         
         .header {
-            background: linear-gradient(135deg, #059669, #047857);
+            background: linear-gradient(135deg, ${primaryColor}, ${primaryColorDark});
             padding: 30px 20px;
             text-align: center;
             color: white;
@@ -878,11 +897,11 @@ function createEmailTemplate(content, options = {}) {
         }
         
         .content h2 {
-            color: #059669;
+            color: ${primaryColor};
             margin-top: 0;
             margin-bottom: 20px;
             font-size: 20px;
-            border-bottom: 2px solid #ecfdf5;
+            border-bottom: 2px solid ${lightBg};
             padding-bottom: 10px;
         }
         
@@ -908,7 +927,7 @@ function createEmailTemplate(content, options = {}) {
         
         .button {
             display: inline-block;
-            background: linear-gradient(135deg, #059669, #047857);
+            background: linear-gradient(135deg, ${primaryColor}, ${primaryColorDark});
             color: white !important;
             padding: 14px 28px;
             text-decoration: none;
@@ -917,13 +936,13 @@ function createEmailTemplate(content, options = {}) {
             margin: 20px 0;
             text-align: center;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 6px rgba(5, 150, 105, 0.3);
+            box-shadow: 0 4px 6px rgba(${es_cotransmeq ? '255, 149, 0' : '5, 150, 105'}, 0.3);
         }
         
         .button:hover {
-            background: linear-gradient(135deg, #047857, #059669);
+            background: linear-gradient(135deg, ${primaryColorDark}, ${primaryColor});
             transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(5, 150, 105, 0.4);
+            box-shadow: 0 6px 12px rgba(${es_cotransmeq ? '255, 149, 0' : '5, 150, 105'}, 0.4);
         }
         
         .button-small {
@@ -1043,9 +1062,9 @@ function createEmailTemplate(content, options = {}) {
             <!-- Header con logo desde S3 -->
             <div class="header">
                 ${logoUrl ? `
-                    <img src="${logoUrl}" alt="${companyName}" class="logo" />
+                    <img src="${logoUrl}" alt="${finalCompanyName}" class="logo" />
                 ` : ''}
-                <h1>${companyName}</h1>
+                <h1>${finalCompanyName}</h1>
             </div>
             
             <!-- Contenido principal -->
@@ -1080,7 +1099,7 @@ function createEmailTemplate(content, options = {}) {
                 <p>Por favor no responder directamente a este correo.</p>
                 <p>Si tiene alguna pregunta, contacte a su supervisor o al departamento de recursos humanos.</p>
                 <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-                <p>&copy; 2025 ${companyName}. Todos los derechos reservados.</p>
+                <p>&copy; ${currentYear} ${finalCompanyName}. Todos los derechos reservados.</p>
                 <p style="font-size: 11px; color: #9ca3af;">
                     Este correo electrónico y cualquier archivo adjunto son confidenciales y están destinados 
                     únicamente para el uso del destinatario previsto.
@@ -1153,7 +1172,8 @@ async function sendEmail(options) {
       firmaDesprendible: options.firmaDesprendible,
       liquidacionesParaFirma: options.liquidacionesParaFirma || [],
       hasAttachments: options.hasAttachments || false,
-      mensajeContextual: options.mensajeContextual || ''
+      mensajeContextual: options.mensajeContextual || '',
+      es_cotransmeq: options.es_cotransmeq || false
     };
 
     const htmlContent = createEmailTemplate(
