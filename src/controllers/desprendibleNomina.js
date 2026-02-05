@@ -1343,8 +1343,8 @@ async function generatePDF(liquidacion) {
         "codi.png"
       );
 
-      const imageX = 415; // Ajusta estas coordenadas según necesites
-      const imageY = 15; // Ajusta la altura donde empieza la tabla de empleado
+      const imageX = 463; // 477 - 3% (477 * 0.97) = 463
+      const imageY = 23; // 18 + 25% más abajo (18 * 1.25) = 22.5 ≈ 23
 
       // HEADER
       doc
@@ -3381,6 +3381,291 @@ const formatToCOP = (amount) => {
 };
 
 /**
+ * Función para generar PDF de Prima
+ * @param {Object} liquidacion - Objeto de liquidación
+ * @returns {Promise<Buffer>} - Buffer del PDF generado
+ */
+async function generatePrimaPDF(liquidacion) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: "A4",
+        margins: { top: 40, bottom: 30, left: 40, right: 40 },
+      });
+
+      const buffers = [];
+      doc.on("data", buffers.push.bind(buffers));
+      doc.on("end", () => resolve(Buffer.concat(buffers)));
+      doc.on("error", reject);
+
+      const primaryColor = liquidacion.es_cotransmeq ? '#FF9500' : '#2E8B57';
+      const lightBg = liquidacion.es_cotransmeq ? '#FFF4E6' : '#FFF9E6';
+      const borderColor = liquidacion.es_cotransmeq ? '#FFA726' : '#FFD700';
+
+      // Header con logo
+      const logoPath = liquidacion.es_cotransmeq 
+        ? path.join(__dirname, "../../public/assets/cotransmeq.png")
+        : path.join(__dirname, "../../public/assets/codi.png");
+      
+      try {
+        // Mover 50% más arriba: 48 → 24 (48 * 0.50 = 24)
+        doc.image(logoPath, doc.page.width - 154, 24, { width: 175 });
+      } catch (err) {
+        console.warn("⚠️ No se pudo cargar el logo");
+      }
+
+      // Título de la empresa
+      doc.fontSize(13).fillColor(primaryColor).font("Helvetica-Bold")
+        .text(
+          liquidacion.es_cotransmeq
+            ? "SERVICIOS Y TRANSPORTES COTRANSMEQ S.A.S"
+            : "TRANSPORTES Y SERVICIOS ESMERALDA S.A.S",
+          40, 45, { width: 300 }
+        );
+
+      doc.fontSize(10).fillColor("#000000").font("Helvetica")
+        .text(`NIT: ${liquidacion.es_cotransmeq ? "901983227" : "901528440-3"}`, 40, 75);
+
+      doc.fontSize(10).fillColor(primaryColor).font("Helvetica-Bold")
+        .text("DESPRENDIBLE DE PRIMA - DICIEMBRE 2025", 40, 95);
+
+      // Datos del empleado
+      let currentY = 130;
+      doc.rect(40, currentY, doc.page.width - 80, 60).stroke("#E0E0E0");
+
+      const drawEmployeeRow = (label, value, y, isLast = false) => {
+        doc.fontSize(12).fillColor("#000000").font("Helvetica")
+          .text(label, 45, y + 5);
+        doc.text(value, 45, y + 5, { align: "right", width: doc.page.width - 90 });
+        if (!isLast) {
+          doc.moveTo(40, y + 20).lineTo(doc.page.width - 40, y + 20).stroke("#E0E0E0");
+        }
+      };
+
+      drawEmployeeRow(
+        "Nombre",
+        `${liquidacion.conductor?.nombre || 'N/A'} ${liquidacion.conductor?.apellido || 'N/A'}`,
+        currentY
+      );
+      drawEmployeeRow(
+        "C.C.",
+        liquidacion.conductor?.numero_identificacion || 'N/A',
+        currentY + 20
+      );
+      drawEmployeeRow(
+        "Periodo",
+        "Diciembre 2025",
+        currentY + 40,
+        true
+      );
+
+      // Sección de detalle
+      currentY = 210;
+      doc.fontSize(11).fillColor(primaryColor).font("Helvetica-Bold")
+        .text("DETALLE DE PRIMA", 40, currentY);
+
+      // Info destacada
+      currentY += 25;
+      doc.rect(40, currentY, doc.page.width - 80, 60)
+        .fillAndStroke(lightBg, borderColor);
+
+      doc.fontSize(10).fillColor("#000000").font("Helvetica-Bold")
+        .text("Información importante:", 45, currentY + 5);
+      
+      doc.fontSize(9).font("Helvetica")
+        .text(
+          "Este desprendible corresponde al pago de la prima de servicios del segundo semestre del año 2025. Los valores que se detallan a continuación fueron cancelados en el mes de diciembre de 2025, dentro de los términos legales establecidos, y se presentan en este documento únicamente para su información y registro.",
+          45, currentY + 20,
+          { width: doc.page.width - 90, lineGap: 2 }
+        );
+
+      // Tabla de valores
+      currentY += 75;
+      const primaValue = parseFloat(liquidacion.prima || 0);
+      const primaPendienteValue = parseFloat(liquidacion.prima_pendiente || 0);
+
+      let rowY = currentY;
+      if (primaValue > 0) {
+        doc.rect(40, rowY, doc.page.width - 80, 35).stroke("#E0E0E0");
+        
+        doc.fontSize(12).fillColor("#000000").font("Helvetica")
+          .text("Prima diciembre 2025", 45, rowY + 5);
+        doc.fontSize(8).fillColor("#666666").font("Helvetica-Oblique")
+          .text("Valor pagado en periodo anterior", 45, rowY + 20);
+
+        doc.fontSize(12).fillColor("#2E8B57").font("Helvetica")
+          .text(formatToCOP(primaValue), 45, rowY + 10, {
+            align: "right",
+            width: doc.page.width - 90
+          });
+
+        rowY += 35;
+      }
+
+      if (primaPendienteValue > 0) {
+        doc.rect(40, rowY, doc.page.width - 80, 35).stroke("#E0E0E0");
+        
+        doc.fontSize(12).fillColor("#000000").font("Helvetica")
+          .text("Ajuste prima diciembre 2025 (Parex)", 45, rowY + 5);
+        doc.fontSize(8).fillColor("#666666").font("Helvetica-Oblique")
+          .text("Valor pendiente adicional", 45, rowY + 20);
+
+        doc.fontSize(12).fillColor("#007AFF").font("Helvetica")
+          .text(formatToCOP(primaPendienteValue), 45, rowY + 10, {
+            align: "right",
+            width: doc.page.width - 90
+          });
+      }
+
+      // Footer
+      doc.fontSize(9).fillColor("#9E9E9E").font("Helvetica")
+        .text(
+          `Documento generado el ${new Date().toLocaleDateString('es-CO')}`,
+          40,
+          doc.page.height - 40,
+          { align: "center", width: doc.page.width - 80 }
+        );
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+/**
+ * Función para generar PDF de Intereses de Cesantías
+ * @param {Object} liquidacion - Objeto de liquidación
+ * @returns {Promise<Buffer>} - Buffer del PDF generado
+ */
+async function generateInteresesCesantiasPDF(liquidacion) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: "A4",
+        margins: { top: 40, bottom: 30, left: 40, right: 40 },
+      });
+
+      const buffers = [];
+      doc.on("data", buffers.push.bind(buffers));
+      doc.on("end", () => resolve(Buffer.concat(buffers)));
+      doc.on("error", reject);
+
+      const primaryColor = liquidacion.es_cotransmeq ? '#FF9500' : '#2E8B57';
+      const lightBg = liquidacion.es_cotransmeq ? '#FFF4E6' : '#FFF9E6';
+      const borderColor = liquidacion.es_cotransmeq ? '#FFA726' : '#FFD700';
+
+      // Header con logo
+      const logoPath = liquidacion.es_cotransmeq 
+        ? path.join(__dirname, "../../public/assets/cotransmeq.png")
+        : path.join(__dirname, "../../public/assets/codi.png");
+      
+      try {
+        // Mover 50% más arriba: 48 → 24 (48 * 0.50 = 24)
+        doc.image(logoPath, doc.page.width - 154, 24, { width: 175 });
+      } catch (err) {
+        console.warn("⚠️ No se pudo cargar el logo");
+      }
+
+      // Título de la empresa
+      doc.fontSize(13).fillColor(primaryColor).font("Helvetica-Bold")
+        .text(
+          liquidacion.es_cotransmeq
+            ? "SERVICIOS Y TRANSPORTES COTRANSMEQ S.A.S"
+            : "TRANSPORTES Y SERVICIOS ESMERALDA S.A.S",
+          40, 45, { width: 300 }
+        );
+
+      doc.fontSize(10).fillColor("#000000").font("Helvetica")
+        .text(`NIT: ${liquidacion.es_cotransmeq ? "901983227" : "901528440-3"}`, 40, 75);
+
+      doc.fontSize(10).fillColor(primaryColor).font("Helvetica-Bold")
+        .text("DESPRENDIBLE DE INTERESES DE CESANTÍAS", 40, 95);
+
+      // Datos del empleado
+      let currentY = 130;
+      doc.rect(40, currentY, doc.page.width - 80, 60).stroke("#E0E0E0");
+
+      const drawEmployeeRow = (label, value, y, isLast = false) => {
+        doc.fontSize(12).fillColor("#000000").font("Helvetica")
+          .text(label, 45, y + 5);
+        doc.text(value, 45, y + 5, { align: "right", width: doc.page.width - 90 });
+        if (!isLast) {
+          doc.moveTo(40, y + 20).lineTo(doc.page.width - 40, y + 20).stroke("#E0E0E0");
+        }
+      };
+
+      drawEmployeeRow(
+        "Nombre",
+        `${liquidacion.conductor?.nombre || 'N/A'} ${liquidacion.conductor?.apellido || 'N/A'}`,
+        currentY
+      );
+      drawEmployeeRow(
+        "C.C.",
+        liquidacion.conductor?.numero_identificacion || 'N/A',
+        currentY + 20
+      );
+      drawEmployeeRow(
+        "Periodo",
+        "Año 2025",
+        currentY + 40,
+        true
+      );
+
+      // Sección de detalle
+      currentY = 210;
+      doc.fontSize(11).fillColor(primaryColor).font("Helvetica-Bold")
+        .text("DETALLE DE INTERESES DE CESANTÍAS", 40, currentY);
+
+      // Info destacada
+      currentY += 25;
+      doc.rect(40, currentY, doc.page.width - 80, 60)
+        .fillAndStroke(lightBg, borderColor);
+
+      doc.fontSize(10).fillColor("#000000").font("Helvetica-Bold")
+        .text("Información importante:", 45, currentY + 5);
+      
+      doc.fontSize(9).font("Helvetica")
+        .text(
+          "Este desprendible corresponde al pago de los intereses de cesantías correspondientes al año 2025. Los valores que se detallan a continuación fueron cancelados dentro de los términos legales establecidos y se presentan en este documento para su información y registro.",
+          45, currentY + 20,
+          { width: doc.page.width - 90, lineGap: 2 }
+        );
+
+      // Tabla de valores
+      currentY += 75;
+      const interesesValue = parseFloat(liquidacion.interes_cesantias || 0);
+
+      doc.rect(40, currentY, doc.page.width - 80, 35).stroke("#E0E0E0");
+      
+      doc.fontSize(12).fillColor("#000000").font("Helvetica")
+        .text("Intereses de cesantías", 45, currentY + 5);
+      doc.fontSize(8).fillColor("#666666").font("Helvetica-Oblique")
+        .text("Calculado sobre el saldo de cesantías al 31 de diciembre", 45, currentY + 20);
+
+      doc.fontSize(12).fillColor("#2E8B57").font("Helvetica")
+        .text(formatToCOP(interesesValue), 45, currentY + 10, {
+          align: "right",
+          width: doc.page.width - 90
+        });
+
+      // Footer
+      doc.fontSize(9).fillColor("#9E9E9E").font("Helvetica")
+        .text(
+          `Documento generado el ${new Date().toLocaleDateString('es-CO')}`,
+          40,
+          doc.page.height - 40,
+          { align: "center", width: doc.page.width - 80 }
+        );
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+/**
  * Controlador para generar PDFs comprimidos para descarga
  */
 exports.downloadPDFs = async (req, res) => {
@@ -3445,7 +3730,20 @@ exports.downloadPDFs = async (req, res) => {
     // Generar PDFs para cada liquidación (con el mismo procesamiento que en pdfQueue)
     for (const liquidacion of liquidaciones) {
       try {
-        console.log(`📄 Generando PDF para conductor: ${liquidacion.conductor?.nombre} ${liquidacion.conductor?.apellido}`);
+        console.log(`📄 Generando PDFs para conductor: ${liquidacion.conductor?.nombre} ${liquidacion.conductor?.apellido}`);
+        
+        // Formatear nombre del conductor para la carpeta
+        const nombreCompleto = `${liquidacion.conductor?.nombre || ''} ${liquidacion.conductor?.apellido || ''}`.trim();
+        const nombreFormateado = nombreCompleto
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "") // Eliminar acentos
+          .replace(/[^a-zA-Z0-9\s]/g, '') // Eliminar caracteres especiales
+          .replace(/\s+/g, '_') // Reemplazar espacios por guiones bajos
+          .toUpperCase();
+
+        // Obtener fecha del periodo_end para el nombre del archivo
+        const periodoEnd = new Date(liquidacion.periodo_end);
+        const mesNombre = periodoEnd.toLocaleDateString('es-CO', { month: 'long' }).toUpperCase();
         
         // ✅ PASO 1: Obtener configuraciones de salario
         const configuracionesSalario = await obtenerConfiguracionesSalario(
@@ -3491,31 +3789,39 @@ exports.downloadPDFs = async (req, res) => {
             recargos: recargosProcessados,
           },
         };
-        
-        // Obtener fecha del periodo_end para el nombre del archivo
-        const periodoEnd = new Date(liquidacion.periodo_end);
-        const mesNombre = periodoEnd.toLocaleDateString('es-CO', { month: 'long' }).toUpperCase();
-        
-        // Formatear nombre del conductor (reemplazar espacios por guiones bajos, eliminar caracteres especiales)
-        const nombreCompleto = `${liquidacion.conductor?.nombre || ''} ${liquidacion.conductor?.apellido || ''}`.trim();
-        const nombreFormateado = nombreCompleto
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "") // Eliminar acentos
-          .replace(/[^a-zA-Z0-9\s]/g, '') // Eliminar caracteres especiales
-          .replace(/\s+/g, '_') // Reemplazar espacios por guiones bajos
-          .toUpperCase();
-        
-        const nombreArchivoPDF = `${nombreFormateado}_${mesNombre}.pdf`;
 
-        // ✅ PASO 5: Generar PDF completo con la función existente (con todos los detalles de recargos)
-        const pdfBuffer = await generatePDF(liquidacionCompleta);
+        // ✅ PASO 5: Generar PDF principal de nómina
+        const pdfNominaBuffer = await generatePDF(liquidacionCompleta);
+        archive.append(pdfNominaBuffer, { 
+          name: `${nombreFormateado}/DESPRENDIBLE_NOMINA_${mesNombre}.pdf` 
+        });
+        console.log(`✅ PDF de nómina generado: ${nombreFormateado}/DESPRENDIBLE_NOMINA_${mesNombre}.pdf`);
+
+        // ✅ PASO 6: Generar PDF de Prima (si tiene valor)
+        const primaValue = parseFloat(liquidacion.prima || 0);
+        const primaPendienteValue = parseFloat(liquidacion.prima_pendiente || 0);
         
-        // Agregar PDF completo al ZIP
-        archive.append(pdfBuffer, { name: nombreArchivoPDF });
+        if (primaValue > 0 || primaPendienteValue > 0) {
+          const pdfPrimaBuffer = await generatePrimaPDF(liquidacionCompleta);
+          archive.append(pdfPrimaBuffer, { 
+            name: `${nombreFormateado}/DESPRENDIBLE_PRIMA_DICIEMBRE_2025.pdf` 
+          });
+          console.log(`✅ PDF de prima generado: ${nombreFormateado}/DESPRENDIBLE_PRIMA_DICIEMBRE_2025.pdf`);
+        }
+
+        // ✅ PASO 7: Generar PDF de Intereses de Cesantías (si tiene valor)
+        const interesesValue = parseFloat(liquidacion.interes_cesantias || 0);
         
-        console.log(`✅ PDF generado con detalles completos: ${nombreArchivoPDF}`);
+        if (interesesValue > 0) {
+          const pdfInteresesBuffer = await generateInteresesCesantiasPDF(liquidacionCompleta);
+          archive.append(pdfInteresesBuffer, { 
+            name: `${nombreFormateado}/DESPRENDIBLE_INTERESES_CESANTIAS_2025.pdf` 
+          });
+          console.log(`✅ PDF de intereses generado: ${nombreFormateado}/DESPRENDIBLE_INTERESES_CESANTIAS_2025.pdf`);
+        }
+
       } catch (error) {
-        console.error(`❌ Error generando PDF para liquidación ${liquidacion.id}:`, error);
+        console.error(`❌ Error generando PDFs para liquidación ${liquidacion.id}:`, error);
         // Continuar con las demás liquidaciones
       }
     }
@@ -3523,7 +3829,7 @@ exports.downloadPDFs = async (req, res) => {
     // Finalizar el archivo ZIP
     await archive.finalize();
     
-    console.log(`✅ Archivo ZIP generado exitosamente con ${liquidaciones.length} desprendibles`);
+    console.log(`✅ Archivo ZIP generado exitosamente con desprendibles de ${liquidaciones.length} conductores`);
 
   } catch (error) {
     console.error("❌ Error al generar PDFs para descarga:", error);
